@@ -1,0 +1,18 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": [
+    "app",
+    "components",
+    "store",
+    "services",
+    "types",
+    "constants",
+    "utils",
+    "modals",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ]
+}

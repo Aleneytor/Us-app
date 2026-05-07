@@ -5,6 +5,7 @@ import { APP_COLORS, getIconColor } from '../constants/colors';
 import type { Contribution, Goal } from '../types';
 import { goalProgress } from '../utils/calculations';
 import { formatDateShort, fmt } from '../utils/format';
+import { useAppStore } from '../store/useAppStore';
 
 interface GoalCardProps {
   goal: Goal;
@@ -25,6 +26,7 @@ export function GoalCard({
   onPress,
   readOnly = false,
 }: GoalCardProps) {
+  const currency = useAppStore((s) => s.currency);
   const category = CATEGORIES[goal.cat] ?? CATEGORIES.other;
   const iconColor = getIconColor(goal.iconColor);
   const progress = goalProgress(goal, contribs);
@@ -52,7 +54,7 @@ export function GoalCard({
           </Text>
         </View>
 
-        <Text style={styles.saved}>{fmt(progress.total)}</Text>
+        <Text style={styles.saved}>{fmt(progress.total, currency)}</Text>
       </View>
 
       <View style={styles.progressTrack}>
@@ -66,7 +68,7 @@ export function GoalCard({
 
       <View style={styles.footer}>
         <Text style={styles.progressText}>
-          {pct}% · faltan {fmt(progress.remaining)}
+          {pct}% · faltan {fmt(progress.remaining, currency)}
         </Text>
 
         {readOnly ? (

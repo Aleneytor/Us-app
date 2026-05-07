@@ -4,7 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 const STATUS_MAP = {
   live:       { label: '● en vivo',     color: '#16A34A' },
   connecting: { label: '○ conectando',  color: '#94A3B8' },
-  error:      { label: '✕ error',       color: '#E11D48' },
+  error:      { label: '✕ error',       color: '#EC1147' },
 } as const;
 
 export function SyncStatus() {

@@ -1,21 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { ALL_CATEGORY_KEYS, CATEGORIES } from '../constants/categories';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 
 interface IconPickerProps {
   value: string;
   colorId: string;
+  keys?: string[];
   onChange: (value: string) => void;
 }
 
-export function IconPicker({ value, colorId, onChange }: IconPickerProps) {
+export function IconPicker({ value, colorId, keys, onChange }: IconPickerProps) {
   const color = getIconColor(colorId);
+  const categoryKeys = keys ?? ALL_CATEGORY_KEYS;
 
   return (
     <View style={styles.grid}>
-      {ALL_CATEGORY_KEYS.map((key) => {
+      {categoryKeys.map((key) => {
         const category = CATEGORIES[key];
+        if (!category) return null;
         const active = key === value;
         return (
           <Pressable
@@ -29,12 +32,9 @@ export function IconPicker({ value, colorId, onChange }: IconPickerProps) {
           >
             <Ionicons
               name={category.icon}
-              size={21}
+              size={22}
               color={active ? color.color : APP_COLORS.textSecondary}
             />
-            <Text numberOfLines={1} style={[styles.label, active && { color: color.color }]}>
-              {category.label}
-            </Text>
           </Pressable>
         );
       })}
@@ -52,18 +52,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: APP_COLORS.surface,
     borderColor: APP_COLORS.border,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
-    height: 64,
+    height: 46,
     justifyContent: 'center',
-    width: 74,
-  },
-  label: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 10,
-    fontWeight: '700',
-    maxWidth: 62,
+    width: 48,
   },
   pressed: {
     opacity: 0.72,

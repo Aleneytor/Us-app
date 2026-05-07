@@ -26,6 +26,7 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
   const currentUser = useAppStore((s) => s.currentUser);
   const contribs = useAppStore((s) => s.payload.contribs);
   const addContribution = useAppStore((s) => s.addContribution);
+  const currency = useAppStore((s) => s.currency);
 
   const [amt, setAmt] = useState('');
   const [date, setDate] = useState(todayStr());
@@ -60,39 +61,41 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
   if (!goal) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>Aportar</Text>
-            <Text style={styles.subtitle}>{goal.name}</Text>
-          </View>
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
-          </Pressable>
-        </View>
-
-        <View style={styles.content}>
-          {progress ? (
-            <View style={styles.progressBox}>
-              <Text style={styles.progressTitle}>{fmt(progress.total)} de {fmt(goal.target)}</Text>
-              <Text style={styles.progressText}>Faltan {fmt(progress.remaining)}</Text>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPressIn={onClose}>
+        <Pressable style={styles.screen} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>Aportar</Text>
+              <Text style={styles.subtitle}>{goal.name}</Text>
             </View>
-          ) : null}
-          <Field label="Monto" value={amt} onChangeText={setAmt} placeholder="0,00" keyboardType="decimal-pad" autoFocus />
-          <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
-          <Field label="Nota" value={note} onChangeText={setNote} placeholder="Opcional" multiline />
-        </View>
+            <Pressable onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
+            </Pressable>
+          </View>
 
-        <View style={styles.footer}>
-          <Pressable onPress={onClose} style={styles.secondaryButton}>
-            <Text style={styles.secondaryText}>Cancelar</Text>
-          </Pressable>
-          <Pressable onPress={save} style={styles.primaryButton}>
-            <Text style={styles.primaryText}>Guardar</Text>
-          </Pressable>
-        </View>
-      </View>
+          <View style={styles.content}>
+            {progress ? (
+              <View style={styles.progressBox}>
+                <Text style={styles.progressTitle}>{fmt(progress.total, currency)} de {fmt(goal.target, currency)}</Text>
+                <Text style={styles.progressText}>Faltan {fmt(progress.remaining, currency)}</Text>
+              </View>
+            ) : null}
+            <Field label="Monto" value={amt} onChangeText={setAmt} placeholder="0,00" keyboardType="decimal-pad" autoFocus />
+            <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+            <Field label="Nota" value={note} onChangeText={setNote} placeholder="Opcional" multiline />
+          </View>
+
+          <View style={styles.footer}>
+            <Pressable onPress={onClose} style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>Cancelar</Text>
+            </Pressable>
+            <Pressable onPress={save} style={styles.primaryButton}>
+              <Text style={styles.primaryText}>Guardar</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
@@ -114,6 +117,13 @@ function Field({
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.34)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 18,
+  },
   closeButton: {
     alignItems: 'center',
     borderRadius: 12,
@@ -122,7 +132,6 @@ const styles = StyleSheet.create({
     width: 42,
   },
   content: {
-    flex: 1,
     gap: 14,
     padding: 16,
   },
@@ -200,7 +209,16 @@ const styles = StyleSheet.create({
   },
   screen: {
     backgroundColor: APP_COLORS.background,
-    flex: 1,
+    borderRadius: 22,
+    elevation: 8,
+    maxHeight: '88%',
+    maxWidth: 520,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    width: '100%',
   },
   secondaryButton: {
     alignItems: 'center',

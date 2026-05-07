@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { AppPayload } from '../types';
+import { isPayloadLike, normalizeAppPayload } from '../utils/payload';
 
 const SUPABASE_URL = 'https://kjihuesxwubqbyetlaet.supabase.co';
 const SUPABASE_ANON_KEY =
@@ -12,15 +13,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
 
-function isValidPayload(p: unknown): p is AppPayload {
-  if (!p || typeof p !== 'object') return false;
-  const obj = p as Record<string, unknown>;
-  return (
-    Array.isArray(obj.expenses) &&
-    Array.isArray(obj.wishlist) &&
-    Array.isArray(obj.goals) &&
-    Array.isArray(obj.contribs)
-  );
+function isValidPayload(p: unknown): boolean {
+  return isPayloadLike(p);
 }
 
 export async function fetchSnapshot(roomId: string): Promise<AppPayload | null> {
@@ -32,10 +26,10 @@ export async function fetchSnapshot(roomId: string): Promise<AppPayload | null> 
 
   if (error) {
     console.error('[supabase] fetchSnapshot error:', error.message);
-    return null;
+    throw error;
   }
 
-  return isValidPayload(data?.payload) ? (data!.payload as AppPayload) : null;
+  return isValidPayload(data?.payload) ? normalizeAppPayload(data!.payload) : null;
 }
 
 export async function pushSnapshot(
@@ -79,7 +73,7 @@ export function subscribeToRoom(
         const row = (event as { new?: Record<string, unknown> }).new;
         if (!row || row['updated_by'] === clientId) return;
         if (isValidPayload(row['payload'])) {
-          onUpdate(row['payload'] as AppPayload);
+          onUpdate(normalizeAppPayload(row['payload']));
         }
       },
     )

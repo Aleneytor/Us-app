@@ -80,28 +80,30 @@ export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <ModalHeader title={editing ? 'Editar meta' : 'Nueva meta'} onClose={onClose} />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.label}>Tipo</Text>
-          <View style={styles.choiceRow}>
-            <Choice label="Conjunta" active={type === 'joint'} onPress={() => setType('joint')} />
-            <Choice label="Personal" active={type === 'personal'} onPress={() => setType('personal')} />
-          </View>
-          <Field label="Nombre" value={name} onChangeText={setName} placeholder="Ej. Viaje" autoFocus />
-          <Field label="Objetivo" value={target} onChangeText={setTarget} placeholder="0,00" keyboardType="decimal-pad" />
-          <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
-          <Text style={styles.label}>Emoji</Text>
-          <EmojiPicker options={GOAL_EMOJIS} value={emoji} onChange={setEmoji} />
-          <Text style={styles.label}>Categoria</Text>
-          <IconPicker value={cat} colorId={iconColor} onChange={setCat} />
-          <Text style={styles.label}>Color</Text>
-          <ColorPicker value={iconColor} onChange={setIconColor} />
-          <Field label="Notas" value={notes} onChangeText={setNotes} placeholder="Opcional" multiline />
-        </ScrollView>
-        <Footer onCancel={onClose} onSave={save} />
-      </View>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPressIn={onClose}>
+        <Pressable style={styles.screen} onPressIn={(event) => event.stopPropagation()}>
+          <ModalHeader title={editing ? 'Editar meta' : 'Nueva meta'} onClose={onClose} />
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <Text style={styles.label}>Tipo</Text>
+            <View style={styles.choiceRow}>
+              <Choice label="Conjunta" active={type === 'joint'} onPress={() => setType('joint')} />
+              <Choice label="Personal" active={type === 'personal'} onPress={() => setType('personal')} />
+            </View>
+            <Field label="Nombre" value={name} onChangeText={setName} placeholder="Ej. Viaje" autoFocus />
+            <Field label="Objetivo" value={target} onChangeText={setTarget} placeholder="0,00" keyboardType="decimal-pad" />
+            <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+            <Text style={styles.label}>Emoji</Text>
+            <EmojiPicker options={GOAL_EMOJIS} value={emoji} onChange={setEmoji} />
+            <Text style={styles.label}>Categoria</Text>
+            <IconPicker value={cat} colorId={iconColor} onChange={setCat} />
+            <Text style={styles.label}>Color</Text>
+            <ColorPicker value={iconColor} onChange={setIconColor} />
+            <Field label="Notas" value={notes} onChangeText={setNotes} placeholder="Opcional" multiline />
+          </ScrollView>
+          <Footer onCancel={onClose} onSave={save} />
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
@@ -162,6 +164,13 @@ function Footer({ onCancel, onSave }: { onCancel: () => void; onSave: () => void
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.34)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 18,
+  },
   choice: {
     alignItems: 'center',
     backgroundColor: APP_COLORS.surface,
@@ -256,7 +265,16 @@ const styles = StyleSheet.create({
   },
   screen: {
     backgroundColor: APP_COLORS.background,
-    flex: 1,
+    borderRadius: 22,
+    elevation: 8,
+    maxHeight: '88%',
+    maxWidth: 560,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    width: '100%',
   },
   secondaryButton: {
     alignItems: 'center',

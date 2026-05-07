@@ -4,13 +4,16 @@ import { ICON_COLORS } from '../constants/colors';
 
 interface ColorPickerProps {
   value: string;
+  colorIds?: string[];
   onChange: (value: string) => void;
 }
 
-export function ColorPicker({ value, onChange }: ColorPickerProps) {
+export function ColorPicker({ value, colorIds, onChange }: ColorPickerProps) {
+  const colors = colorIds ? ICON_COLORS.filter((item) => colorIds.includes(item.id)) : ICON_COLORS;
+
   return (
     <View style={styles.row}>
-      {ICON_COLORS.map((item) => {
+      {colors.map((item) => {
         const active = item.id === value;
         return (
           <Pressable
@@ -48,14 +51,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   swatch: {
     alignItems: 'center',
     borderColor: 'transparent',
-    borderRadius: 18,
-    height: 36,
+    borderRadius: 16,
+    height: 32,
     justifyContent: 'center',
-    width: 36,
+    width: 32,
   },
 });

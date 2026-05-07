@@ -1,4 +1,7 @@
-const MONTHS_ES = [
+import type { CurrencyCode } from '../types';
+import { CURRENCIES } from '../types';
+
+export const MONTHS_ES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ];
@@ -31,13 +34,34 @@ export function todayStr(): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function fmt(n: number): string {
-  return (
-    n.toLocaleString('es-ES', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }) + ' €'
-  );
+function _formatNumber(n: number, currency: CurrencyCode): { whole: string; dec: string; isUS: boolean } {
+  const cfg = CURRENCIES[currency];
+  const safe = Number.isFinite(n) ? Math.abs(n) : 0;
+  const rounded = Math.round(safe * 100) / 100;
+  const intPart = Math.floor(rounded);
+  const decPart = Math.round((rounded - intPart) * 100);
+  const isUS = cfg.locale === 'en-US';
+  const thousandSep = isUS ? ',' : '.';
+  const whole = intPart.toString().replace(/\B(?=(\d{3})+(?!\d))/g, thousandSep);
+  return { whole, dec: decPart.toString().padStart(2, '0'), isUS };
+}
+
+export function fmt(n: number, currency: CurrencyCode = 'EUR'): string {
+  const cfg = CURRENCIES[currency];
+  const { whole, dec, isUS } = _formatNumber(n, currency);
+  return `${whole}${isUS ? '.' : ','}${dec} ${cfg.symbol}`;
+}
+
+export function splitAmount(n: number, currency: CurrencyCode = 'EUR'): {
+  sign: string;
+  whole: string;
+  decimals: string;
+  symbol: string;
+} {
+  const cfg = CURRENCIES[currency];
+  const sign = Number.isFinite(n) && n < 0 ? '-' : '';
+  const { whole, dec } = _formatNumber(n, currency);
+  return { sign, whole, decimals: dec, symbol: cfg.symbol };
 }
 
 export function fmtInput(n: number): string {
@@ -60,13 +84,13 @@ export function parseAmt(value: string): number {
   if (hasComma) {
     const afterComma = str.length - str.indexOf(',') - 1;
     return afterComma === 3
-      ? parseFloat(str.replace(',', ''))   // thousands separator
+      ? parseFloat(str.replace(',', ''))
       : parseFloat(str.replace(',', '.'));
   }
   if (hasDot) {
     const afterDot = str.length - str.indexOf('.') - 1;
     return afterDot === 3
-      ? parseFloat(str.replace('.', ''))   // thousands separator
+      ? parseFloat(str.replace('.', ''))
       : parseFloat(str);
   }
   return parseFloat(str);

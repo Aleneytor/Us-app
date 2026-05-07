@@ -1,146 +1,274 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Animated,
+  Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { TagChip } from '../../components/TagChip';
+import { APP_COLORS } from '../../constants/colors';
+import { BalanceCard } from '../../components/BalanceCard';
+import type { CardState } from '../../components/BalanceCard';
+import { BudgetCategoryCard } from '../../components/BudgetCategoryCard';
+import { FinanceDetailModal } from '../../components/FinanceDetailModal';
+import { TransactionDetailModal } from '../../components/TransactionDetailModal';
 import { TransactionTile } from '../../components/TransactionTile';
+import { BudgetCategoryDetailModal } from '../../modals/BudgetCategoryDetailModal';
+import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { TransactionModal } from '../../modals/TransactionModal';
 import { useAppStore } from '../../store/useAppStore';
 import { USERS } from '../../types';
-import { calcDashboard } from '../../utils/calculations';
-import { isMonthVisible } from '../../utils/filters';
-import { formatYM } from '../../utils/format';
+import type { BudgetCategory, Transaction } from '../../types';
+import {
+  calcBudgetCategorySpending,
+  calcGastosActual,
+  calcGastosProyectados,
+  calcIngresosActual,
+  calcIngresosProyectados,
+} from '../../utils/calculations';
+import { getPaid, isMonthVisible, setPaid } from '../../utils/filters';
+import { todayStr } from '../../utils/format';
 
-const HERO_SLIDES = [
-  { key: 'available', label: 'saldo actual', amountKey: 'disponible', accent: '#22C55E' },
-  { key: 'spent', label: 'gasto del mes', amountKey: 'gastos', accent: '#E11D48' },
-  { key: 'saved', label: 'ahorrado', amountKey: 'ahorrado', accent: '#7C3AED' },
-] as const;
+const CARD_SUBTITLES: Record<CardState, { prefix: string; accent: string; color: string }> = {
+  gastos: { prefix: 'Este es tu ', accent: 'gastos actual', color: '#EC1147' },
+  ingresos: { prefix: 'Este es tu ', accent: 'saldo actual', color: '#23C55E' },
+};
+
+
 
 export default function DashboardScreen() {
-  const router = useRouter();
-  const { width } = useWindowDimensions();
-  const [activeHero, setActiveHero] = useState(0);
-  const [createKind, setCreateKind] = useState<'income' | 'expense' | null>(null);
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const selectedYM = useAppStore((s) => s.selectedYM);
+  const currency = useAppStore((s) => s.currency);
+  const updateTx = useAppStore((s) => s.updateTransaction);
+  const deleteTx = useAppStore((s) => s.deleteTransaction);
 
-  const dash = calcDashboard(payload, currentUser, selectedYM);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [cardState, setCardState] = useState<CardState>('ingresos');
+  const [createKind, setCreateKind] = useState<'income' | 'expense' | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
+  const [detailModal, setDetailModal] = useState<{ visible: boolean; kind: 'income' | 'expense' }>({
+    visible: false,
+    kind: 'income',
+  });
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null);
+  const [catPage, setCatPage] = useState(0);
+  const catScrollRef = useRef<ScrollView>(null);
+
   const user = USERS[currentUser];
-  const activeSlide = HERO_SLIDES[activeHero] ?? HERO_SLIDES[0];
+
+  const gastosActual = calcGastosActual(payload, currentUser, selectedYM);
+  const gastosProyectados = calcGastosProyectados(payload, currentUser, selectedYM);
+  const ingresosActual = calcIngresosActual(payload, currentUser, selectedYM);
+  const ingresosProyectados = calcIngresosProyectados(payload, currentUser, selectedYM);
+
+  const budgetCategories = useMemo(() => {
+    const all = payload.budgetCategories ?? [];
+    return all.filter((bc) => bc.uid === undefined || bc.uid === currentUser);
+  }, [payload.budgetCategories, currentUser]);
+
+  const CATS_PER_PAGE = 2;
+  const catPageCount = Math.ceil(budgetCategories.length / CATS_PER_PAGE);
+  const CAT_PAGER_WIDTH = Dimensions.get('window').width;
+  // Pre-initialize all dot animated values (supports up to 10 pages) — same as BalanceCard
+  const catDotWidths = useRef(
+    Array.from({ length: 10 }, (_, i) => new Animated.Value(i === 0 ? 28 : 14)),
+  ).current;
+  const catPageRef = useRef(0);
 
   const recent = payload.expenses
     .filter((t) => t.uid === currentUser && !t.del && isMonthVisible(t, selectedYM))
     .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
-    .slice(0, 5);
+    .slice(0, 8);
 
-  const tagCounts = new Map<string, number>();
-  for (const t of payload.expenses) {
-    if (!t.del && isMonthVisible(t, selectedYM)) {
-      for (const tag of t.tags) {
-        tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
-      }
-    }
-  }
-  const topTags = [...tagCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .map(([tag]) => tag);
-
-  const handleHeroScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-    setActiveHero(Math.max(0, Math.min(HERO_SLIDES.length - 1, nextIndex)));
+  const toggleTx = (t: Transaction) => {
+    const next = {
+      ...t,
+      paid: t.paid ? { ...t.paid } : {},
+      paidAt: t.paidAt ? { ...t.paidAt } : {},
+    };
+    setPaid(next, selectedYM, !getPaid(t, selectedYM), todayStr());
+    updateTx(next);
+    setSelectedTransaction((prev) => (prev?.id === next.id ? next : prev));
   };
 
+  const confirmDelete = (t: Transaction) => {
+    Alert.alert(
+      'Eliminar movimiento',
+      t.desc || 'Este movimiento se ocultará para todos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: () => { deleteTx(t.id); setSelectedTransaction(null); } },
+      ],
+    );
+  };
+
+  const subtitle = CARD_SUBTITLES[cardState];
+
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <View style={styles.heroHeader}>
-        <View>
-          <TouchableOpacity activeOpacity={0.7} style={styles.helloButton}>
-            <Text style={styles.hello}>¡Hola, {user.name}!</Text>
-            <Ionicons name="swap-vertical" size={14} color="#94A3B8" />
-          </TouchableOpacity>
-          <Text style={styles.subtitle}>
-            Este es tu <Text style={[styles.subtitleAccent, { color: activeSlide.accent }]}>{activeSlide.label}</Text>
-          </Text>
-        </View>
-        <TouchableOpacity activeOpacity={0.7} style={styles.menuButton}>
-          <Ionicons name="menu" size={22} color="#0F172A" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleHeroScroll}
-        scrollEventThrottle={16}
-        style={styles.heroCarousel}
-      >
-        {HERO_SLIDES.map((slide) => (
-          <View key={slide.key} style={[styles.heroSlide, { width }]}>
-            <View style={[styles.monthBadge, { backgroundColor: slide.accent }]}>
-              <Text style={styles.monthText}>{formatYM(selectedYM)}</Text>
-            </View>
-            <HeroAmount
-              amount={dash[slide.amountKey]}
-              color={slide.amountKey === 'disponible' && dash.disponible < 0 ? '#E11D48' : slide.accent}
-            />
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+      overScrollMode="never"
+      scrollEnabled={scrollEnabled}
+    >
+      {/* ── Header + Balance Card ── */}
+      <View style={styles.headerSection}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>¡Hola {user.name}!</Text>
+            <Text style={styles.subtitle}>
+              {subtitle.prefix}
+              <Text style={[styles.subtitleAccent, { color: subtitle.color }]}>
+                {subtitle.accent}
+              </Text>
+            </Text>
           </View>
-        ))}
-      </ScrollView>
+        </View>
 
-      <View style={styles.dots}>
-        {HERO_SLIDES.map((slide, index) => (
-          <View
-            key={slide.key}
-            style={[
-              styles.dot,
-              activeHero === index && { backgroundColor: slide.accent },
-            ]}
-          />
-        ))}
+        <BalanceCard
+          gastosActual={gastosActual}
+          gastosProyectados={gastosProyectados}
+          ingresosActual={ingresosActual}
+          ingresosProyectados={ingresosProyectados}
+          currency={currency}
+          selectedYM={selectedYM}
+          onStateChange={setCardState}
+          onSwipeBegin={() => setScrollEnabled(false)}
+          onSwipeEnd={() => setScrollEnabled(true)}
+        />
       </View>
 
-      <View style={styles.heroActions}>
-        <TouchableOpacity
-          activeOpacity={0.78}
-          style={styles.heroButton}
-          onPress={() => setCreateKind('income')}
-        >
-          <Ionicons name="arrow-up" size={17} color="#0F172A" />
-          <Text style={styles.heroButtonText}>Ingreso</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.78}
-          style={styles.heroButton}
-          onPress={() => setCreateKind('expense')}
-        >
-          <Ionicons name="arrow-down" size={17} color="#0F172A" />
-          <Text style={styles.heroButtonText}>Gasto</Text>
-        </TouchableOpacity>
+      {/* ── Botones Ingresos / Gastos ── */}
+      <View style={styles.quickActions}>
+        <FinanceToggleButton
+          label="Ingresos"
+          icon="arrow-up"
+          active={detailModal.visible && detailModal.kind === 'income'}
+          accent="#16A34A"
+          onPress={() => setDetailModal({ visible: true, kind: 'income' })}
+        />
+        <FinanceToggleButton
+          label="Gastos"
+          icon="arrow-down"
+          active={detailModal.visible && detailModal.kind === 'expense'}
+          accent="#EC1147"
+          onPress={() => setDetailModal({ visible: true, kind: 'expense' })}
+        />
       </View>
 
-      <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Recientes</Text>
-          <TouchableOpacity onPress={() => router.push('/movimientos')}>
-            <Text style={styles.link}>Ver todos</Text>
-          </TouchableOpacity>
+      {/* ── Categorías de presupuesto ── */}
+      <View style={[styles.section, styles.catSection]}>
+        <View style={[styles.sectionHead, styles.catSectionHead]}>
+          <Text style={styles.sectionTitle}>Categorías</Text>
+        </View>
+
+        {budgetCategories.length === 0 ? (
+          <View style={styles.categoriesEmpty}>
+            <Ionicons name="pie-chart-outline" size={28} color={APP_COLORS.textMuted} />
+            <Text style={styles.categoriesEmptyTitle}>Sin categorías</Text>
+            <Text style={styles.categoriesEmptyText}>
+              Crea una categoría para rastrear tu presupuesto mensual por tipo de gasto.
+            </Text>
+            <Pressable
+              onPress={() => setNewCategoryOpen(true)}
+              style={({ pressed }) => [styles.categoriesEmptyBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+              <Text style={styles.categoriesEmptyBtnText}>Crear categoría</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.categoriesPager}>
+            <ScrollView
+              ref={catScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              snapToInterval={CAT_PAGER_WIDTH}
+              snapToAlignment="start"
+              style={{ width: CAT_PAGER_WIDTH }}
+              onScrollEndDrag={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                const x = e.nativeEvent.contentOffset.x;
+                const vx = (e.nativeEvent as any).velocity?.x ?? 0;
+                // Use velocity to predict snap target, same way pagingEnabled will
+                let nextPage: number;
+                if (vx < -0.3) nextPage = Math.min(catPageCount - 1, catPageRef.current + 1);
+                else if (vx > 0.3) nextPage = Math.max(0, catPageRef.current - 1);
+                else nextPage = Math.round(x / CAT_PAGER_WIDTH);
+                if (nextPage !== catPageRef.current) {
+                  catPageRef.current = nextPage;
+                  setCatPage(nextPage);
+                  for (let i = 0; i < catPageCount; i++) {
+                    Animated.spring(catDotWidths[i], {
+                      toValue: i === nextPage ? 28 : 14,
+                      useNativeDriver: false,
+                      damping: 14,
+                      stiffness: 160,
+                    }).start();
+                  }
+                }
+              }}
+            >
+              {Array.from({ length: catPageCount }).map((_, pageIdx) => (
+                <View key={pageIdx} style={[styles.catPage, { width: CAT_PAGER_WIDTH }]}>
+                  {budgetCategories
+                    .slice(pageIdx * CATS_PER_PAGE, pageIdx * CATS_PER_PAGE + CATS_PER_PAGE)
+                    .map((bc) => (
+                      <BudgetCategoryCard
+                        key={bc.id}
+                        category={bc}
+                        spent={calcBudgetCategorySpending(payload, bc.id, selectedYM)}
+                        currency={currency}
+                        onPress={() => setSelectedCategory(bc)}
+                      />
+                    ))}
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Animated dots */}
+            {catPageCount > 1 && (
+              <View style={styles.catDots}>
+                {Array.from({ length: catPageCount }).map((_, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      styles.catDot,
+                      i === catPage && styles.catDotActive,
+                      { width: catDotWidths[i] },
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ── Movimientos Recientes ── */}
+      <View style={[styles.section, styles.recentSection]}>
+        <View style={styles.recentSectionHeader}>
+          <Text style={styles.sectionTitle}>Movimientos Recientes</Text>
+          <Text style={styles.swipeHint}>
+            Desliza hacia la izquierda para marcar como listo, hacia la derecha para editar.
+          </Text>
         </View>
 
         {recent.length === 0 ? (
-          <Text style={styles.empty}>Sin movimientos este mes</Text>
+          <Text style={styles.emptyText}>Sin movimientos este mes</Text>
         ) : (
           <View style={styles.tileList}>
             {recent.map((t) => (
@@ -148,79 +276,290 @@ export default function DashboardScreen() {
                 key={t.id}
                 transaction={t}
                 ym={selectedYM}
-                onPress={() => router.push('/movimientos')}
+                onPress={() => setSelectedTransaction(t)}
+                onConfirm={() => toggleTx(t)}
+                onEdit={() => setEditTransaction(t)}
+                onSwipeBegin={() => setScrollEnabled(false)}
+                onSwipeEnd={() => setScrollEnabled(true)}
+                contentHorizontalPadding={24}
+                amountCategoryFontSize={12}
+                amountCategoryColor={APP_COLORS.textMuted}
               />
             ))}
           </View>
         )}
       </View>
 
-      {topTags.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Tags del mes</Text>
-          <View style={styles.tagCloud}>
-            {topTags.map((tag) => (
-              <TagChip
-                key={tag}
-                tag={tag}
-                onPress={() => router.push('/movimientos')}
-              />
-            ))}
-          </View>
-        </View>
-      )}
+      {/* ── Modals ── */}
+      <FinanceDetailModal
+        visible={detailModal.visible}
+        kind={detailModal.kind}
+        currency={currency}
+        uid={currentUser}
+        selectedYM={selectedYM}
+        payload={payload}
+        onClose={() => setDetailModal((s) => ({ ...s, visible: false }))}
+        onAdd={() => {
+          const nextKind = detailModal.kind;
+          setDetailModal((s) => ({ ...s, visible: false }));
+          setCreateKind(nextKind);
+        }}
+      />
 
       <TransactionModal
         visible={createKind !== null}
         initialKind={createKind ?? 'expense'}
         onClose={() => setCreateKind(null)}
       />
+
+      <TransactionModal
+        visible={!!editTransaction}
+        transaction={editTransaction}
+        onClose={() => setEditTransaction(null)}
+      />
+
+      <TransactionDetailModal
+        transaction={selectedTransaction}
+        ym={selectedYM}
+        onClose={() => setSelectedTransaction(null)}
+        onTogglePaid={toggleTx}
+        onEdit={(t) => { setSelectedTransaction(null); setEditTransaction(t); }}
+        onDelete={confirmDelete}
+      />
+
+      <BudgetCategoryModal
+        visible={newCategoryOpen}
+        onClose={() => setNewCategoryOpen(false)}
+      />
+
+      <BudgetCategoryDetailModal
+        category={selectedCategory}
+        currency={currency}
+        selectedYM={selectedYM}
+        onClose={() => setSelectedCategory(null)}
+      />
+
     </ScrollView>
   );
 }
 
-function HeroAmount({ amount, color }: { amount: number; color: string }) {
-  const sign = amount < 0 ? '-' : '';
-  const [whole, decimals = '00'] = Math.abs(amount).toLocaleString('es-ES', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).split(',');
-
+function FinanceToggleButton({
+  label,
+  icon,
+  active,
+  accent,
+  onPress,
+}: {
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  active: boolean;
+  accent: string;
+  onPress: () => void;
+}) {
   return (
-    <Text style={[styles.heroAmount, { color }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
-      <Text style={styles.currency}>€</Text>
-      {sign}{whole}
-      <Text style={styles.decimals}>,{decimals}</Text>
-    </Text>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.financeToggle,
+        active && { backgroundColor: accent },
+        pressed && styles.pressed,
+      ]}
+    >
+      <Ionicons name={icon} size={18} color={active ? '#FFFFFF' : accent} />
+      <Text style={[styles.financeToggleText, active && styles.financeToggleTextActive]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll:       { flex: 1, backgroundColor: '#EDF2F7' },
-  content:      { paddingBottom: 40 },
-  heroHeader:   { paddingHorizontal: 32, paddingTop: 34, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  helloButton:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  hello:        { color: '#0F172A', fontSize: 22, fontWeight: '800', lineHeight: 27 },
-  subtitle:     { marginTop: 4, color: '#475569', fontSize: 13.5, fontWeight: '500' },
-  subtitleAccent: { fontWeight: '800' },
-  menuButton:   { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  heroCarousel: { marginTop: 28 },
-  heroSlide:    { alignItems: 'center', gap: 13, paddingBottom: 8 },
-  monthBadge:   { minHeight: 32, minWidth: 82, borderRadius: 999, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
-  monthText:    { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  heroAmount:   { fontSize: 58, fontWeight: '700', lineHeight: 66, color: '#0F172A' },
-  currency:     { fontSize: 25, fontWeight: '500' },
-  decimals:     { color: '#94A3B8', fontSize: 26, fontWeight: '700' },
-  dots:         { flexDirection: 'row', justifyContent: 'center', gap: 10, paddingTop: 8, paddingBottom: 18 },
-  dot:          { width: 27, height: 3, borderRadius: 3, backgroundColor: '#CBD5E1' },
-  heroActions:  { flexDirection: 'row', gap: 10, paddingHorizontal: 24, marginBottom: 22 },
-  heroButton:   { flex: 1, height: 44, borderRadius: 13, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  heroButtonText: { color: '#0F172A', fontSize: 15, fontWeight: '700' },
-  section:      { marginTop: 20, paddingHorizontal: 16 },
-  sectionHead:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  link:         { fontSize: 13, color: '#2563EB', fontWeight: '600' },
-  tileList:     { gap: 8 },
-  empty:        { color: '#94A3B8', fontSize: 14, textAlign: 'center', paddingVertical: 24 },
-  tagCloud:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  scroll: {
+    flex: 1,
+    backgroundColor: '#EDF2F6',
+  },
+  content: {
+    paddingBottom: 48,
+  },
+  headerSection: {
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    elevation: 4,
+    paddingBottom: 20,
+    shadowColor: '#7E7E7E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    zIndex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 30,
+    paddingTop: 56,
+    paddingBottom: 12,
+  },
+  greeting: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 26,
+    color: '#303236',
+    lineHeight: 32,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#303236',
+    lineHeight: 24,
+  },
+  subtitleAccent: {
+    fontWeight: '400',
+  },
+  section: {
+    marginTop: 24,
+    paddingHorizontal: 24,
+  },
+  catSection: {
+    paddingHorizontal: 0,
+  },
+  catSectionHead: {
+    paddingHorizontal: 24,
+  },
+  recentSection: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingBottom: 16,
+    paddingHorizontal: 0,
+    paddingTop: 20,
+  },
+  recentSectionHeader: {
+    paddingHorizontal: 24,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  categoriesEmpty: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+  },
+  categoriesEmptyBtn: {
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  categoriesEmptyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  categoriesEmptyText: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  categoriesEmptyTitle: {
+    color: APP_COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  categoriesList: {
+    gap: 8,
+  },
+  categoriesPager: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  catPage: {
+    gap: 8,
+    paddingHorizontal: 20,
+  },
+  catDots: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  catDot: {
+    backgroundColor: '#DADDE2',
+    borderRadius: 999,
+    height: 4,
+    width: 14,
+  },
+  catDotActive: {
+    backgroundColor: '#1F2937',
+    width: 28,
+  },
+  swipeHint: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '500',
+    marginTop: 5,
+    marginBottom: 12,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 10,
+    elevation: 5,
+    marginHorizontal: 24,
+    marginTop: 12,
+    position: 'relative',
+    zIndex: 2,
+  },
+  financeToggle: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    elevation: 5,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+    shadowColor: '#7E7E7E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+  },
+  financeToggleText: {
+    color: '#0F172A',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+  },
+  financeToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  tileList: {
+    alignSelf: 'stretch',
+    gap: 0,
+    width: '100%',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
 });

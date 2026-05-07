@@ -1,13 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Dimensions,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { GoalCard } from '../../components/GoalCard';
@@ -15,10 +20,28 @@ import { APP_COLORS } from '../../constants/colors';
 import { ContributionModal } from '../../modals/ContributionModal';
 import { GoalModal } from '../../modals/GoalModal';
 import { PARTNER, USERS } from '../../types';
-import type { Contribution, Goal } from '../../types';
+import type { Contribution, CurrencyCode, Goal } from '../../types';
 import { goalProgress } from '../../utils/calculations';
 import { formatDateShort, fmt } from '../../utils/format';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
+
+const SAVINGS_ACCENT = '#7C3AED';
+
+type OwnerFilter = 'mine' | 'partner' | 'both';
+
+interface DropdownOption {
+  label: string;
+  value: string;
+}
+
+interface DropdownInfo {
+  x: number;
+  y: number;
+  width: number;
+  options: DropdownOption[];
+  value: string;
+  onChange: (v: string) => void;
+}
 
 interface GoalSection {
   title: string;
@@ -31,36 +54,59 @@ export default function AhorrosScreen() {
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const deleteGoal = useAppStore((s) => s.deleteGoal);
-
+  const currency = useAppStore((s) => s.currency);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [contributeGoal, setContributeGoal] = useState<Goal | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
+  const [searchText, setSearchText] = useState('');
+  const [dropdown, setDropdown] = useState<DropdownInfo | null>(null);
+
+  const isSearching = searchText.trim().length > 0;
 
   const sections = useMemo<GoalSection[]>(() => {
     const partner = PARTNER[currentUser];
+    const query = searchText.trim().toLowerCase();
+
+    const matchesSearch = (g: Goal) =>
+      query === '' || g.name.toLowerCase().includes(query);
+
+    const matchesOwner = (g: Goal) => {
+      if (ownerFilter === 'both') return true;
+      if (ownerFilter === 'mine') return g.type === 'joint' || g.uid === currentUser;
+      // partner
+      return g.type === 'joint' || g.uid === partner;
+    };
+
     return [
       {
         title: 'Metas conjuntas',
         subtitle: 'Objetivos compartidos',
-        data: payload.goals.filter((g) => g.type === 'joint'),
+        data: payload.goals.filter(
+          (g) => g.type === 'joint' && matchesOwner(g) && matchesSearch(g),
+        ),
         readOnly: false,
       },
       {
         title: 'Mis metas',
         subtitle: USERS[currentUser].name,
-        data: payload.goals.filter((g) => g.type === 'personal' && g.uid === currentUser),
+        data: payload.goals.filter(
+          (g) => g.type === 'personal' && g.uid === currentUser && matchesOwner(g) && matchesSearch(g),
+        ),
         readOnly: false,
       },
       {
         title: 'Metas de pareja',
         subtitle: USERS[partner].name,
-        data: payload.goals.filter((g) => g.type === 'personal' && g.uid === partner),
+        data: payload.goals.filter(
+          (g) => g.type === 'personal' && g.uid === partner && matchesOwner(g) && matchesSearch(g),
+        ),
         readOnly: true,
       },
     ];
-  }, [currentUser, payload.goals]);
+  }, [currentUser, ownerFilter, payload.goals, searchText]);
 
   const totals = useMemo(() => {
     const target = payload.goals.reduce((sum, goal) => sum + goal.target, 0);
@@ -90,12 +136,56 @@ export default function AhorrosScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        bounces={false}
+        overScrollMode="never"
       >
-        <View style={styles.summary}>
-          <SummaryMetric label="Ahorrado" value={fmt(totals.saved)} tone="income" />
-          <SummaryMetric label="Objetivo" value={fmt(totals.target)} tone="neutral" />
-          <SummaryMetric label="Falta" value={fmt(totals.remaining)} tone="expense" />
+        <SavingsPager saved={totals.saved} target={totals.target} currency={currency} />
+
+        {/* ── Barra de búsqueda ── */}
+        <View style={styles.searchWrap}>
+          <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
+          <TextInput
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Buscar ahorro"
+            placeholderTextColor={APP_COLORS.textMuted}
+            style={styles.searchInput}
+          />
+          {isSearching && (
+            <Pressable onPress={() => setSearchText('')} hitSlop={8}>
+              <Ionicons name="close-circle" size={18} color={APP_COLORS.textMuted} />
+            </Pressable>
+          )}
         </View>
+
+        {/* ── Filtro de autor ── */}
+        <View style={styles.filtersBar}>
+          <GoalFilterChip
+            icon="people-outline"
+            label="Ver"
+            options={[
+              { label: 'Todos', value: 'both' },
+              { label: 'Mis ahorros', value: 'mine' },
+              { label: 'Pareja', value: 'partner' },
+            ]}
+            value={ownerFilter}
+            onChange={(value) => setOwnerFilter(value as OwnerFilter)}
+            onOpen={setDropdown}
+          />
+        </View>
+
+        {/* ── Botón rápido ── */}
+        <Pressable
+          onPress={() => {
+            const firstGoal = payload.goals[0];
+            if (firstGoal) setContributeGoal(firstGoal);
+            else setCreateOpen(true);
+          }}
+          style={({ pressed }) => [styles.savingsActionBtn, pressed && styles.savingsActionBtnPressed]}
+        >
+          <Ionicons name="wallet-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.savingsActionBtnText}>Agregar Ahorro</Text>
+        </Pressable>
 
         {sections.map((section) => (
           <View key={section.title} style={styles.section}>
@@ -131,14 +221,6 @@ export default function AhorrosScreen() {
         ))}
       </ScrollView>
 
-      <Pressable
-        accessibilityLabel="Nueva meta"
-        onPress={() => setCreateOpen(true)}
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-      >
-        <Ionicons name="add" size={28} color="#FFFFFF" />
-      </Pressable>
-
       <GoalDetailModal
         goal={selectedGoal}
         contribs={payload.contribs}
@@ -159,31 +241,66 @@ export default function AhorrosScreen() {
         goal={contributeGoal}
         onClose={() => setContributeGoal(null)}
       />
+
+      {dropdown && (
+        <GoalDropdownOverlay info={dropdown} onClose={() => setDropdown(null)} />
+      )}
     </View>
   );
 }
 
-function SummaryMetric({
-  label,
-  value,
-  tone,
+const PAGER_WIDTH = Dimensions.get('window').width - 32; // 16px padding each side
+
+function SavingsPager({
+  saved,
+  target,
+  currency,
 }: {
-  label: string;
-  value: string;
-  tone: 'income' | 'expense' | 'neutral';
+  saved: number;
+  target: number;
+  currency: CurrencyCode;
 }) {
+  const [page, setPage] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    setPage(Math.round(x / PAGER_WIDTH));
+  };
+
   return (
-    <View style={styles.summaryMetric}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text
-        style={[
-          styles.summaryValue,
-          tone === 'income' && styles.income,
-          tone === 'expense' && styles.expense,
-        ]}
+    <View style={styles.pagerContainer}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScroll}
+        decelerationRate="fast"
+        snapToInterval={PAGER_WIDTH}
+        snapToAlignment="start"
+        style={{ width: PAGER_WIDTH }}
       >
-        {value}
-      </Text>
+        {/* Page 1: Total ahorrado */}
+        <View style={[styles.pagerPage, { width: PAGER_WIDTH }]}>
+          <Text style={styles.pagerLabel}>Este es el total de tus ahorros</Text>
+          <Text style={[styles.pagerValue, styles.income]}>{fmt(saved, currency)}</Text>
+          <Text style={styles.pagerHint}>Desliza para ver tu objetivo →</Text>
+        </View>
+
+        {/* Page 2: Total objetivo */}
+        <View style={[styles.pagerPage, { width: PAGER_WIDTH }]}>
+          <Text style={styles.pagerLabel}>Objetivo total</Text>
+          <Text style={[styles.pagerValue, styles.expense]}>{fmt(target, currency)}</Text>
+          <Text style={styles.pagerHint}>← Suma de todas tus metas</Text>
+        </View>
+      </ScrollView>
+
+      {/* Pagination dots */}
+      <View style={styles.pagerDots}>
+        <View style={[styles.pagerDot, page === 0 && styles.pagerDotActive]} />
+        <View style={[styles.pagerDot, page === 1 && styles.pagerDotActive]} />
+      </View>
     </View>
   );
 }
@@ -199,6 +316,7 @@ function GoalDetailModal({
 }) {
   if (!goal) return null;
 
+  const currency = useAppStore((s) => s.currency);
   const goalContribs = contribs
     .filter((contrib) => String(contrib.gid) === String(goal.id))
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -206,8 +324,8 @@ function GoalDetailModal({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
+      <Pressable style={styles.modalBackdrop} onPressIn={onClose}>
+        <Pressable style={styles.modalCard} onPressIn={(event) => event.stopPropagation()}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{goal.name}</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
@@ -216,9 +334,9 @@ function GoalDetailModal({
           </View>
 
           <View style={styles.detailSummary}>
-            <DetailPill label="Ahorrado" value={fmt(progress.total)} />
-            <DetailPill label="Objetivo" value={fmt(goal.target)} />
-            <DetailPill label="Falta" value={fmt(progress.remaining)} />
+            <DetailPill label="Ahorrado" value={fmt(progress.total, currency)} />
+            <DetailPill label="Objetivo" value={fmt(goal.target, currency)} />
+            <DetailPill label="Falta" value={fmt(progress.remaining, currency)} />
           </View>
 
           <Text style={styles.historyTitle}>Historial</Text>
@@ -229,7 +347,7 @@ function GoalDetailModal({
               {goalContribs.map((contrib) => (
                 <View key={String(contrib.id)} style={styles.historyRow}>
                   <View style={styles.historyText}>
-                    <Text style={styles.historyAmount}>{fmt(contrib.amt)}</Text>
+                    <Text style={styles.historyAmount}>{fmt(contrib.amt, currency)}</Text>
                     <Text style={styles.historyMeta}>
                       {USERS[contrib.uid].name} · {formatDateShort(contrib.date)}
                     </Text>
@@ -239,8 +357,8 @@ function GoalDetailModal({
               ))}
             </View>
           )}
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
@@ -267,8 +385,8 @@ function PlaceholderModal({
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
+      <Pressable style={styles.modalBackdrop} onPressIn={onClose}>
+        <Pressable style={styles.modalCard} onPressIn={(event) => event.stopPropagation()}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
@@ -276,15 +394,244 @@ function PlaceholderModal({
             </Pressable>
           </View>
           <Text style={styles.placeholderText}>{body}</Text>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
+  );
+}
+
+// ─── GoalFilterChip ──────────────────────────────────────────────────────────
+
+function GoalFilterChip({
+  icon,
+  label,
+  options,
+  value,
+  onChange,
+  onOpen,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  options: DropdownOption[];
+  value: string;
+  onChange: (v: string) => void;
+  onOpen: (info: DropdownInfo) => void;
+}) {
+  const chipRef = useRef<View>(null);
+  const activeLabel = options.find((o) => o.value === value)?.label ?? label;
+  const isFiltered = value !== options[0].value;
+
+  const handlePress = () => {
+    chipRef.current?.measure((_, __, width, height, pageX, pageY) => {
+      onOpen({
+        x: pageX,
+        y: pageY + height + 6,
+        width,
+        options,
+        value,
+        onChange,
+      });
+    });
+  };
+
+  return (
+    <View ref={chipRef} style={styles.filterChipWrapper}>
+      <Pressable
+        onPress={handlePress}
+        style={({ pressed }) => [styles.filterChip, isFiltered && styles.filterChipActive, pressed && styles.pressed]}
+      >
+        <Ionicons name={icon} size={14} color={isFiltered ? '#7C3AED' : APP_COLORS.textSecondary} />
+        <Text style={[styles.filterChipText, isFiltered && styles.filterChipTextActive]}>
+          {activeLabel}
+        </Text>
+        <Ionicons name="chevron-down" size={12} color={isFiltered ? '#7C3AED' : APP_COLORS.textMuted} />
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── GoalDropdownOverlay ──────────────────────────────────────────────────────
+
+function GoalDropdownOverlay({ info, onClose }: { info: DropdownInfo; onClose: () => void }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 22,
+      stiffness: 320,
+      mass: 0.7,
+    }).start();
+  }, []);
+
+  const animateClose = (then?: () => void) => {
+    Animated.timing(anim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => {
+      then?.();
+      onClose();
+    });
+  };
+
+  return (
+    <Pressable style={StyleSheet.absoluteFill} onPress={() => animateClose()}>
+      <Animated.View
+        style={[
+          styles.dropdownCard,
+          {
+            left: info.x,
+            top: info.y,
+            width: Math.max(info.width, 140),
+            opacity: anim,
+            transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+          },
+        ]}
+      >
+        <View style={styles.dropdownInner}>
+          {info.options.map((opt, i) => {
+            const active = opt.value === info.value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => animateClose(() => info.onChange(opt.value))}
+                style={({ pressed }) => [
+                  styles.dropdownOption,
+                  i > 0 && styles.dropdownOptionBorder,
+                  active && styles.dropdownOptionActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.dropdownOptionText, active && styles.dropdownOptionTextActive]}>
+                  {opt.label}
+                </Text>
+                {active && <Ionicons name="checkmark" size={15} color="#7C3AED" />}
+              </Pressable>
+            );
+          })}
+        </View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   cardStack: {
     gap: 10,
+  },
+  // ── Search ──
+  searchWrap: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  searchInput: {
+    color: APP_COLORS.textPrimary,
+    flex: 1,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    padding: 0,
+  },
+  // ── Filters ──
+  filtersBar: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterChipWrapper: {},
+  filterChip: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  filterChipActive: {
+    backgroundColor: '#EDE9FE',
+    borderColor: '#7C3AED',
+  },
+  filterChipText: {
+    color: APP_COLORS.textSecondary,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+  },
+  filterChipTextActive: {
+    color: '#7C3AED',
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+  // ── Dropdown ──
+  dropdownCard: {
+    borderRadius: 14,
+    elevation: 8,
+    overflow: 'hidden',
+    position: 'absolute',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    zIndex: 100,
+  },
+  dropdownInner: {
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  dropdownOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  dropdownOptionBorder: {
+    borderTopColor: APP_COLORS.border,
+    borderTopWidth: 1,
+  },
+  dropdownOptionActive: {
+    backgroundColor: '#F5F3FF',
+  },
+  dropdownOptionText: {
+    color: APP_COLORS.textPrimary,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+  },
+  dropdownOptionTextActive: {
+    color: '#7C3AED',
+    fontFamily: 'Inter_600SemiBold',
+  },
+  savingsActionBtn: {
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    borderRadius: 14,
+    elevation: 4,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  savingsActionBtnPressed: {
+    opacity: 0.80,
+    transform: [{ scale: 0.98 }],
+  },
+  savingsActionBtnText: {
+    color: '#FFFFFF',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
   },
   closeButton: {
     alignItems: 'center',
@@ -337,25 +684,6 @@ const styles = StyleSheet.create({
   },
   expense: {
     color: APP_COLORS.expense,
-  },
-  fab: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.blue,
-    borderRadius: 28,
-    bottom: 24,
-    elevation: 4,
-    height: 56,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 20,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    width: 56,
-  },
-  fabPressed: {
-    transform: [{ scale: 0.97 }],
   },
   historyAmount: {
     color: APP_COLORS.textPrimary,
@@ -427,7 +755,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   screen: {
-    backgroundColor: APP_COLORS.background,
+    backgroundColor: '#EDF2F6',
     flex: 1,
   },
   section: {
@@ -454,27 +782,52 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
   },
-  summary: {
-    flexDirection: 'row',
-    gap: 8,
+  pagerContainer: {
+    alignItems: 'center',
+    gap: 10,
   },
-  summaryLabel: {
+  pagerDot: {
+    backgroundColor: APP_COLORS.border,
+    borderRadius: 4,
+    height: 6,
+    width: 6,
+  },
+  pagerDotActive: {
+    backgroundColor: SAVINGS_ACCENT,
+    width: 18,
+  },
+  pagerDots: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  pagerHint: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  pagerLabel: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '700',
+    textAlign: 'center',
   },
-  summaryMetric: {
+  pagerPage: {
+    alignItems: 'center',
     backgroundColor: APP_COLORS.surface,
     borderColor: APP_COLORS.border,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    flex: 1,
-    gap: 5,
-    padding: 12,
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
-  summaryValue: {
+  pagerValue: {
     color: APP_COLORS.textPrimary,
-    fontSize: 15,
+    fontSize: 32,
     fontWeight: '900',
+    textAlign: 'center',
   },
 });

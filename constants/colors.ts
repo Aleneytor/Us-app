@@ -6,14 +6,15 @@ export interface IconColorSet {
 
 export const ICON_COLORS: IconColorSet[] = [
   { id: 'blue',   color: '#2563EB', bg: '#DBEAFE' },
-  { id: 'rose',   color: '#E11D48', bg: '#FFE4E6' },
-  { id: 'green',  color: '#16A34A', bg: '#DCFCE7' },
-  { id: 'purple', color: '#7C3AED', bg: '#EDE9FE' },
-  { id: 'amber',  color: '#D97706', bg: '#FEF3C7' },
+  { id: 'sky',    color: '#0284C7', bg: '#E0F2FE' },
   { id: 'teal',   color: '#0D9488', bg: '#CCFBF1' },
-  { id: 'pink',   color: '#DB2777', bg: '#FCE7F3' },
-  { id: 'indigo', color: '#4F46E5', bg: '#E0E7FF' },
+  { id: 'green',  color: '#16A34A', bg: '#DCFCE7' },
+  { id: 'lime',   color: '#84CC16', bg: '#ECFCCB' },
+  { id: 'yellow', color: '#FACC15', bg: '#FEF9C3' },
   { id: 'orange', color: '#EA580C', bg: '#FFF7ED' },
+  { id: 'red',    color: '#DC2626', bg: '#FEE2E2' },
+  { id: 'pink',   color: '#DB2777', bg: '#FCE7F3' },
+  { id: 'purple', color: '#7C3AED', bg: '#EDE9FE' },
   { id: 'slate',  color: '#475569', bg: '#F1F5F9' },
 ];
 
@@ -29,7 +30,7 @@ export interface TagColorSet {
 export const TAG_COLOR_SETS: TagColorSet[] = [
   { bg: '#DBEAFE', c: '#2563EB' },
   { bg: '#CCFBF1', c: '#0D9488' },
-  { bg: '#FFE4E6', c: '#E11D48' },
+  { bg: '#FFE4E6', c: '#EC1147' },
   { bg: '#FEF3C7', c: '#D97706' },
   { bg: '#DCFCE7', c: '#16A34A' },
   { bg: '#EDE9FE', c: '#7C3AED' },
@@ -56,7 +57,7 @@ export const APP_COLORS = {
   textMuted: '#94A3B8',
   blue: '#2563EB',
   green: '#16A34A',
-  red: '#E11D48',
+  red: '#EC1147',
   income: '#16A34A',
-  expense: '#E11D48',
+  expense: '#EC1147',
 } as const;

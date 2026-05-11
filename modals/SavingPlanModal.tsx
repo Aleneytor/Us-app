@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +13,15 @@ import {
   View,
 } from 'react-native';
 import { IconPicker } from '../components/IconPicker';
+import { AppModal as Modal } from '../components/AppModal';
 import { SAVING_ICON_KEYS } from '../constants/categories';
 import { APP_COLORS } from '../constants/colors';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { SavingPlan } from '../types';
 import { savingPlanMonthlyAmount } from '../utils/calculations';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 
 const SAVINGS_ACCENT = '#7C3AED';
 
@@ -28,6 +32,7 @@ interface SavingPlanModalProps {
 }
 
 export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps) {
+  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const addSavingPlan = useAppStore((s) => s.addSavingPlan);
@@ -39,7 +44,6 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
   const [months, setMonths] = useState('');
   const [link, setLink] = useState('');
   const [planType, setPlanType] = useState<'joint' | 'personal'>('personal');
-
   const targetNumber = useMemo(() => parseAmt(targetAmount), [targetAmount]);
   const monthsNumber = Number.parseInt(months, 10);
   const monthlyPreview = Number.isFinite(targetNumber) && targetNumber > 0 && Number.isFinite(monthsNumber) && monthsNumber > 0
@@ -97,23 +101,51 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPressIn={onClose}>
-        <Pressable style={styles.screen} onPressIn={(event) => event.stopPropagation()}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={styles.keyboardView}>
+      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
+        <Pressable style={styles.screenShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.screen}>
           <View style={styles.header}>
             <Text style={styles.title}>{editing ? 'Editar ahorro' : 'Nuevo ahorro'}</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            onScrollBeginDrag={dismissKeyboardAndBlur}
+          >
             <Field label="Titulo" value={title} onChangeText={setTitle} placeholder="Ej. Auriculares" autoFocus />
+            <View style={styles.field}>
+              <Text style={styles.label}>Monto a ahorrar</Text>
+              <TextInput
+                value={targetAmount}
+                onChangeText={setTargetAmount}
+                placeholder="0"
+                placeholderTextColor="#CBD5E1"
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                style={styles.amountInput}
+              />
+            </View>
+            <Field
+              label="Plazo en meses"
+              value={months}
+              onChangeText={setMonths}
+              placeholder="Ej. 6"
+              keyboardType="number-pad"
+            />
             <View style={styles.field}>
               <Text style={styles.label}>Icono</Text>
               <IconPicker
                 value={icon}
                 colorId="purple"
                 keys={SAVING_ICON_KEYS}
+                horizontalInset={16}
                 onChange={setIcon}
               />
             </View>
@@ -135,20 +167,6 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
               </View>
             </View>
             <Field
-              label="Monto a ahorrar"
-              value={targetAmount}
-              onChangeText={setTargetAmount}
-              placeholder="0,00"
-              keyboardType="decimal-pad"
-            />
-            <Field
-              label="Plazo en meses"
-              value={months}
-              onChangeText={setMonths}
-              placeholder="Ej. 6"
-              keyboardType="number-pad"
-            />
-            <Field
               label="Link"
               value={link}
               onChangeText={setLink}
@@ -165,15 +183,17 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
             </View>
           </ScrollView>
           <View style={styles.footer}>
-            <Pressable onPress={onClose} style={styles.secondaryButton}>
+            <Pressable onPress={() => runAfterKeyboardDismiss(onClose)} style={styles.secondaryButton}>
               <Text style={styles.secondaryText}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={save} style={styles.primaryButton}>
+            <Pressable onPress={() => runAfterKeyboardDismiss(save)} style={styles.primaryButton}>
               <Text style={styles.primaryText}>Guardar</Text>
             </Pressable>
           </View>
+          </View>
         </Pressable>
       </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -223,10 +243,9 @@ function Field({
 const styles = StyleSheet.create({
   backdrop: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.34)',
     flex: 1,
     justifyContent: 'center',
-    padding: 18,
+    paddingHorizontal: 18,
   },
   closeButton: {
     alignItems: 'center',
@@ -234,6 +253,18 @@ const styles = StyleSheet.create({
     height: 42,
     justifyContent: 'center',
     width: 42,
+  },
+  amountInput: {
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: APP_COLORS.textPrimary,
+    fontFamily: 'DMSerifDisplay_400Regular',
+    fontSize: 36,
+    minHeight: 72,
+    padding: 12,
+    textAlign: 'center',
   },
   content: {
     gap: 14,
@@ -272,11 +303,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  keyboardView: {
+    flex: 1,
+  },
   label: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
-    fontWeight: '900',
-    textTransform: 'uppercase',
+    fontWeight: '400',
   },
   preview: {
     backgroundColor: '#F8FAFC',
@@ -310,19 +343,23 @@ const styles = StyleSheet.create({
   primaryText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '900',
+    fontWeight: '400',
   },
   screen: {
     backgroundColor: APP_COLORS.background,
     borderRadius: 22,
-    elevation: 8,
-    maxHeight: '88%',
-    maxWidth: 560,
+    maxHeight: '96%',
     overflow: 'hidden',
+    width: '100%',
+  },
+  screenShadow: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 560,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   secondaryButton: {
@@ -337,7 +374,7 @@ const styles = StyleSheet.create({
   secondaryText: {
     color: APP_COLORS.textPrimary,
     fontSize: 15,
-    fontWeight: '900',
+    fontWeight: '400',
   },
   segmented: {
     backgroundColor: '#F8FAFC',
@@ -374,6 +411,6 @@ const styles = StyleSheet.create({
     color: APP_COLORS.textPrimary,
     flex: 1,
     fontSize: 21,
-    fontWeight: '900',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
 });

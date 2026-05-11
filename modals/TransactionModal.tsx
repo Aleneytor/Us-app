@@ -1,12 +1,10 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,13 +12,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { AppModal as Modal } from '../components/AppModal';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 import { CATEGORIES } from '../constants/categories';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import { CURRENCIES } from '../types';
 import type { BudgetCategory, CurrencyCode, Transaction } from '../types';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { calcBudgetCategorySpending } from '../utils/calculations';
 import { useAppStore } from '../store/useAppStore';
+import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 
 interface TransactionModalProps {
   visible: boolean;
@@ -55,6 +56,7 @@ const MONTH_NAMES = [
 const WEEK_DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export function TransactionModal({ visible, transaction, initialKind = 'expense', initialBudgetCatId, onClose }: TransactionModalProps) {
+  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const payload = useAppStore((s) => s.payload);
@@ -77,7 +79,6 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
   const [type, setType] = useState<'monthly' | 'once'>('once');
   const [budgetCatId, setBudgetCatId] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
-
   const editing = !!transaction;
 
   useEffect(() => {
@@ -114,7 +115,7 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
   };
 
   const goBack = () => {
-    Keyboard.dismiss();
+    dismissKeyboardAndBlur();
     setCalendarOpen(false);
     setStep((value) => Math.max(0, value - 1));
   };
@@ -188,13 +189,11 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
-        style={styles.keyboardView}
-      >
-      <Pressable style={styles.screen} onPressIn={onClose}>
-        <Pressable style={styles.card} onPressIn={(event) => event.stopPropagation()}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={styles.keyboardView}>
+      <Pressable style={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
+        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.card}>
           <View style={styles.header}>
             <View>
               <Text style={styles.title}>{editing ? 'Editar movimiento' : 'Nuevo movimiento'}</Text>
@@ -211,7 +210,13 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
             ))}
           </View>
 
-          <ScrollView style={styles.scroller} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.scroller}
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            onScrollBeginDrag={dismissKeyboardAndBlur}
+          >
             {step === 0 ? (
               <View style={styles.block}>
                 <Text style={styles.label}>Tipo</Text>
@@ -236,7 +241,7 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
                   calendarOpen={calendarOpen}
                   days={calendarDays}
                   onToggle={() => {
-                    Keyboard.dismiss();
+                    dismissKeyboardAndBlur();
                     setCalendarOpen((value) => !value);
                   }}
                   onPrevMonth={() => changeCalendarMonth(-1)}
@@ -311,13 +316,14 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
                 Atras
               </Text>
             </Pressable>
-            <Pressable onPress={step === 2 ? save : goNext} style={styles.primaryButton}>
+            <Pressable onPress={() => runAfterKeyboardDismiss(step === 2 ? save : goNext)} style={styles.primaryButton}>
               <Text style={styles.primaryText}>{step === 2 ? 'Guardar' : 'Siguiente'}</Text>
             </Pressable>
           </View>
+          </View>
         </Pressable>
       </Pressable>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -353,6 +359,8 @@ function AmountField({
         value={value}
         onChangeText={onChangeText}
         keyboardType="decimal-pad"
+        returnKeyType="done"
+        onSubmitEditing={dismissKeyboardAndBlur}
         placeholder="0"
         placeholderTextColor="#CBD5E1"
         selectTextOnFocus
@@ -592,7 +600,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   block: {
-    gap: 14,
+    gap: 20,
   },
   budgetCatBarFill: {
     borderRadius: 3,
@@ -717,7 +725,7 @@ const styles = StyleSheet.create({
   calendarTitle: {
     color: APP_COLORS.textPrimary,
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
   choice: {
     alignItems: 'center',
@@ -748,14 +756,18 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: APP_COLORS.background,
     borderRadius: 22,
-    maxHeight: '84%',
-    maxWidth: 520,
+    maxHeight: '96%',
     overflow: 'hidden',
+    width: '100%',
+  },
+  cardShadow: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 520,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   closeButton: {
@@ -766,8 +778,8 @@ const styles = StyleSheet.create({
     width: 42,
   },
   content: {
-    padding: 18,
-    paddingBottom: 22,
+    padding: 20,
+    paddingBottom: 28,
   },
   dateInput: {
     alignItems: 'center',
@@ -786,7 +798,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   field: {
-    gap: 7,
+    gap: 8,
   },
   footer: {
     backgroundColor: APP_COLORS.surface,
@@ -820,7 +832,7 @@ const styles = StyleSheet.create({
   label: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '600',
   },
   keyboardView: {
     flex: 1,
@@ -843,13 +855,12 @@ const styles = StyleSheet.create({
   },
   screen: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.34)',
     flex: 1,
     justifyContent: 'center',
-    padding: 18,
+    paddingHorizontal: 18,
   },
   scroller: {
-    maxHeight: 430,
+    flexShrink: 1,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -883,8 +894,9 @@ const styles = StyleSheet.create({
   steps: {
     flexDirection: 'row',
     gap: 6,
+    paddingBottom: 4,
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 16,
   },
   subtitle: {
     color: APP_COLORS.textSecondary,
@@ -899,7 +911,7 @@ const styles = StyleSheet.create({
   title: {
     color: APP_COLORS.textPrimary,
     fontSize: 21,
-    fontWeight: '400',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
   weekDay: {
     color: APP_COLORS.textMuted,

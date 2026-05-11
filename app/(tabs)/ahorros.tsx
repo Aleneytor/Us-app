@@ -1,12 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Dimensions,
-  Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,16 +13,18 @@ import {
   View,
 } from 'react-native';
 import { GoalCard } from '../../components/GoalCard';
+import { AppModal as Modal } from '../../components/AppModal';
+import { SavingsCard } from '../../components/SavingsCard';
 import { APP_COLORS } from '../../constants/colors';
+import { MODAL_TITLE_FONT_WEIGHT } from '../../constants/typography';
 import { ContributionModal } from '../../modals/ContributionModal';
 import { GoalModal } from '../../modals/GoalModal';
-import { PARTNER, USERS } from '../../types';
-import type { Contribution, CurrencyCode, Goal } from '../../types';
+import type { Contribution, Goal } from '../../types';
 import { goalProgress } from '../../utils/calculations';
 import { formatDateShort, fmt } from '../../utils/format';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
-
-const SAVINGS_ACCENT = '#7C3AED';
+import { dismissKeyboardAndBlur } from '../../utils/keyboard';
+import { getPartnerId, getUserData } from '../../utils/users';
 
 type OwnerFilter = 'mine' | 'partner' | 'both';
 
@@ -55,6 +54,8 @@ export default function AhorrosScreen() {
   const currentUser = useAppStore((s) => s.currentUser);
   const deleteGoal = useAppStore((s) => s.deleteGoal);
   const currency = useAppStore((s) => s.currency);
+  const users = useAppStore((s) => s.users);
+  const partnerForUser = useAppStore((s) => s.partnerForUser);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -65,9 +66,11 @@ export default function AhorrosScreen() {
   const [dropdown, setDropdown] = useState<DropdownInfo | null>(null);
 
   const isSearching = searchText.trim().length > 0;
+  const partner = getPartnerId(partnerForUser, currentUser);
+  const currentUserData = getUserData(users, currentUser);
+  const partnerData = getUserData(users, partner);
 
   const sections = useMemo<GoalSection[]>(() => {
-    const partner = PARTNER[currentUser];
     const query = searchText.trim().toLowerCase();
 
     const matchesSearch = (g: Goal) =>
@@ -91,7 +94,7 @@ export default function AhorrosScreen() {
       },
       {
         title: 'Mis metas',
-        subtitle: USERS[currentUser].name,
+        subtitle: currentUserData.name,
         data: payload.goals.filter(
           (g) => g.type === 'personal' && g.uid === currentUser && matchesOwner(g) && matchesSearch(g),
         ),
@@ -99,14 +102,14 @@ export default function AhorrosScreen() {
       },
       {
         title: 'Metas de pareja',
-        subtitle: USERS[partner].name,
+        subtitle: partnerData.name,
         data: payload.goals.filter(
           (g) => g.type === 'personal' && g.uid === partner && matchesOwner(g) && matchesSearch(g),
         ),
         readOnly: true,
       },
     ];
-  }, [currentUser, ownerFilter, payload.goals, searchText]);
+  }, [currentUser, currentUserData.name, ownerFilter, partner, partnerData.name, payload.goals, searchText]);
 
   const totals = useMemo(() => {
     const target = payload.goals.reduce((sum, goal) => sum + goal.target, 0);
@@ -138,8 +141,17 @@ export default function AhorrosScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         bounces={false}
         overScrollMode="never"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={dismissKeyboardAndBlur}
       >
-        <SavingsPager saved={totals.saved} target={totals.target} currency={currency} />
+        <View style={styles.guidelineEdge}>
+          <SavingsCard
+            saved={totals.saved}
+            target={totals.target}
+            currency={currency}
+          />
+        </View>
 
         {/* ── Barra de búsqueda ── */}
         <View style={styles.searchWrap}>
@@ -249,62 +261,6 @@ export default function AhorrosScreen() {
   );
 }
 
-const PAGER_WIDTH = Dimensions.get('window').width - 32; // 16px padding each side
-
-function SavingsPager({
-  saved,
-  target,
-  currency,
-}: {
-  saved: number;
-  target: number;
-  currency: CurrencyCode;
-}) {
-  const [page, setPage] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
-
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const x = e.nativeEvent.contentOffset.x;
-    setPage(Math.round(x / PAGER_WIDTH));
-  };
-
-  return (
-    <View style={styles.pagerContainer}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScroll}
-        decelerationRate="fast"
-        snapToInterval={PAGER_WIDTH}
-        snapToAlignment="start"
-        style={{ width: PAGER_WIDTH }}
-      >
-        {/* Page 1: Total ahorrado */}
-        <View style={[styles.pagerPage, { width: PAGER_WIDTH }]}>
-          <Text style={styles.pagerLabel}>Este es el total de tus ahorros</Text>
-          <Text style={[styles.pagerValue, styles.income]}>{fmt(saved, currency)}</Text>
-          <Text style={styles.pagerHint}>Desliza para ver tu objetivo →</Text>
-        </View>
-
-        {/* Page 2: Total objetivo */}
-        <View style={[styles.pagerPage, { width: PAGER_WIDTH }]}>
-          <Text style={styles.pagerLabel}>Objetivo total</Text>
-          <Text style={[styles.pagerValue, styles.expense]}>{fmt(target, currency)}</Text>
-          <Text style={styles.pagerHint}>← Suma de todas tus metas</Text>
-        </View>
-      </ScrollView>
-
-      {/* Pagination dots */}
-      <View style={styles.pagerDots}>
-        <View style={[styles.pagerDot, page === 0 && styles.pagerDotActive]} />
-        <View style={[styles.pagerDot, page === 1 && styles.pagerDotActive]} />
-      </View>
-    </View>
-  );
-}
-
 function GoalDetailModal({
   goal,
   contribs,
@@ -314,9 +270,11 @@ function GoalDetailModal({
   contribs: Contribution[];
   onClose: () => void;
 }) {
+  const currency = useAppStore((s) => s.currency);
+  const users = useAppStore((s) => s.users);
+
   if (!goal) return null;
 
-  const currency = useAppStore((s) => s.currency);
   const goalContribs = contribs
     .filter((contrib) => String(contrib.gid) === String(goal.id))
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -324,8 +282,10 @@ function GoalDetailModal({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
       <Pressable style={styles.modalBackdrop} onPressIn={onClose}>
-        <Pressable style={styles.modalCard} onPressIn={(event) => event.stopPropagation()}>
+        <Pressable style={styles.modalShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{goal.name}</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
@@ -349,7 +309,7 @@ function GoalDetailModal({
                   <View style={styles.historyText}>
                     <Text style={styles.historyAmount}>{fmt(contrib.amt, currency)}</Text>
                     <Text style={styles.historyMeta}>
-                      {USERS[contrib.uid].name} · {formatDateShort(contrib.date)}
+                      {getUserData(users, contrib.uid).name} · {formatDateShort(contrib.date)}
                     </Text>
                     {contrib.note ? <Text style={styles.historyNote}>{contrib.note}</Text> : null}
                   </View>
@@ -357,6 +317,7 @@ function GoalDetailModal({
               ))}
             </View>
           )}
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -385,8 +346,10 @@ function PlaceholderModal({
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
       <Pressable style={styles.modalBackdrop} onPressIn={onClose}>
-        <Pressable style={styles.modalCard} onPressIn={(event) => event.stopPropagation()}>
+        <Pressable style={styles.modalShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
@@ -394,6 +357,7 @@ function PlaceholderModal({
             </Pressable>
           </View>
           <Text style={styles.placeholderText}>{body}</Text>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -724,7 +688,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.34)',
+    backgroundColor: 'transparent',
     flex: 1,
     justifyContent: 'center',
     padding: 18,
@@ -733,8 +697,18 @@ const styles = StyleSheet.create({
     backgroundColor: APP_COLORS.surface,
     borderRadius: 18,
     maxHeight: '82%',
-    maxWidth: 560,
+    overflow: 'hidden',
     padding: 18,
+    width: '100%',
+  },
+  modalShadow: {
+    borderRadius: 18,
+    elevation: 14,
+    maxWidth: 560,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   modalHeader: {
@@ -747,7 +721,7 @@ const styles = StyleSheet.create({
     color: APP_COLORS.textPrimary,
     flex: 1,
     fontSize: 19,
-    fontWeight: '900',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
   placeholderText: {
     color: APP_COLORS.textSecondary,
@@ -757,6 +731,9 @@ const styles = StyleSheet.create({
   screen: {
     backgroundColor: '#EDF2F6',
     flex: 1,
+  },
+  guidelineEdge: {
+    marginHorizontal: -16,
   },
   section: {
     gap: 10,
@@ -781,53 +758,5 @@ const styles = StyleSheet.create({
     color: APP_COLORS.textPrimary,
     fontSize: 18,
     fontWeight: '900',
-  },
-  pagerContainer: {
-    alignItems: 'center',
-    gap: 10,
-  },
-  pagerDot: {
-    backgroundColor: APP_COLORS.border,
-    borderRadius: 4,
-    height: 6,
-    width: 6,
-  },
-  pagerDotActive: {
-    backgroundColor: SAVINGS_ACCENT,
-    width: 18,
-  },
-  pagerDots: {
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-  },
-  pagerHint: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  pagerLabel: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  pagerPage: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-  },
-  pagerValue: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 32,
-    fontWeight: '900',
-    textAlign: 'center',
   },
 });

@@ -17,27 +17,29 @@ import { BalanceCard } from '../../components/BalanceCard';
 import type { CardState } from '../../components/BalanceCard';
 import { BudgetCategoryCard } from '../../components/BudgetCategoryCard';
 import { FinanceDetailModal } from '../../components/FinanceDetailModal';
+import { FinanceTrendCard } from '../../components/FinanceTrendCard';
 import { TransactionDetailModal } from '../../components/TransactionDetailModal';
 import { TransactionTile } from '../../components/TransactionTile';
+import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { BudgetCategoryDetailModal } from '../../modals/BudgetCategoryDetailModal';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { TransactionModal } from '../../modals/TransactionModal';
 import { useAppStore } from '../../store/useAppStore';
-import { USERS } from '../../types';
 import type { BudgetCategory, Transaction } from '../../types';
 import {
   calcBudgetCategorySpending,
+  calcBudgetCategoryIncome,
   calcGastosActual,
   calcGastosProyectados,
-  calcIngresosActual,
-  calcIngresosProyectados,
+  calcSaldoActual,
+  calcSaldoProyectado,
 } from '../../utils/calculations';
-import { getPaid, isMonthVisible, setPaid } from '../../utils/filters';
-import { todayStr } from '../../utils/format';
+import { isMonthVisible } from '../../utils/filters';
+import { getUserData } from '../../utils/users';
 
 const CARD_SUBTITLES: Record<CardState, { prefix: string; accent: string; color: string }> = {
-  gastos: { prefix: 'Este es tu ', accent: 'gastos actual', color: '#EC1147' },
-  ingresos: { prefix: 'Este es tu ', accent: 'saldo actual', color: '#23C55E' },
+  saldo: { prefix: 'Este es tu ', accent: 'saldo actual', color: '#23C55E' },
+  gastos: { prefix: 'Este es tu ', accent: 'gasto actual', color: '#EC1147' },
 };
 
 
@@ -47,11 +49,11 @@ export default function DashboardScreen() {
   const currentUser = useAppStore((s) => s.currentUser);
   const selectedYM = useAppStore((s) => s.selectedYM);
   const currency = useAppStore((s) => s.currency);
-  const updateTx = useAppStore((s) => s.updateTransaction);
   const deleteTx = useAppStore((s) => s.deleteTransaction);
+  const users = useAppStore((s) => s.users);
 
   const [scrollEnabled, setScrollEnabled] = useState(true);
-  const [cardState, setCardState] = useState<CardState>('ingresos');
+  const [cardState, setCardState] = useState<CardState>('saldo');
   const [createKind, setCreateKind] = useState<'income' | 'expense' | null>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
@@ -64,12 +66,12 @@ export default function DashboardScreen() {
   const [catPage, setCatPage] = useState(0);
   const catScrollRef = useRef<ScrollView>(null);
 
-  const user = USERS[currentUser];
+  const user = getUserData(users, currentUser);
 
+  const saldoActual = calcSaldoActual(payload, currentUser);
+  const saldoProyectado = calcSaldoProyectado(payload, currentUser, selectedYM);
   const gastosActual = calcGastosActual(payload, currentUser, selectedYM);
   const gastosProyectados = calcGastosProyectados(payload, currentUser, selectedYM);
-  const ingresosActual = calcIngresosActual(payload, currentUser, selectedYM);
-  const ingresosProyectados = calcIngresosProyectados(payload, currentUser, selectedYM);
 
   const budgetCategories = useMemo(() => {
     const all = payload.budgetCategories ?? [];
@@ -90,16 +92,6 @@ export default function DashboardScreen() {
     .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
     .slice(0, 8);
 
-  const toggleTx = (t: Transaction) => {
-    const next = {
-      ...t,
-      paid: t.paid ? { ...t.paid } : {},
-      paidAt: t.paidAt ? { ...t.paidAt } : {},
-    };
-    setPaid(next, selectedYM, !getPaid(t, selectedYM), todayStr());
-    updateTx(next);
-    setSelectedTransaction((prev) => (prev?.id === next.id ? next : prev));
-  };
 
   const confirmDelete = (t: Transaction) => {
     Alert.alert(
@@ -126,7 +118,7 @@ export default function DashboardScreen() {
       {/* ── Header + Balance Card ── */}
       <View style={styles.headerSection}>
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerText}>
             <Text style={styles.greeting}>¡Hola {user.name}!</Text>
             <Text style={styles.subtitle}>
               {subtitle.prefix}
@@ -135,17 +127,20 @@ export default function DashboardScreen() {
               </Text>
             </Text>
           </View>
+          <UserHeaderButton />
         </View>
 
         <BalanceCard
+          saldoActual={saldoActual}
+          saldoProyectado={saldoProyectado}
           gastosActual={gastosActual}
           gastosProyectados={gastosProyectados}
-          ingresosActual={ingresosActual}
-          ingresosProyectados={ingresosProyectados}
           currency={currency}
           selectedYM={selectedYM}
           onStateChange={setCardState}
-          onSwipeBegin={() => setScrollEnabled(false)}
+          onSwipeBegin={() => {
+            setScrollEnabled(false);
+          }}
           onSwipeEnd={() => setScrollEnabled(true)}
         />
       </View>
@@ -168,7 +163,16 @@ export default function DashboardScreen() {
         />
       </View>
 
-      {/* ── Categorías de presupuesto ── */}
+      <FinanceTrendCard
+        payload={payload}
+        uid={currentUser}
+        selectedYM={selectedYM}
+        currency={currency}
+        categories={budgetCategories}
+        onOpenDetail={(kind) => setDetailModal({ visible: true, kind })}
+      />
+
+      {/* Categorias de presupuesto */}
       <View style={[styles.section, styles.catSection]}>
         <View style={[styles.sectionHead, styles.catSectionHead]}>
           <Text style={styles.sectionTitle}>Categorías</Text>
@@ -231,6 +235,7 @@ export default function DashboardScreen() {
                         key={bc.id}
                         category={bc}
                         spent={calcBudgetCategorySpending(payload, bc.id, selectedYM)}
+                        incomeReal={calcBudgetCategoryIncome(payload, bc.id, selectedYM)}
                         currency={currency}
                         onPress={() => setSelectedCategory(bc)}
                       />
@@ -262,9 +267,6 @@ export default function DashboardScreen() {
       <View style={[styles.section, styles.recentSection]}>
         <View style={styles.recentSectionHeader}>
           <Text style={styles.sectionTitle}>Movimientos Recientes</Text>
-          <Text style={styles.swipeHint}>
-            Desliza hacia la izquierda para marcar como listo, hacia la derecha para editar.
-          </Text>
         </View>
 
         {recent.length === 0 ? (
@@ -277,10 +279,6 @@ export default function DashboardScreen() {
                 transaction={t}
                 ym={selectedYM}
                 onPress={() => setSelectedTransaction(t)}
-                onConfirm={() => toggleTx(t)}
-                onEdit={() => setEditTransaction(t)}
-                onSwipeBegin={() => setScrollEnabled(false)}
-                onSwipeEnd={() => setScrollEnabled(true)}
                 contentHorizontalPadding={24}
                 amountCategoryFontSize={12}
                 amountCategoryColor={APP_COLORS.textMuted}
@@ -322,7 +320,6 @@ export default function DashboardScreen() {
         transaction={selectedTransaction}
         ym={selectedYM}
         onClose={() => setSelectedTransaction(null)}
-        onTogglePaid={toggleTx}
         onEdit={(t) => { setSelectedTransaction(null); setEditTransaction(t); }}
         onDelete={confirmDelete}
       />
@@ -394,12 +391,17 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'space-between',
     paddingHorizontal: 30,
     paddingTop: 56,
     paddingBottom: 12,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
   },
   greeting: {
     fontFamily: 'Inter_700Bold',

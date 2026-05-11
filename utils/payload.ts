@@ -1,4 +1,4 @@
-import type { AppPayload, SavingPlan, SavingPlanHistoryEntry, UserId } from '../types';
+import type { AppPayload, Plan, PlanCategory, PlanExpense, PlanMember, SavingPlan, SavingPlanHistoryEntry, UserId } from '../types';
 
 const fallbackDate = () => new Date().toISOString().slice(0, 10);
 
@@ -66,6 +66,72 @@ function normalizeSavingPlan(value: unknown): SavingPlan | null {
   };
 }
 
+function normalizePlanMember(value: unknown): PlanMember | null {
+  const r = asRecord(value);
+  if (!r || typeof r.id !== 'string' || !r.id || typeof r.name !== 'string' || !r.name) return null;
+  return {
+    id: r.id,
+    uid: typeof r.uid === 'string' ? r.uid as UserId : undefined,
+    name: r.name,
+    initials: typeof r.initials === 'string' ? r.initials : r.name.slice(0, 2).toUpperCase(),
+    color: typeof r.color === 'string' ? r.color : '#7C3AED',
+    bg: typeof r.bg === 'string' ? r.bg : '#EDE9FE',
+    splitPct: typeof r.splitPct === 'number' ? r.splitPct : undefined,
+  };
+}
+
+function normalizePlanCategory(value: unknown): PlanCategory | null {
+  const r = asRecord(value);
+  if (!r || typeof r.name !== 'string' || !r.name) return null;
+  return {
+    id: asNumber(r.id) || Date.now(),
+    name: r.name,
+    icon: typeof r.icon === 'string' ? r.icon : 'map',
+    totalAmount: asNumber(r.totalAmount),
+  };
+}
+
+function normalizePlanExpense(value: unknown): PlanExpense | null {
+  const r = asRecord(value);
+  if (!r || typeof r.memberId !== 'string' || !r.memberId) return null;
+  const amount = asNumber(r.amount);
+  if (amount <= 0) return null;
+  return {
+    id: asNumber(r.id) || Date.now(),
+    categoryId: asNumber(r.categoryId),
+    memberId: r.memberId,
+    memberName: typeof r.memberName === 'string' ? r.memberName : '',
+    amount,
+    date: typeof r.date === 'string' && r.date ? r.date : fallbackDate(),
+    note: typeof r.note === 'string' && r.note ? r.note : undefined,
+  };
+}
+
+function normalizePlan(value: unknown): Plan | null {
+  const r = asRecord(value);
+  if (!r || typeof r.title !== 'string' || !r.title) return null;
+  const members = Array.isArray(r.members)
+    ? r.members.map(normalizePlanMember).filter((x): x is PlanMember => !!x)
+    : [];
+  const categories = Array.isArray(r.categories)
+    ? r.categories.map(normalizePlanCategory).filter((x): x is PlanCategory => !!x)
+    : [];
+  const expenses = Array.isArray(r.expenses)
+    ? r.expenses.map(normalizePlanExpense).filter((x): x is PlanExpense => !!x)
+    : [];
+  return {
+    id: asNumber(r.id) || Date.now(),
+    title: r.title.trim(),
+    icon: typeof r.icon === 'string' ? r.icon : 'map',
+    description: typeof r.description === 'string' && r.description ? r.description : undefined,
+    date: typeof r.date === 'string' && r.date ? r.date : fallbackDate(),
+    members,
+    categories,
+    expenses,
+    splitMode: r.splitMode === 'custom' ? 'custom' : 'equal',
+  };
+}
+
 export function normalizeAppPayload(payload: unknown): AppPayload {
   const record = asRecord(payload);
   const savingsSource = record
@@ -79,6 +145,9 @@ export function normalizeAppPayload(payload: unknown): AppPayload {
     contribs: record && Array.isArray(record.contribs) ? record.contribs as AppPayload['contribs'] : [],
     budgetCategories: record && Array.isArray(record.budgetCategories)
       ? record.budgetCategories as AppPayload['budgetCategories']
+      : [],
+    plans: record && Array.isArray(record.plans)
+      ? record.plans.map(normalizePlan).filter((x): x is Plan => !!x)
       : [],
   };
 }

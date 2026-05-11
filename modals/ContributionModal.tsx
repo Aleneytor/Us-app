@@ -1,20 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { AppModal as Modal } from '../components/AppModal';
 import { APP_COLORS } from '../constants/colors';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { Goal } from '../types';
 import { goalProgress } from '../utils/calculations';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 
 interface ContributionModalProps {
   visible: boolean;
@@ -23,6 +27,7 @@ interface ContributionModalProps {
 }
 
 export function ContributionModal({ visible, goal, onClose }: ContributionModalProps) {
+  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const contribs = useAppStore((s) => s.payload.contribs);
   const addContribution = useAppStore((s) => s.addContribution);
@@ -33,7 +38,6 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
   const [note, setNote] = useState('');
   const amountNumber = useMemo(() => parseAmt(amt), [amt]);
   const progress = goal ? goalProgress(goal, contribs) : null;
-
   useEffect(() => {
     if (!visible) return;
     setAmt('');
@@ -61,9 +65,12 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
   if (!goal) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPressIn={onClose}>
-        <Pressable style={styles.screen} onPressIn={(event) => event.stopPropagation()}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={styles.keyboardView}>
+      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
+        <Pressable style={styles.screenShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.screen}>
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={styles.title}>Aportar</Text>
@@ -81,21 +88,32 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
                 <Text style={styles.progressText}>Faltan {fmt(progress.remaining, currency)}</Text>
               </View>
             ) : null}
-            <Field label="Monto" value={amt} onChangeText={setAmt} placeholder="0,00" keyboardType="decimal-pad" autoFocus />
+            <Field
+              label="Monto"
+              value={amt}
+              onChangeText={setAmt}
+              placeholder="0,00"
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              onSubmitEditing={() => runAfterKeyboardDismiss(save)}
+              autoFocus
+            />
             <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
             <Field label="Nota" value={note} onChangeText={setNote} placeholder="Opcional" multiline />
           </View>
 
           <View style={styles.footer}>
-            <Pressable onPress={onClose} style={styles.secondaryButton}>
+            <Pressable onPress={() => runAfterKeyboardDismiss(onClose)} style={styles.secondaryButton}>
               <Text style={styles.secondaryText}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={save} style={styles.primaryButton}>
+            <Pressable onPress={() => runAfterKeyboardDismiss(save)} style={styles.primaryButton}>
               <Text style={styles.primaryText}>Guardar</Text>
             </Pressable>
           </View>
+          </View>
         </Pressable>
       </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -119,10 +137,9 @@ function Field({
 const styles = StyleSheet.create({
   backdrop: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.34)',
     flex: 1,
     justifyContent: 'center',
-    padding: 18,
+    paddingHorizontal: 18,
   },
   closeButton: {
     alignItems: 'center',
@@ -170,6 +187,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  keyboardView: {
+    flex: 1,
+  },
   label: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
@@ -210,14 +230,18 @@ const styles = StyleSheet.create({
   screen: {
     backgroundColor: APP_COLORS.background,
     borderRadius: 22,
-    elevation: 8,
-    maxHeight: '88%',
-    maxWidth: 520,
+    maxHeight: '96%',
     overflow: 'hidden',
+    width: '100%',
+  },
+  screenShadow: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 520,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   secondaryButton: {
@@ -247,6 +271,6 @@ const styles = StyleSheet.create({
   title: {
     color: APP_COLORS.textPrimary,
     fontSize: 21,
-    fontWeight: '900',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
 });

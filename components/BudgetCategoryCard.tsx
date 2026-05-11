@@ -5,9 +5,13 @@ import { APP_COLORS, getIconColor } from '../constants/colors';
 import type { BudgetCategory, CurrencyCode } from '../types';
 import { fmt } from '../utils/format';
 
+const BUDGET_TRACK_COLOR = '#EEF0F3';
+const AVAILABLE_TEXT_COLOR = '#94A3B8';
+
 interface BudgetCategoryCardProps {
   category: BudgetCategory;
   spent: number;
+  incomeReal?: number;   // real income linked to this category in selected month
   currency: CurrencyCode;
   onPress: () => void;
   onLongPress?: () => void;
@@ -16,6 +20,7 @@ interface BudgetCategoryCardProps {
 export function BudgetCategoryCard({
   category,
   spent,
+  incomeReal = 0,
   currency,
   onPress,
   onLongPress,
@@ -25,8 +30,14 @@ export function BudgetCategoryCard({
   const available = category.monthlyBudget - spent;
   const isOver = available < 0;
 
-  const barColor = iconColorSet.color;
+  const barColor = isOver ? '#DC2626' : pct >= 0.75 ? '#EA580C' : iconColorSet.color;
   const iconInfo = CATEGORIES[category.icon] ?? CATEGORIES.other;
+
+  // Income estimate logic
+  const hasIncomeEstimate = (category.monthlyIncomeEstimate ?? 0) > 0;
+  const incomeEstimate = category.monthlyIncomeEstimate ?? 0;
+  const incomeDiff = incomeReal - incomeEstimate;
+  const incomeAhead = incomeDiff >= 0;
 
   return (
     <Pressable
@@ -34,17 +45,22 @@ export function BudgetCategoryCard({
       onLongPress={onLongPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      {/* Row 1: icon + name */}
-      <View style={styles.nameRow}>
-        <View style={[styles.iconCircle, { backgroundColor: iconColorSet.bg }]}>
-          <Ionicons name={iconInfo.icon} size={20} color={iconColorSet.color} />
-        </View>
-        <Text style={styles.name} numberOfLines={1}>{category.name}</Text>
+      <View style={[styles.iconCircle, { backgroundColor: iconColorSet.bg }]}>
+        <Ionicons name={iconInfo.icon} size={20} color={iconColorSet.color} />
       </View>
 
-      {/* Row 2: spent · bar · available */}
-      <View style={styles.barRow}>
-        <Text style={styles.spentText} numberOfLines={1}>{fmt(spent, currency)}</Text>
+      <View style={styles.info}>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>{category.name}</Text>
+          <Text style={styles.budgetText} numberOfLines={1}>{fmt(category.monthlyBudget, currency)}</Text>
+          {isOver && (
+            <View style={styles.overBadge}>
+              <Text style={styles.overBadgeText}>Excedido</Text>
+            </View>
+          )}
+        </View>
+
+      {/* Row 2: gasto · bar · disponible */}
         <View style={styles.barTrack}>
           <View
             style={[
@@ -53,9 +69,36 @@ export function BudgetCategoryCard({
             ]}
           />
         </View>
-        <Text style={[styles.available, { color: isOver ? '#DC2626' : iconColorSet.color }]} numberOfLines={1}>
-          {isOver ? `+${fmt(Math.abs(available), currency)}` : `${fmt(available, currency)}`}
-        </Text>
+
+        <View style={styles.amountRow}>
+          <Text style={[styles.spentText, { color: iconColorSet.color }]} numberOfLines={1}>
+            {fmt(spent, currency)}
+          </Text>
+          <Text style={styles.available} numberOfLines={1}>
+            {isOver ? `Excedido +${fmt(Math.abs(available), currency)}` : fmt(available, currency)}
+          </Text>
+        </View>
+
+      {/* Row 3 (optional): ingreso real vs estimado */}
+        {hasIncomeEstimate && (
+          <View style={styles.incomeRow}>
+            <Ionicons
+              name={incomeAhead ? 'trending-up' : 'trending-down'}
+              size={12}
+              color={incomeAhead ? '#16A34A' : '#EA580C'}
+            />
+            <Text style={styles.incomeLabel}>Ingreso</Text>
+            <Text style={[styles.incomeReal, { color: incomeAhead ? '#16A34A' : APP_COLORS.textSecondary }]}>
+              {fmt(incomeReal, currency)}
+            </Text>
+            <Text style={styles.incomeOf}>/ {fmt(incomeEstimate, currency)}</Text>
+            {incomeDiff !== 0 && (
+              <Text style={[styles.incomeDiff, { color: incomeAhead ? '#16A34A' : '#EA580C' }]}>
+                {incomeAhead ? `+${fmt(incomeDiff, currency)}` : `-${fmt(Math.abs(incomeDiff), currency)}`}
+              </Text>
+            )}
+          </View>
+        )}
       </View>
     </Pressable>
   );
@@ -63,34 +106,46 @@ export function BudgetCategoryCard({
 
 const styles = StyleSheet.create({
   available: {
+    color: AVAILABLE_TEXT_COLOR,
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '700',
-    minWidth: 52,
     textAlign: 'right',
+  },
+  amountRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginTop: 5,
+  },
+  barTrack: {
+    backgroundColor: BUDGET_TRACK_COLOR,
+    borderRadius: 3,
+    height: 6,
+    marginTop: 7,
+    overflow: 'hidden',
+    width: '100%',
   },
   barFill: {
     borderRadius: 3,
     height: '100%',
   },
-  barRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  barTrack: {
-    backgroundColor: '#EEF0F3',
-    borderRadius: 3,
-    flex: 1,
-    height: 6,
-    overflow: 'hidden',
+  budgetText: {
+    color: APP_COLORS.textSecondary,
+    flexShrink: 0,
+    fontSize: 10,
+    fontWeight: '500',
   },
   card: {
+    alignItems: 'center',
     backgroundColor: APP_COLORS.surface,
     borderRadius: 16,
     elevation: 3,
+    flexDirection: 'row',
+    gap: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     shadowColor: '#7E7E7E',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.10,
@@ -104,27 +159,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 40,
   },
+  incomeDiff: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  incomeLabel: {
+    color: APP_COLORS.textMuted,
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  incomeOf: {
+    color: APP_COLORS.textMuted,
+    fontSize: 10,
+    fontWeight: '400',
+  },
+  incomeReal: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 2,
+  },
+  incomeRow: {
+    alignItems: 'center',
+    borderTopColor: '#F1F5F9',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 8,
+    paddingTop: 7,
+  },
+  info: {
+    flex: 1,
+    minWidth: 0,
+  },
   name: {
     color: APP_COLORS.textPrimary,
-    flex: 1,
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '700',
   },
   nameRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 10,
+    gap: 6,
   },
-  over: {
+  overBadge: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  overBadgeText: {
     color: '#DC2626',
+    fontSize: 10,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.72,
   },
   spentText: {
-    color: APP_COLORS.textSecondary,
+    flexShrink: 1,
     fontSize: 11,
-    fontWeight: '600',
-    minWidth: 52,
+    fontWeight: '700',
   },
 });

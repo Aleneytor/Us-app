@@ -54,6 +54,15 @@ export async function pushSnapshot(
   return true;
 }
 
+export async function deleteRoom(roomId: string): Promise<boolean> {
+  const { error } = await supabase.rpc('delete_room', { p_room_id: roomId });
+  if (error) {
+    console.error('[supabase] deleteRoom error:', error.message);
+    return false;
+  }
+  return true;
+}
+
 export function subscribeToRoom(
   roomId: string,
   clientId: string,

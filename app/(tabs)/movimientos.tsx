@@ -5,7 +5,6 @@ import {
   Alert,
   Easing,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,14 +18,17 @@ import {
 import { TransactionDetailModal } from '../../components/TransactionDetailModal';
 import { TransactionTile } from '../../components/TransactionTile';
 import { TransactionModal } from '../../modals/TransactionModal';
+import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { CATEGORIES } from '../../constants/categories';
 import { APP_COLORS } from '../../constants/colors';
-import { PARTNER, USERS } from '../../types';
 import type { CurrencyCode, Transaction } from '../../types';
-import { getPaid, isMonthVisible, setPaid } from '../../utils/filters';
-import { MONTHS_ES, fmt, formatYM, nextYM, prevYM, splitAmount, todayStr } from '../../utils/format';
+import { isMonthVisible } from '../../utils/filters';
+import { MONTHS_ES, fmt, splitAmount } from '../../utils/format';
+import { MonthNavigator } from '../../components/MonthNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
+import { dismissKeyboardAndBlur } from '../../utils/keyboard';
+import { getPartnerId, getUserData } from '../../utils/users';
 
 const HERO_THRESHOLD = 170;
 
@@ -69,8 +71,9 @@ export default function MovimientosScreen() {
   const updateTransaction = useAppStore((s) => s.updateTransaction);
   const deleteTransaction = useAppStore((s) => s.deleteTransaction);
   const currency = useAppStore((s) => s.currency);
+  const users = useAppStore((s) => s.users);
+  const partnerForUser = useAppStore((s) => s.partnerForUser);
 
-  const [scrollEnabled, setScrollEnabled] = useState(true);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
@@ -83,7 +86,8 @@ export default function MovimientosScreen() {
   const [showFloating, setShowFloating] = useState(false);
   const scrolledPastHeroRef = useRef(false);
   const isSearchingRef = useRef(false);
-  const user = USERS[currentUser];
+  const user = getUserData(users, currentUser);
+  const partner = getPartnerId(partnerForUser, currentUser);
   const monthName = MONTHS_ES[Number(selectedYM.slice(5, 7)) - 1].toLowerCase();
 
   const isSearching = searchText.trim().length > 0;
@@ -127,7 +131,6 @@ export default function MovimientosScreen() {
 
   const filtered = useMemo(() => {
     const query = searchText.trim().toLowerCase();
-    const partner = PARTNER[currentUser];
 
     return payload.expenses
       .filter((t) => {
@@ -159,7 +162,7 @@ export default function MovimientosScreen() {
         const byDate = b.date.localeCompare(a.date);
         return byDate !== 0 ? byDate : Number(b.id) - Number(a.id);
       });
-  }, [categoryFilter, currentUser, kindFilter, ownerFilter, payload.expenses, searchText, selectedYM]);
+  }, [categoryFilter, currentUser, kindFilter, ownerFilter, partner, payload.expenses, searchText, selectedYM]);
 
   const totals = useMemo(() => {
     const expenses = filtered
@@ -233,26 +236,6 @@ export default function MovimientosScreen() {
     );
   };
 
-  const togglePaid = (transaction: Transaction) => {
-    const next = {
-      ...transaction,
-      paid: transaction.paid ? { ...transaction.paid } : {},
-      paidAt: transaction.paidAt ? { ...transaction.paidAt } : {},
-    };
-    setPaid(next, selectedYM, !getPaid(transaction, selectedYM), todayStr());
-    updateTransaction(next);
-    setSelectedTransaction(next);
-  };
-
-  const togglePaidFromList = (transaction: Transaction) => {
-    const next = {
-      ...transaction,
-      paid: transaction.paid ? { ...transaction.paid } : {},
-      paidAt: transaction.paidAt ? { ...transaction.paidAt } : {},
-    };
-    setPaid(next, selectedYM, !getPaid(transaction, selectedYM), todayStr());
-    updateTransaction(next);
-  };
 
   return (
     <View style={styles.screen}>
@@ -263,8 +246,10 @@ export default function MovimientosScreen() {
         extraData={listAnimationKey}
         bounces={false}
         overScrollMode="never"
-        scrollEnabled={scrollEnabled}
         onScroll={handleScroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={dismissKeyboardAndBlur}
         scrollEventThrottle={60}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListHeaderComponent={
@@ -283,12 +268,15 @@ export default function MovimientosScreen() {
               }}
             >
               <View style={styles.heroHeader}>
-                <View style={styles.heroTextWrap}>
-                  <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
-                  <Text style={styles.heroSubtitle}>
-                    Este son todos tus movimientos{'\n'}
-                    y saldos del <Text style={styles.heroMonth}>Mes de {monthName}</Text>
-                  </Text>
+                <View style={styles.heroTop}>
+                  <View style={styles.heroTextWrap}>
+                    <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
+                    <Text style={styles.heroSubtitle}>
+                      Este son todos tus movimientos{'\n'}
+                      y saldos del <Text style={styles.heroMonth}>Mes de {monthName}</Text>
+                    </Text>
+                  </View>
+                  <UserHeaderButton />
                 </View>
 
                 <View style={styles.heroSummary}>
@@ -302,7 +290,7 @@ export default function MovimientosScreen() {
             </Animated.View>
 
             <View style={styles.controls}>
-              <InlineMonthNavigator ym={selectedYM} onChange={setSelectedYM} />
+              <MonthNavigator ym={selectedYM} onChange={setSelectedYM} />
 
               <View style={styles.searchWrap}>
                 <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
@@ -374,10 +362,6 @@ export default function MovimientosScreen() {
             animationKey={listAnimationKey}
             onPress={() => setSelectedTransaction(item)}
             onLongPress={() => showActions(item)}
-            onConfirm={() => togglePaidFromList(item)}
-            onEdit={() => openEdit(item)}
-            onSwipeBegin={() => setScrollEnabled(false)}
-            onSwipeEnd={() => setScrollEnabled(true)}
             contentHorizontalPadding={24}
           />
         )}
@@ -389,7 +373,6 @@ export default function MovimientosScreen() {
         onClose={() => setSelectedTransaction(null)}
         onEdit={openEdit}
         onDelete={confirmDelete}
-        onTogglePaid={togglePaid}
       />
 
       <TransactionModal
@@ -415,92 +398,6 @@ export default function MovimientosScreen() {
   );
 }
 
-function InlineMonthNavigator({ ym, onChange }: { ym: string; onChange: (ym: string) => void }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const year = Number(ym.slice(0, 4));
-  const month = Number(ym.slice(5, 7));
-
-  return (
-    <>
-      <View style={styles.monthRow}>
-        <Pressable onPress={() => onChange(prevYM(ym))} style={({ pressed }) => [styles.monthButton, pressed && styles.monthButtonPressed]}>
-          <Ionicons name="chevron-back" size={21} color={APP_COLORS.textSecondary} />
-        </Pressable>
-        <Pressable onPress={() => setPickerOpen(true)} style={({ pressed }) => [styles.monthCenterButton, pressed && styles.monthButtonPressed]}>
-          <Text style={styles.monthText}>{formatYM(ym)}</Text>
-        </Pressable>
-        <Pressable onPress={() => onChange(nextYM(ym))} style={({ pressed }) => [styles.monthButton, pressed && styles.monthButtonPressed]}>
-          <Ionicons name="chevron-forward" size={21} color={APP_COLORS.textSecondary} />
-        </Pressable>
-      </View>
-      <MonthPickerModal
-        visible={pickerOpen}
-        year={year}
-        month={month}
-        onSelect={(y, m) => {
-          onChange(`${y}-${String(m).padStart(2, '0')}`);
-          setPickerOpen(false);
-        }}
-        onClose={() => setPickerOpen(false)}
-      />
-    </>
-  );
-}
-
-function MonthPickerModal({
-  visible,
-  year,
-  month,
-  onSelect,
-  onClose,
-}: {
-  visible: boolean;
-  year: number;
-  month: number;
-  onSelect: (year: number, month: number) => void;
-  onClose: () => void;
-}) {
-  const [pickerYear, setPickerYear] = useState(year);
-
-  useEffect(() => {
-    if (visible) setPickerYear(year);
-  }, [visible, year]);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.pickerBackdrop} onPressIn={onClose}>
-        <Pressable style={styles.pickerCard} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.pickerYearRow}>
-            <Pressable onPress={() => setPickerYear((y) => y - 1)} style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}>
-              <Ionicons name="chevron-back" size={20} color={APP_COLORS.textSecondary} />
-            </Pressable>
-            <Text style={styles.pickerYearText}>{pickerYear}</Text>
-            <Pressable onPress={() => setPickerYear((y) => y + 1)} style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}>
-              <Ionicons name="chevron-forward" size={20} color={APP_COLORS.textSecondary} />
-            </Pressable>
-          </View>
-          <View style={styles.pickerGrid}>
-            {MONTHS_ES.map((name, idx) => {
-              const m = idx + 1;
-              const isActive = pickerYear === year && m === month;
-              return (
-                <Pressable
-                  key={m}
-                  onPress={() => onSelect(pickerYear, m)}
-                  style={({ pressed }) => [styles.pickerCell, isActive && styles.pickerCellActive, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.pickerCellText, isActive && styles.pickerCellTextActive]}>
-                    {name.slice(0, 3)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
 
 function FilterChip<T extends string>({
   icon,
@@ -769,10 +666,6 @@ function HistoryTransactionItem({
   animationKey,
   onPress,
   onLongPress,
-  onConfirm,
-  onEdit,
-  onSwipeBegin,
-  onSwipeEnd,
   contentHorizontalPadding,
 }: {
   transaction: Transaction;
@@ -783,10 +676,6 @@ function HistoryTransactionItem({
   animationKey: string;
   onPress: () => void;
   onLongPress: () => void;
-  onConfirm: () => void;
-  onEdit: () => void;
-  onSwipeBegin: () => void;
-  onSwipeEnd: () => void;
   contentHorizontalPadding: number;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -831,10 +720,6 @@ function HistoryTransactionItem({
         ym={ym}
         onPress={onPress}
         onLongPress={onLongPress}
-        onConfirm={onConfirm}
-        onEdit={onEdit}
-        onSwipeBegin={onSwipeBegin}
-        onSwipeEnd={onSwipeEnd}
         contentHorizontalPadding={contentHorizontalPadding}
       />
     </Animated.View>
@@ -1246,7 +1131,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   heroTextWrap: {
+    flex: 1,
     gap: 0,
+    minWidth: 0,
+  },
+  heroTop: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'space-between',
   },
   searchInput: {
     color: APP_COLORS.textPrimary,
@@ -1283,7 +1176,7 @@ const styles = StyleSheet.create({
   },
   pickerBackdrop: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.34)',
+    backgroundColor: 'transparent',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
@@ -1292,8 +1185,18 @@ const styles = StyleSheet.create({
     backgroundColor: APP_COLORS.surface,
     borderRadius: 20,
     padding: 20,
+    overflow: 'hidden',
     width: '100%',
+  },
+  pickerCardShadow: {
+    borderRadius: 20,
+    elevation: 14,
     maxWidth: 340,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
+    width: '100%',
   },
   pickerYearRow: {
     alignItems: 'center',

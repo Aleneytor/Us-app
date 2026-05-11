@@ -5,7 +5,6 @@ import {
   Animated,
   Easing,
   LayoutAnimation,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,10 +15,15 @@ import {
   View,
 } from 'react-native';
 import { APP_COLORS } from '../constants/colors';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
+import { AppModal as Modal } from './AppModal';
 import { TransactionTile } from './TransactionTile';
 import type { AppPayload, CurrencyCode, UserId } from '../types';
 import { isMonthVisible } from '../utils/filters';
-import { fmt, formatYM, nextYM, prevYM } from '../utils/format';
+import { fmt } from '../utils/format';
+import { MonthNavigator } from './MonthNavigator';
+import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
+import { calcGastosProyectados, calcIngresosProyectados } from '../utils/calculations';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -59,8 +63,8 @@ export function FinanceDetailModal({
     monthSlide.setValue(0);
   }, [visible, kind, selectedYM]);
 
-  const changeMonth = (getNextYM: (ym: string) => string, direction: 'next' | 'prev') => {
-    const enterOffset = direction === 'next' ? 14 : -14;
+  const changeMonth = (newYM: string) => {
+    const enterOffset = newYM > modalYM ? 14 : -14;
 
     monthSlide.stopAnimation();
 
@@ -70,7 +74,7 @@ export function FinanceDetailModal({
         type: LayoutAnimation.Types.easeInEaseOut,
       },
     });
-    setModalYM((ym) => getNextYM(ym));
+    setModalYM(newYM);
     setSearch('');
 
     monthSlide.setValue(enterOffset);
@@ -94,6 +98,12 @@ export function FinanceDetailModal({
   }, [kind, modalYM, payload.expenses, uid]);
 
   const total = useMemo(() => {
+    return kind === 'income'
+      ? calcIngresosProyectados(payload, uid, modalYM)
+      : calcGastosProyectados(payload, uid, modalYM);
+  }, [kind, modalYM, payload, uid]);
+
+  const registeredTotal = useMemo(() => {
     return monthlyTransactions.reduce((sum, transaction) => sum + transaction.amt, 0);
   }, [monthlyTransactions]);
 
@@ -109,9 +119,9 @@ export function FinanceDetailModal({
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPressIn={onClose}>
-        <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
-        <View pointerEvents="none" style={styles.backdropOverlay} />
-        <Pressable style={styles.card} onPressIn={(event) => event.stopPropagation()}>
+        <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.title}>
               Estos son los{'\n'}detalles de tus <Text style={{ color: accent }}>{noun}</Text>
@@ -121,23 +131,7 @@ export function FinanceDetailModal({
             </Pressable>
           </View>
 
-          <View style={styles.monthSelector}>
-            <Pressable
-              accessibilityLabel="Mes anterior"
-              onPress={() => changeMonth(prevYM, 'prev')}
-              style={({ pressed }) => [styles.monthButton, pressed && styles.monthButtonPressed]}
-            >
-              <Ionicons name="chevron-back" size={20} color={APP_COLORS.textSecondary} />
-            </Pressable>
-            <Text style={styles.monthLabel}>{formatYM(modalYM)}</Text>
-            <Pressable
-              accessibilityLabel="Mes siguiente"
-              onPress={() => changeMonth(nextYM, 'next')}
-              style={({ pressed }) => [styles.monthButton, pressed && styles.monthButtonPressed]}
-            >
-              <Ionicons name="chevron-forward" size={20} color={APP_COLORS.textSecondary} />
-            </Pressable>
-          </View>
+          <MonthNavigator ym={modalYM} onChange={changeMonth} />
 
           <Animated.View
             style={[
@@ -147,6 +141,11 @@ export function FinanceDetailModal({
           >
             <View style={styles.totalWrap}>
               <Text style={[styles.totalAmount, { color: accent }]}>{fmt(total, currency)}</Text>
+              {total !== registeredTotal && (
+                <Text style={styles.registeredTotal}>
+                  Registrado: {fmt(registeredTotal, currency)}
+                </Text>
+              )}
             </View>
 
             <View style={styles.searchWrap}>
@@ -161,7 +160,13 @@ export function FinanceDetailModal({
               <Ionicons name="chevron-down" size={18} color={APP_COLORS.textMuted} />
             </View>
 
-            <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              onScrollBeginDrag={dismissKeyboardAndBlur}
+            >
               {transactions.length === 0 ? (
                 <Text style={styles.empty}>Sin {noun} para este mes.</Text>
               ) : (
@@ -178,7 +183,7 @@ export function FinanceDetailModal({
           </Animated.View>
 
           <Pressable
-            onPress={onAdd}
+            onPress={() => runAfterKeyboardDismiss(onAdd)}
             style={({ pressed }) => [
               styles.addButton,
               { backgroundColor: accent },
@@ -190,6 +195,7 @@ export function FinanceDetailModal({
               {kind === 'income' ? 'Añadir Ingreso' : 'Añadir Gasto'}
             </Text>
           </Pressable>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -200,11 +206,12 @@ const styles = StyleSheet.create({
   addButton: {
     alignItems: 'center',
     borderRadius: 14,
+    flexShrink: 0,
     flexDirection: 'row',
     gap: 7,
     height: 50,
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: 14,
   },
   addButtonText: {
     color: '#FFFFFF',
@@ -218,16 +225,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 18,
   },
-  backdropOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.30)',
-  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
-    maxHeight: '92%',
-    maxWidth: 560,
+    height: '90%',
+    maxHeight: '94%',
+    overflow: 'hidden',
     padding: 24,
+    width: '100%',
+  },
+  cardShadow: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 560,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   closeButton: {
@@ -250,15 +264,18 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 14,
   },
   list: {
-    maxHeight: 300,
+    flex: 1,
   },
   listContent: {
     paddingTop: 8,
   },
-  monthContent: {},
+  monthContent: {
+    flex: 1,
+    minHeight: 0,
+  },
   monthButton: {
     alignItems: 'center',
     borderRadius: 12,
@@ -293,6 +310,12 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.74,
   },
+  registeredTotal: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: -4,
+  },
   searchInput: {
     color: APP_COLORS.textPrimary,
     flex: 1,
@@ -308,24 +331,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     height: 44,
-    marginBottom: 14,
+    marginBottom: 10,
     paddingHorizontal: 12,
   },
   title: {
     color: APP_COLORS.textPrimary,
     flex: 1,
     fontSize: 20,
-    fontWeight: '400',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
     lineHeight: 26,
   },
   totalAmount: {
     fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 48,
-    lineHeight: 56,
+    fontSize: 44,
+    lineHeight: 50,
     textAlign: 'center',
   },
   totalWrap: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
 });

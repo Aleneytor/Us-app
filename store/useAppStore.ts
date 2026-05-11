@@ -1,19 +1,22 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { fetchSnapshot, pushSnapshot, subscribeToRoom } from '../services/supabase';
+import { fetchSnapshot, pushSnapshot, subscribeToRoom, deleteRoom } from '../services/supabase';
 import { currentYM, todayStr } from '../utils/format';
 import { normalizeAppPayload } from '../utils/payload';
 import { cancelTransactionReminders, scheduleTransactionReminder } from '../services/notifications';
-import { ROOM_FOR_USER } from '../types';
-import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, BudgetCategory } from '../types';
+import { USERS, ROOM_FOR_USER, PARTNER } from '../types';
+import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, BudgetCategory, UserData, Plan, PlanCategory, PlanExpense } from '../types';
 
-const STORAGE_USER_KEY    = 'nosotros_user';
-const STORAGE_PAYLOAD_KEY = 'nosotros_payload';
+const STORAGE_USER_KEY     = 'nosotros_user';
+const STORAGE_PAYLOAD_KEY  = 'nosotros_payload';
 const STORAGE_CURRENCY_KEY = 'nosotros_currency';
+const STORAGE_USERS_KEY    = 'nosotros_users';
+const STORAGE_ROOMS_KEY    = 'nosotros_rooms';
+const STORAGE_PARTNERS_KEY = 'nosotros_partners';
 
 const payloadStorageKey = (roomId: string) => `${STORAGE_PAYLOAD_KEY}:${roomId}`;
-const emptyPayload = (): AppPayload => ({ expenses: [], savings: [], goals: [], contribs: [], budgetCategories: [] });
+const emptyPayload = (): AppPayload => ({ expenses: [], savings: [], goals: [], contribs: [], budgetCategories: [], plans: [] });
 
 // ─── Store types ─────────────────────────────────────────────────────────────
 
@@ -25,6 +28,9 @@ interface AppState {
   isConnected: boolean;
   syncStatus: 'live' | 'connecting' | 'error';
   clientId: string;
+  users: Record<string, UserData>;
+  roomForUser: Record<string, string>;
+  partnerForUser: Record<string, string>;
 }
 
 interface AppActions {
@@ -33,6 +39,8 @@ interface AppActions {
   setCurrency: (c: CurrencyCode) => Promise<void>;
   _setPayload: (payload: AppPayload) => void;
   _setSyncStatus: (status: AppState['syncStatus']) => void;
+  addUser: (params: { uid: string; data: UserData; roomId: string; partnerId: string }) => Promise<void>;
+  deleteUser: (uid: string) => Promise<void>;
   addTransaction: (t: Transaction) => void;
   updateTransaction: (t: Transaction) => void;
   confirmTransaction: (id: number, ym: string, date: string) => void;
@@ -48,6 +56,14 @@ interface AppActions {
   addBudgetCategory: (bc: BudgetCategory) => void;
   updateBudgetCategory: (bc: BudgetCategory) => void;
   deleteBudgetCategory: (id: number) => void;
+  addPlan: (plan: Plan) => void;
+  updatePlan: (plan: Plan) => void;
+  deletePlan: (id: number) => void;
+  addPlanCategory: (planId: number, cat: PlanCategory) => void;
+  updatePlanCategory: (planId: number, cat: PlanCategory) => void;
+  deletePlanCategory: (planId: number, catId: number) => void;
+  addPlanExpense: (planId: number, expense: PlanExpense) => void;
+  deletePlanExpense: (planId: number, expenseId: number) => void;
 }
 
 // ─── Module-level (not in store — not serializable) ──────────────────────────
@@ -65,6 +81,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   isConnected: false,
   syncStatus: 'connecting',
   clientId: Math.random().toString(36).slice(2) + Date.now().toString(36),
+  users: { ...USERS },
+  roomForUser: { ...ROOM_FOR_USER },
+  partnerForUser: { ...PARTNER },
 
   setCurrentUser: async (uid) => {
     await AsyncStorage.setItem(STORAGE_USER_KEY, uid);
@@ -79,6 +98,49 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
   _setPayload: (payload) => set({ payload: normalizeAppPayload(payload) }),
   _setSyncStatus: (syncStatus) => set({ syncStatus }),
+
+  addUser: async ({ uid, data, roomId, partnerId }) => {
+    const { users, roomForUser, partnerForUser } = get();
+    const newUsers = { ...users, [uid]: data };
+    const newRooms = { ...roomForUser, [uid]: roomId };
+    const newPartners = { ...partnerForUser, [uid]: partnerId };
+    set({ users: newUsers, roomForUser: newRooms, partnerForUser: newPartners });
+    await AsyncStorage.multiSet([
+      [STORAGE_USERS_KEY, JSON.stringify(newUsers)],
+      [STORAGE_ROOMS_KEY, JSON.stringify(newRooms)],
+      [STORAGE_PARTNERS_KEY, JSON.stringify(newPartners)],
+    ]);
+  },
+
+  deleteUser: async (uid) => {
+    const { users, roomForUser, partnerForUser, currentUser } = get();
+    const newUsers = { ...users };
+    delete newUsers[uid];
+    const newRooms = { ...roomForUser };
+    delete newRooms[uid];
+    const newPartners = { ...partnerForUser };
+    delete newPartners[uid];
+    // Repair partner references pointing to the deleted user
+    for (const id of Object.keys(newPartners)) {
+      if (newPartners[id] === uid) newPartners[id] = id;
+    }
+    // Delete Supabase room only if no other remaining user shares it
+    const roomId = roomForUser[uid];
+    if (roomId && !Object.values(newRooms).includes(roomId)) {
+      void deleteRoom(roomId).catch((err) => console.warn('[store] deleteRoom failed:', err));
+    }
+    set({ users: newUsers, roomForUser: newRooms, partnerForUser: newPartners });
+    await AsyncStorage.multiSet([
+      [STORAGE_USERS_KEY, JSON.stringify(newUsers)],
+      [STORAGE_ROOMS_KEY, JSON.stringify(newRooms)],
+      [STORAGE_PARTNERS_KEY, JSON.stringify(newPartners)],
+    ]);
+    // Switch away from the deleted user
+    if (currentUser === uid) {
+      const fallback = Object.keys(newUsers)[0] ?? 'a';
+      await get().setCurrentUser(fallback);
+    }
+  },
 
   // ── Transactions ──────────────────────────────────────────────────────────
 
@@ -268,6 +330,115 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     _persistCurrentPayload();
     _syncToCloud();
   },
+
+  // ── Plans ─────────────────────────────────────────────────────────────────
+
+  addPlan: (plan) => {
+    set((s) => ({ payload: { ...s.payload, plans: [...(s.payload.plans ?? []), plan] } }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  updatePlan: (plan) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) => String(p.id) === String(plan.id) ? plan : p),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  deletePlan: (id) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).filter((p) => String(p.id) !== String(id)),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  addPlanCategory: (planId, cat) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, categories: [...p.categories, cat] }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  updatePlanCategory: (planId, cat) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, categories: p.categories.map((c) => String(c.id) === String(cat.id) ? cat : c) }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  deletePlanCategory: (planId, catId) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? {
+                ...p,
+                categories: p.categories.filter((c) => String(c.id) !== String(catId)),
+                expenses: p.expenses.filter((e) => String(e.categoryId) !== String(catId)),
+              }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  addPlanExpense: (planId, expense) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, expenses: [...p.expenses, expense] }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  deletePlanExpense: (planId, expenseId) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, expenses: p.expenses.filter((e) => String(e.id) !== String(expenseId)) }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
 }));
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -275,8 +446,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 function _syncToCloud(): void {
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async () => {
-    const { payload, currentUser, clientId } = useAppStore.getState();
-    const roomId = ROOM_FOR_USER[currentUser];
+    const { payload, currentUser, clientId, roomForUser } = useAppStore.getState();
+    const roomId = roomForUser[currentUser] ?? `${currentUser}-main`;
     const ok = await pushSnapshot(roomId, payload, clientId);
     if (ok) {
       await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(payload));
@@ -298,8 +469,8 @@ function _syncToCloud(): void {
 }
 
 function _persistCurrentPayload(): void {
-  const { payload, currentUser } = useAppStore.getState();
-  const roomId = ROOM_FOR_USER[currentUser];
+  const { payload, currentUser, roomForUser } = useAppStore.getState();
+  const roomId = roomForUser[currentUser] ?? `${currentUser}-main`;
   void AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(payload)).catch((err) => {
     console.warn('[store] local payload save failed:', err);
   });
@@ -311,7 +482,8 @@ async function _connectToRoom(uid: UserId): Promise<void> {
     _channel = null;
   }
 
-  const roomId = ROOM_FOR_USER[uid];
+  const { roomForUser } = useAppStore.getState();
+  const roomId = roomForUser[uid] ?? `${uid}-main`;
   const { clientId } = useAppStore.getState();
   useAppStore.getState()._setSyncStatus('connecting');
 
@@ -347,16 +519,35 @@ async function _connectToRoom(uid: UserId): Promise<void> {
 // ─── Public init — call once from app/_layout.tsx ────────────────────────────
 
 export async function initialize(): Promise<void> {
-  const savedUser = ((await AsyncStorage.getItem(STORAGE_USER_KEY)) as UserId | null) ?? 'a';
-  const savedCurrency = ((await AsyncStorage.getItem(STORAGE_CURRENCY_KEY)) as CurrencyCode | null) ?? 'EUR';
+  const [savedUser, savedCurrency, savedUsersStr, savedRoomsStr, savedPartnersStr] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_USER_KEY),
+    AsyncStorage.getItem(STORAGE_CURRENCY_KEY),
+    AsyncStorage.getItem(STORAGE_USERS_KEY),
+    AsyncStorage.getItem(STORAGE_ROOMS_KEY),
+    AsyncStorage.getItem(STORAGE_PARTNERS_KEY),
+  ]);
+
+  const uid = (savedUser as string | null) ?? 'a';
+  const currency = (savedCurrency as CurrencyCode | null) ?? 'EUR';
+  // Merge static defaults with any dynamically added users
+  const users: Record<string, UserData> = savedUsersStr
+    ? { ...USERS, ...JSON.parse(savedUsersStr) as Record<string, UserData> }
+    : { ...USERS };
+  const roomForUser: Record<string, string> = savedRoomsStr
+    ? { ...ROOM_FOR_USER, ...JSON.parse(savedRoomsStr) as Record<string, string> }
+    : { ...ROOM_FOR_USER };
+  const partnerForUser: Record<string, string> = savedPartnersStr
+    ? { ...PARTNER, ...JSON.parse(savedPartnersStr) as Record<string, string> }
+    : { ...PARTNER };
+
   await AsyncStorage.removeItem(STORAGE_PAYLOAD_KEY);
-  useAppStore.setState({ currentUser: savedUser, selectedYM: currentYM(), currency: savedCurrency });
-  await _connectToRoom(savedUser);
+  useAppStore.setState({ currentUser: uid, selectedYM: currentYM(), currency, users, roomForUser, partnerForUser });
+  await _connectToRoom(uid);
 }
 
 export async function refreshCurrentRoom(): Promise<void> {
-  const { currentUser } = useAppStore.getState();
-  const roomId = ROOM_FOR_USER[currentUser];
+  const { currentUser, roomForUser } = useAppStore.getState();
+  const roomId = roomForUser[currentUser] ?? `${currentUser}-main`;
   useAppStore.getState()._setSyncStatus('connecting');
   try {
     const snapshot = await fetchSnapshot(roomId);

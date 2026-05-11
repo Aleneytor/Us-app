@@ -1,23 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useRef } from 'react';
-import { Animated, Image, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORIES } from '../constants/categories';
 import { APP_COLORS, getIconColor } from '../constants/colors';
-import { USERS } from '../types';
 import type { Transaction } from '../types';
 import { formatDateShort, fmt } from '../utils/format';
-import { getPaid } from '../utils/filters';
 import { useAppStore } from '../store/useAppStore';
+import { getUserData } from '../utils/users';
 
 interface TransactionTileProps {
   transaction: Transaction;
   ym: string;
   onPress: () => void;
   onLongPress?: () => void;
-  onConfirm?: () => void;
-  onEdit?: () => void;
-  onSwipeBegin?: () => void;
-  onSwipeEnd?: () => void;
   contentHorizontalPadding?: number;
   amountCategoryFontSize?: number;
   amountCategoryColor?: string;
@@ -25,129 +20,111 @@ interface TransactionTileProps {
 
 export function TransactionTile({
   transaction,
-  ym,
+  ym: _ym,
   onPress,
   onLongPress,
-  onConfirm,
-  onEdit,
-  onSwipeBegin,
-  onSwipeEnd,
   contentHorizontalPadding = 0,
   amountCategoryFontSize,
   amountCategoryColor,
 }: TransactionTileProps) {
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressPressRef = useRef(false);
   const currency = useAppStore((s) => s.currency);
+  const users = useAppStore((s) => s.users);
   const category = CATEGORIES[transaction.cat] ?? CATEGORIES.other;
   const iconColor = getIconColor(transaction.iconColor);
-  const user = USERS[transaction.uid];
+  const user = getUserData(users, transaction.uid);
   const amountColor = transaction.kind === 'income' ? APP_COLORS.income : APP_COLORS.expense;
   const sign = transaction.kind === 'income' ? '+' : '-';
-  const paid = getPaid(transaction, ym);
-  const translateX = useRef(new Animated.Value(0)).current;
 
-  const resetSwipe = () => {
-    Animated.spring(translateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      friction: 7,
-      tension: 80,
-    }).start();
+  const handlePress = () => {
+    if (suppressPressRef.current) {
+      suppressPressRef.current = false;
+      return;
+    }
+    onPress();
   };
 
-  const panResponder = useMemo(
-    () => PanResponder.create({
-      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
-        Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.4,
-      onPanResponderGrant: () => onSwipeBegin?.(),
-      onPanResponderMove: (_, { dx }) => {
-        translateX.setValue(Math.max(-90, Math.min(75, dx)));
-      },
-      onPanResponderRelease: (_, { dx }) => {
-        if (dx < -52 && onConfirm) onConfirm();
-        else if (dx > 52 && onEdit) onEdit();
-        resetSwipe();
-        onSwipeEnd?.();
-      },
-      onPanResponderTerminate: () => { resetSwipe(); onSwipeEnd?.(); },
-    }),
-    [onConfirm, onEdit, onSwipeBegin, onSwipeEnd, translateX],
-  );
-
   return (
-    <View style={styles.swipeWrap}>
-      {onEdit ? (
-        <View style={[styles.swipeAction, styles.swipeEdit]}>
-          <Ionicons name="pencil" size={20} color="#FFFFFF" />
-          <Text style={styles.swipeText}>Editar</Text>
+    <View style={styles.tileWrap}>
+      <Pressable
+        onLongPress={onLongPress}
+        onPress={handlePress}
+        onTouchStart={(event) => {
+          const { pageX, pageY } = event.nativeEvent;
+          touchStartRef.current = { x: pageX, y: pageY };
+          suppressPressRef.current = false;
+        }}
+        onTouchMove={(event) => {
+          const start = touchStartRef.current;
+          if (!start) return;
+
+          const { pageX, pageY } = event.nativeEvent;
+          const dx = Math.abs(pageX - start.x);
+          const dy = Math.abs(pageY - start.y);
+          if (dx > 14 && dx > dy * 1.35) {
+            suppressPressRef.current = true;
+          }
+        }}
+        onTouchCancel={() => {
+          touchStartRef.current = null;
+          suppressPressRef.current = false;
+        }}
+        onTouchEnd={() => {
+          touchStartRef.current = null;
+        }}
+        style={({ pressed }) => [
+          styles.row,
+          contentHorizontalPadding > 0 && { paddingHorizontal: contentHorizontalPadding },
+          pressed && styles.pressed,
+        ]}
+      >
+        <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
+          <Ionicons name={category.icon} size={23} color={iconColor.color} />
         </View>
-      ) : null}
-      {onConfirm ? (
-        <View style={[styles.swipeAction, paid ? styles.swipeUnconfirm : styles.swipeConfirm]}>
-          <Ionicons name={paid ? 'arrow-undo-outline' : 'checkmark'} size={22} color="#FFFFFF" />
-          <Text style={styles.swipeText}>
-            {paid ? 'Marcar\nPendiente' : `Confirmar\n${transaction.kind === 'income' ? 'Ingreso' : 'Gasto'}`}
+
+        <View style={styles.body}>
+          <View style={styles.topLine}>
+            <View style={[styles.userAvatar, { backgroundColor: user.bg }]}>
+              {user.photo ? (
+                <Image source={user.photo} style={styles.userPhoto} />
+              ) : (
+                <Text style={[styles.userInitial, { color: user.color }]}>{user.initials}</Text>
+              )}
+            </View>
+            <Text numberOfLines={1} style={styles.title}>
+              {transaction.desc || category.label}
+            </Text>
+          </View>
+
+          <View style={styles.metaLine}>
+            <Text style={styles.meta}>{formatDateShort(transaction.date)}</Text>
+            {transaction.account ? (
+              <>
+                <View style={styles.dot} />
+                <Text style={styles.meta} numberOfLines={1}>{transaction.account}</Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.amountBlock}>
+          <Text style={[styles.amount, { color: amountColor }]}>
+            <Text style={styles.amountSign}>{sign}</Text>
+            {fmt(transaction.amt, currency)}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.amountCategory,
+              amountCategoryFontSize !== undefined && { fontSize: amountCategoryFontSize },
+              amountCategoryColor !== undefined && { color: amountCategoryColor },
+            ]}
+          >
+            {category.label}
           </Text>
         </View>
-      ) : null}
-
-      <Animated.View
-        style={[styles.foreground, { transform: [{ translateX }] }]}
-        {...panResponder.panHandlers}
-      >
-        <Pressable
-          onLongPress={onLongPress}
-          onPress={onPress}
-          style={({ pressed }) => [
-            styles.row,
-            contentHorizontalPadding > 0 && { paddingHorizontal: contentHorizontalPadding },
-            pressed && styles.pressed,
-          ]}
-        >
-          <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
-            <Ionicons name={category.icon} size={23} color={iconColor.color} />
-          </View>
-
-          <View style={styles.body}>
-            <View style={styles.topLine}>
-              <View style={[styles.userAvatar, { backgroundColor: user.bg }]}>
-                {user.photo ? (
-                  <Image source={user.photo} style={styles.userPhoto} />
-                ) : (
-                  <Text style={[styles.userInitial, { color: user.color }]}>{user.initials}</Text>
-                )}
-              </View>
-              <Text numberOfLines={1} style={styles.title}>
-                {transaction.desc || category.label}
-              </Text>
-            </View>
-
-            <View style={styles.metaLine}>
-              <Text style={styles.meta}>{formatDateShort(transaction.date)}</Text>
-              <View style={styles.dot} />
-              <Text style={[styles.meta, paid ? { color: iconColor.color } : styles.pending]}>
-                {paid ? 'Confirmado' : 'Pendiente'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.amountBlock}>
-            <Text style={[styles.amount, { color: amountColor }]}>
-              <Text style={styles.amountSign}>{sign}</Text>
-              {fmt(transaction.amt, currency)}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.amountCategory,
-                amountCategoryFontSize !== undefined && { fontSize: amountCategoryFontSize },
-                amountCategoryColor !== undefined && { color: amountCategoryColor },
-              ]}
-            >
-              {category.label}
-            </Text>
-          </View>
-        </Pressable>
-      </Animated.View>
+      </Pressable>
     </View>
   );
 }
@@ -187,10 +164,6 @@ const styles = StyleSheet.create({
     height: 4,
     width: 4,
   },
-  foreground: {
-    backgroundColor: APP_COLORS.surface,
-    width: '100%',
-  },
   iconWrap: {
     alignItems: 'center',
     borderRadius: 16,
@@ -208,46 +181,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
-  pending: {
-    color: APP_COLORS.textMuted,
-  },
+
   pressed: {
     opacity: 0.74,
   },
-  swipeAction: {
-    alignItems: 'center',
-    bottom: 0,
-    justifyContent: 'center',
-    position: 'absolute',
-    top: 0,
-  },
-  swipeConfirm: {
-    backgroundColor: '#16A34A',
-    right: 0,
-    width: 90,
-  },
-  swipeUnconfirm: {
-    backgroundColor: '#64748B',
-    right: 0,
-    width: 90,
-  },
-  swipeEdit: {
-    backgroundColor: '#2563EB',
-    left: 0,
-    width: 75,
-  },
-  swipeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '900',
-    lineHeight: 14,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  swipeWrap: {
+  tileWrap: {
     borderBottomColor: '#EEF2F7',
     borderBottomWidth: 1,
-    overflow: 'hidden',
     width: '100%',
   },
   row: {

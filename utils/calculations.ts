@@ -1,4 +1,4 @@
-import type { AppPayload, UserId, Goal, SavingPlan, Contribution, Transaction } from '../types';
+import type { AppPayload, UserId, Goal, SavingPlan, Contribution, Transaction, BudgetCategory } from '../types';
 import { getPaid, isMonthVisible } from './filters';
 import { todayStr } from './format';
 
@@ -68,16 +68,14 @@ export function calcSaldoProyectado(
   ym: string,
 ): number {
   const actual = calcSaldoActual(payload, uid);
-  let pending = 0;
+  const ingresoActualMes = calcIngresosActual(payload, uid, ym);
+  const gastoActualMes = calcGastosActual(payload, uid, ym);
+  const ingresoProyectadoMes = calcIngresosProyectados(payload, uid, ym);
+  const gastoProyectadoMes = calcGastosProyectados(payload, uid, ym);
 
-  for (const t of payload.expenses) {
-    if (t.del || t.uid !== uid) continue;
-    if (!isMonthVisible(t, ym)) continue;
-    if (getPaid(t, ym)) continue;
-    pending += t.kind === 'income' ? t.amt : -t.amt;
-  }
-
-  return actual + pending;
+  return actual
+    + Math.max(0, ingresoProyectadoMes - ingresoActualMes)
+    - Math.max(0, gastoProyectadoMes - gastoActualMes);
 }
 
 export function calcGastosActual(payload: AppPayload, uid: UserId, ym: string): number {
@@ -87,9 +85,24 @@ export function calcGastosActual(payload: AppPayload, uid: UserId, ym: string): 
 }
 
 export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: string): number {
-  return payload.expenses
-    .filter((t) => t.uid === uid && !t.del && t.kind === 'expense' && isMonthVisible(t, ym))
+  const categories = getBudgetCategoriesForUser(payload, uid);
+  const categoryIds = new Set(categories.map((bc) => String(bc.id)));
+  const categoryBudgets = categories.reduce((sum, category) => {
+    const spent = sumTransactionsForBudgetCategory(payload, category.id, uid, ym, 'expense');
+    return sum + Math.max(category.monthlyBudget, spent);
+  }, 0);
+  const unbudgetedTransactions = payload.expenses
+    .filter(
+      (t) =>
+        t.uid === uid &&
+        !t.del &&
+        t.kind === 'expense' &&
+        isMonthVisible(t, ym) &&
+        !categoryIds.has(String(t.budgetCatId)),
+    )
     .reduce((sum, t) => sum + t.amt, 0);
+
+  return categoryBudgets + unbudgetedTransactions;
 }
 
 export function calcIngresosActual(payload: AppPayload, uid: UserId, ym: string): number {
@@ -99,9 +112,30 @@ export function calcIngresosActual(payload: AppPayload, uid: UserId, ym: string)
 }
 
 export function calcIngresosProyectados(payload: AppPayload, uid: UserId, ym: string): number {
-  return payload.expenses
-    .filter((t) => t.uid === uid && !t.del && t.kind === 'income' && isMonthVisible(t, ym))
+  const categories = getBudgetCategoriesForUser(payload, uid);
+  const incomeCategoryIds = new Set(
+    categories
+      .filter((bc) => (bc.monthlyIncomeEstimate ?? 0) > 0)
+      .map((bc) => String(bc.id)),
+  );
+  const categoryIncome = categories.reduce((sum, category) => {
+    const estimate = category.monthlyIncomeEstimate ?? 0;
+    if (estimate <= 0) return sum;
+    const received = sumTransactionsForBudgetCategory(payload, category.id, uid, ym, 'income');
+    return sum + Math.max(estimate, received);
+  }, 0);
+  const unbudgetedTransactions = payload.expenses
+    .filter(
+      (t) =>
+        t.uid === uid &&
+        !t.del &&
+        t.kind === 'income' &&
+        isMonthVisible(t, ym) &&
+        !incomeCategoryIds.has(String(t.budgetCatId)),
+    )
     .reduce((sum, t) => sum + t.amt, 0);
+
+  return categoryIncome + unbudgetedTransactions;
 }
 
 export function calcBudgetCategorySpending(
@@ -114,6 +148,45 @@ export function calcBudgetCategorySpending(
       (t) =>
         !t.del &&
         t.kind === 'expense' &&
+        String(t.budgetCatId) === String(catId) &&
+        isMonthVisible(t, ym),
+    )
+    .reduce((sum, t) => sum + t.amt, 0);
+}
+
+export function calcBudgetCategoryIncome(
+  payload: AppPayload,
+  catId: number,
+  ym: string,
+): number {
+  return payload.expenses
+    .filter(
+      (t) =>
+        !t.del &&
+        t.kind === 'income' &&
+        String(t.budgetCatId) === String(catId) &&
+        isMonthVisible(t, ym),
+    )
+    .reduce((sum, t) => sum + t.amt, 0);
+}
+
+function getBudgetCategoriesForUser(payload: AppPayload, uid: UserId): BudgetCategory[] {
+  return (payload.budgetCategories ?? []).filter((bc) => bc.uid === undefined || bc.uid === uid);
+}
+
+function sumTransactionsForBudgetCategory(
+  payload: AppPayload,
+  catId: number,
+  uid: UserId,
+  ym: string,
+  kind: Transaction['kind'],
+): number {
+  return payload.expenses
+    .filter(
+      (t) =>
+        t.uid === uid &&
+        !t.del &&
+        t.kind === kind &&
         String(t.budgetCatId) === String(catId) &&
         isMonthVisible(t, ym),
     )

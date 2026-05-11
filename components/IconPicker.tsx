@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ALL_CATEGORY_KEYS, CATEGORIES } from '../constants/categories';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 
@@ -7,45 +7,70 @@ interface IconPickerProps {
   value: string;
   colorId: string;
   keys?: string[];
+  horizontalInset?: number;
   onChange: (value: string) => void;
 }
 
-export function IconPicker({ value, colorId, keys, onChange }: IconPickerProps) {
+export function IconPicker({ value, colorId, keys, horizontalInset = 0, onChange }: IconPickerProps) {
   const color = getIconColor(colorId);
   const categoryKeys = keys ?? ALL_CATEGORY_KEYS;
+  const columns = categoryKeys.reduce<string[][]>((acc, key, index) => {
+    const columnIndex = Math.floor(index / 3);
+    if (!acc[columnIndex]) acc[columnIndex] = [];
+    acc[columnIndex].push(key);
+    return acc;
+  }, []);
 
   return (
-    <View style={styles.grid}>
-      {categoryKeys.map((key) => {
-        const category = CATEGORIES[key];
-        if (!category) return null;
-        const active = key === value;
-        return (
-          <Pressable
-            key={key}
-            onPress={() => onChange(key)}
-            style={({ pressed }) => [
-              styles.item,
-              active && { borderColor: color.color, backgroundColor: color.bg },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons
-              name={category.icon}
-              size={22}
-              color={active ? color.color : APP_COLORS.textSecondary}
-            />
-          </Pressable>
-        );
-      })}
-    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[
+        styles.scroller,
+        horizontalInset > 0 && { marginHorizontal: -horizontalInset },
+      ]}
+      contentContainerStyle={[
+        styles.grid,
+        horizontalInset > 0 && { paddingHorizontal: horizontalInset },
+      ]}
+    >
+      {columns.map((column, columnIndex) => (
+        <View key={`icon-column-${columnIndex}`} style={styles.column}>
+          {column.map((key) => {
+            const category = CATEGORIES[key];
+            if (!category) return null;
+            const active = key === value;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => onChange(key)}
+                style={({ pressed }) => [
+                  styles.item,
+                  active && { borderColor: color.color, backgroundColor: color.bg },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name={category.icon}
+                  size={22}
+                  color={active ? color.color : APP_COLORS.textSecondary}
+                />
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    gap: 8,
+    paddingRight: 2,
+  },
+  column: {
     gap: 8,
   },
   item: {
@@ -60,5 +85,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  scroller: {
+    maxHeight: 154,
   },
 });

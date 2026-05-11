@@ -6,6 +6,7 @@ export interface IconColorSet {
 
 export const ICON_COLORS: IconColorSet[] = [
   { id: 'blue',   color: '#2563EB', bg: '#DBEAFE' },
+  { id: 'blueLight', color: '#60A5FA', bg: '#EFF6FF' },
   { id: 'sky',    color: '#0284C7', bg: '#E0F2FE' },
   { id: 'teal',   color: '#0D9488', bg: '#CCFBF1' },
   { id: 'green',  color: '#16A34A', bg: '#DCFCE7' },
@@ -14,8 +15,10 @@ export const ICON_COLORS: IconColorSet[] = [
   { id: 'orange', color: '#EA580C', bg: '#FFF7ED' },
   { id: 'red',    color: '#DC2626', bg: '#FEE2E2' },
   { id: 'pink',   color: '#DB2777', bg: '#FCE7F3' },
+  { id: 'pinkLight', color: '#F472B6', bg: '#FDF2F8' },
   { id: 'purple', color: '#7C3AED', bg: '#EDE9FE' },
   { id: 'slate',  color: '#475569', bg: '#F1F5F9' },
+  { id: 'grayLight', color: '#94A3B8', bg: '#F8FAFC' },
 ];
 
 export function getIconColor(id: string): IconColorSet {

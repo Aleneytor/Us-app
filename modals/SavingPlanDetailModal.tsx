@@ -1,11 +1,11 @@
 import { BlurView } from 'expo-blur';
 import * as Linking from 'expo-linking';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -14,13 +14,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { AppModal as Modal } from '../components/AppModal';
 import { CATEGORIES } from '../constants/categories';
 import { APP_COLORS, getIconColor } from '../constants/colors';
-import { USERS } from '../types';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { SavingPlan } from '../types';
 import { savingPlanProgress } from '../utils/calculations';
 import { fmt, formatDateShort, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
+import { getUserData } from '../utils/users';
 
 const SAVINGS_ACCENT = '#7C3AED';
 const SAVINGS_ACCENT_BG = '#EDE9FE';
@@ -40,10 +43,12 @@ export function SavingPlanDetailModal({
   onEdit,
   onDelete,
 }: SavingPlanDetailModalProps) {
+  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const updateSavingPlan = useAppStore((s) => s.updateSavingPlan);
   const deleteSavingPlan = useAppStore((s) => s.deleteSavingPlan);
+  const users = useAppStore((s) => s.users);
 
   const [entryAmount, setEntryAmount] = useState('');
   const [entryDate, setEntryDate] = useState(todayStr());
@@ -65,7 +70,7 @@ export function SavingPlanDetailModal({
   const iconInfo = CATEGORIES[plan.icon ?? 'savings'] ?? CATEGORIES.savings;
   const progress = savingPlanProgress(plan);
   const progressPct = Math.min(100, Math.round(progress.pct));
-  const user = plan.uid ? USERS[plan.uid] : null;
+  const user = plan.uid ? getUserData(users, plan.uid) : null;
 
   const addHistoryEntry = () => {
     if (!Number.isFinite(entryNumber) || entryNumber <= 0) {
@@ -130,9 +135,10 @@ export function SavingPlanDetailModal({
 
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-      <Pressable style={styles.backdrop} onPressIn={onClose}>
-        <Pressable style={styles.card} onPressIn={(event) => event.stopPropagation()}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
+        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.card}>
 
           {/* ── Header ── */}
           <View style={styles.header}>
@@ -180,7 +186,7 @@ export function SavingPlanDetailModal({
               </View>
             </View>
             <View style={styles.mainRight}>
-              <Text style={styles.amountSaved}>{fmt(progress.saved, currency)}</Text>
+              <Text style={styles.amountSaved}>{fmt(progress.total, currency)}</Text>
               <Text style={styles.amountTarget}>de {fmt(plan.targetAmount, currency)}</Text>
             </View>
           </View>
@@ -211,7 +217,12 @@ export function SavingPlanDetailModal({
             </View>
           ) : null}
 
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            onScrollBeginDrag={dismissKeyboardAndBlur}
+          >
             {/* ── History ── */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Historial</Text>
@@ -231,7 +242,7 @@ export function SavingPlanDetailModal({
                     <View style={styles.historyText}>
                       <Text style={styles.historyAmount}>{fmt(entry.amount, currency)}</Text>
                       <Text style={styles.historyMeta}>
-                        {USERS[entry.uid].name} · {formatDateShort(entry.date)}
+                        {getUserData(users, entry.uid).name} · {formatDateShort(entry.date)}
                       </Text>
                       {entry.note ? <Text style={styles.historyNote}>{entry.note}</Text> : null}
                     </View>
@@ -251,10 +262,12 @@ export function SavingPlanDetailModal({
                     onChangeText={setEntryAmount}
                     placeholder="0,00"
                     keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={() => runAfterKeyboardDismiss(addHistoryEntry)}
                   />
                   <Field label="Fecha" value={entryDate} onChangeText={setEntryDate} placeholder="YYYY-MM-DD" />
                   <Field label="Nota" value={entryNote} onChangeText={setEntryNote} placeholder="Opcional" />
-                  <Pressable onPress={addHistoryEntry} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
+                  <Pressable onPress={() => runAfterKeyboardDismiss(addHistoryEntry)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
                     <Ionicons name="add" size={18} color="#FFFFFF" />
                     <Text style={styles.addButtonText}>Agregar monto</Text>
                   </Pressable>
@@ -285,6 +298,7 @@ export function SavingPlanDetailModal({
             </Pressable>
           </View>
 
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -312,14 +326,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
   },
   card: {
     backgroundColor: APP_COLORS.surface,
     borderRadius: 22,
     maxHeight: '88%',
-    maxWidth: 520,
     overflow: 'hidden',
+    width: '100%',
+  },
+  cardShadow: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 520,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   // ── Header ──
@@ -334,7 +357,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: APP_COLORS.textPrimary,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
   closeBtn: {
     alignItems: 'center',

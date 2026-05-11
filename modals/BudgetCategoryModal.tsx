@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,11 +15,14 @@ import {
 } from 'react-native';
 import { ColorPicker } from '../components/ColorPicker';
 import { IconPicker } from '../components/IconPicker';
+import { AppModal as Modal } from '../components/AppModal';
 import { APP_COLORS } from '../constants/colors';
 import { ALL_CATEGORY_KEYS } from '../constants/categories';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import { useAppStore } from '../store/useAppStore';
 import type { BudgetCategory, UserId } from '../types';
 import { parseAmt } from '../utils/format';
+import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 
 interface BudgetCategoryModalProps {
   visible: boolean;
@@ -28,6 +31,7 @@ interface BudgetCategoryModalProps {
 }
 
 export function BudgetCategoryModal({ visible, category, onClose }: BudgetCategoryModalProps) {
+  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const addBudgetCategory = useAppStore((s) => s.addBudgetCategory);
   const updateBudgetCategory = useAppStore((s) => s.updateBudgetCategory);
@@ -36,10 +40,40 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
   const [icon, setIcon] = useState('food');
   const [iconColor, setIconColor] = useState('purple');
   const [budget, setBudget] = useState('');
+  const [hasIncome, setHasIncome] = useState(false);
+  const [incomeEstimate, setIncomeEstimate] = useState('');
+  const [showBudgetField, setShowBudgetField] = useState(true);
+  const [showCustomizeFields, setShowCustomizeFields] = useState(false);
   const [personal, setPersonal] = useState(false);
   const [notes, setNotes] = useState('');
+  const scrollerRef = useRef<ScrollView>(null);
+  const budgetInputRef = useRef<TextInput>(null);
+  const customizeYRef = useRef(0);
+
+  // Animation for income field reveal
+  const incomeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(incomeAnim, {
+      toValue: hasIncome ? 1 : 0,
+      duration: hasIncome ? 300 : 220,
+      easing: hasIncome ? Easing.out(Easing.quad) : Easing.inOut(Easing.quad),
+      useNativeDriver: false,
+    }).start();
+  }, [hasIncome, incomeAnim]);
 
   const editing = !!category;
+  const incomeEstimateNum = parseAmt(incomeEstimate);
+  const budgetNum = parseAmt(budget);
+  const hasValidIncomeEstimate = Number.isFinite(incomeEstimateNum) && incomeEstimateNum > 0;
+  const hasValidBudget = Number.isFinite(budgetNum) && budgetNum > 0;
+  const shouldShowBudgetField = editing || showBudgetField || !hasIncome;
+  const shouldShowCustomizeFields = editing || showCustomizeFields;
+  const primaryLabel = hasIncome && !shouldShowBudgetField && hasValidIncomeEstimate
+    ? 'Continuar'
+    : hasValidBudget && !shouldShowCustomizeFields
+      ? 'Continuar'
+      : 'Guardar';
 
   useEffect(() => {
     if (!visible) return;
@@ -47,13 +81,81 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
     setIcon(category?.icon ?? 'food');
     setIconColor(category?.iconColor ?? 'purple');
     setBudget(category ? String(category.monthlyBudget) : '');
+    const existingIncome = category?.monthlyIncomeEstimate;
+    setHasIncome(existingIncome !== undefined && existingIncome > 0);
+    setIncomeEstimate(existingIncome ? String(existingIncome) : '');
+    setShowBudgetField(!existingIncome || existingIncome <= 0 || !!category);
+    setShowCustomizeFields(!!category);
     setPersonal(category?.uid !== undefined);
     setNotes(category?.notes ?? '');
   }, [visible, category]);
 
+  const continueToBudget = () => {
+    if (!name.trim()) {
+      Alert.alert('Falta nombre', 'Ponle un nombre a la categoria.');
+      return;
+    }
+    if (!hasValidIncomeEstimate) {
+      Alert.alert('Ingreso invalido', 'Escribe un ingreso estimado mayor a cero.');
+      return;
+    }
+    setShowBudgetField(true);
+    requestAnimationFrame(() => budgetInputRef.current?.focus());
+  };
+
+  const continueToCustomize = () => {
+    if (!name.trim()) {
+      Alert.alert('Falta nombre', 'Ponle un nombre a la categoria.');
+      return;
+    }
+    if (!hasValidBudget) {
+      Alert.alert('Presupuesto invalido', 'Escribe un presupuesto mayor a cero.');
+      return;
+    }
+    const randomIcon = ALL_CATEGORY_KEYS[Math.floor(Math.random() * ALL_CATEGORY_KEYS.length)] ?? 'food';
+    setIcon(randomIcon);
+    setShowCustomizeFields(true);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        scrollerRef.current?.scrollTo({
+          y: Math.max(0, customizeYRef.current - 12),
+          animated: true,
+        });
+      }, 80);
+    });
+  };
+
+  const handlePrimaryAction = () => {
+    if (hasIncome && !shouldShowBudgetField) {
+      continueToBudget();
+      return;
+    }
+    if (!shouldShowCustomizeFields) {
+      continueToCustomize();
+      return;
+    }
+    save();
+  };
+
+  const handlePrimaryPress = () => {
+    if (hasIncome && !shouldShowBudgetField) {
+      handlePrimaryAction();
+      return;
+    }
+    if (!shouldShowCustomizeFields) {
+      runAfterKeyboardDismiss(handlePrimaryAction);
+      return;
+    }
+    runAfterKeyboardDismiss(handlePrimaryAction);
+  };
+
   const save = () => {
     if (!name.trim()) {
       Alert.alert('Falta nombre', 'Ponle un nombre a la categoría.');
+      return;
+    }
+    if (hasIncome && !hasValidIncomeEstimate) {
+      Alert.alert('Ingreso invalido', 'Escribe un ingreso estimado mayor a cero.');
       return;
     }
     const budgetNum = parseAmt(budget);
@@ -68,6 +170,7 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
       icon,
       iconColor,
       monthlyBudget: budgetNum,
+      monthlyIncomeEstimate: hasIncome ? incomeEstimateNum : undefined,
       uid: personal ? currentUser : undefined,
       notes: notes.trim() || undefined,
     };
@@ -79,17 +182,17 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
-        style={styles.keyboardView}
-      >
-        <Pressable style={styles.screen} onPressIn={onClose}>
-          <Pressable style={styles.card} onPressIn={(event) => event.stopPropagation()}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={styles.keyboardView}>
+        <Pressable style={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
+          <View style={styles.cardMotion}>
+          <Pressable
+            style={styles.card}
+            onPressIn={(event) => event.stopPropagation()}
+          >
             <View style={styles.header}>
               <View>
                 <Text style={styles.title}>{editing ? 'Editar categoría' : 'Nueva categoría'}</Text>
-                <Text style={styles.headerSub}>Presupuesto mensual</Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeButton}>
                 <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
@@ -97,21 +200,89 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
             </View>
 
             <ScrollView
+              ref={scrollerRef}
               style={styles.scroller}
               contentContainerStyle={styles.content}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              onScrollBeginDrag={dismissKeyboardAndBlur}
             >
               <View style={styles.block}>
                 <LabeledInput
                   label="Nombre"
                   value={name}
                   onChangeText={setName}
-                  placeholder="Ej. Uñas, Comida, Renta"
+                  placeholder="Ej. Unas, Comida, Renta"
                 />
 
+                {/* ── Income estimate toggle (top) ── */}
+                <View style={styles.incomeToggleRow}>
+                  <Text style={[styles.label, styles.incomeQuestionLabel]}>
+                    ¿Esta categoría genera ingresos?
+                  </Text>
+                  <ChoiceButton
+                    label={hasIncome ? 'Sí' : 'No'}
+                    icon={hasIncome ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                    active={hasIncome}
+                    onPress={() => {
+                      setHasIncome((value) => {
+                        const next = !value;
+                        setShowBudgetField(!next);
+                        setShowCustomizeFields(false);
+                        return next;
+                      });
+                    }}
+                  />
+                </View>
+
+                <Animated.View
+                  style={[
+                    styles.incomeFieldWrap,
+                    {
+                      opacity: incomeAnim,
+                      maxHeight: incomeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 112],
+                      }),
+                      marginTop: incomeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-8, 0],
+                      }),
+                      transform: [{
+                        translateY: incomeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-10, 0],
+                        }),
+                      }, {
+                        scale: incomeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.98, 1],
+                        }),
+                      }],
+                    },
+                  ]}
+                  pointerEvents={hasIncome ? 'auto' : 'none'}
+                >
+                  <View style={styles.field}>
+                    <Text style={styles.label}>Ingreso mensual estimado</Text>
+                    <TextInput
+                      value={incomeEstimate}
+                      onChangeText={setIncomeEstimate}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor="#CBD5E1"
+                      selectTextOnFocus
+                      style={styles.incomeInput}
+                    />
+                  </View>
+                </Animated.View>
+
+
+                {shouldShowBudgetField ? (
                 <View style={styles.field}>
                   <Text style={styles.label}>Presupuesto mensual</Text>
                   <TextInput
+                    ref={budgetInputRef}
                     value={budget}
                     onChangeText={setBudget}
                     keyboardType="decimal-pad"
@@ -121,12 +292,21 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
                     style={styles.budgetInput}
                   />
                 </View>
+                ) : null}
 
+                {shouldShowCustomizeFields ? (
+                <View
+                  style={styles.customizeSection}
+                  onLayout={(event) => {
+                    customizeYRef.current = event.nativeEvent.layout.y;
+                  }}
+                >
                 <Text style={styles.label}>Ícono</Text>
                 <IconPicker
                   value={icon}
                   colorId={iconColor}
                   keys={ALL_CATEGORY_KEYS}
+                  horizontalInset={18}
                   onChange={setIcon}
                 />
 
@@ -156,23 +336,26 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
                   placeholder="Opcional"
                   multiline
                 />
+                </View>
+                ) : null}
               </View>
             </ScrollView>
 
             <View style={styles.footer}>
               <Pressable
-                onPress={() => { Keyboard.dismiss(); onClose(); }}
+                onPress={() => runAfterKeyboardDismiss(onClose)}
                 style={styles.secondaryButton}
               >
                 <Text style={styles.secondaryText}>Cancelar</Text>
               </Pressable>
-              <Pressable onPress={save} style={styles.primaryButton}>
-                <Text style={styles.primaryText}>Guardar</Text>
+              <Pressable onPress={handlePrimaryPress} style={styles.primaryButton}>
+                <Text style={styles.primaryText}>{primaryLabel}</Text>
               </Pressable>
             </View>
           </Pressable>
+          </View>
         </Pressable>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -240,14 +423,18 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: APP_COLORS.background,
     borderRadius: 22,
-    elevation: 8,
-    maxHeight: '88%',
-    maxWidth: 520,
+    maxHeight: '96%',
     overflow: 'hidden',
+    width: '100%',
+  },
+  cardMotion: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 520,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   choiceBtn: {
@@ -290,6 +477,9 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 22,
   },
+  customizeSection: {
+    gap: 14,
+  },
   field: {
     gap: 7,
   },
@@ -330,6 +520,7 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+    justifyContent: 'center',
   },
   label: {
     color: APP_COLORS.textSecondary,
@@ -354,13 +545,12 @@ const styles = StyleSheet.create({
   },
   screen: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.34)',
     flex: 1,
     justifyContent: 'center',
-    padding: 18,
+    paddingHorizontal: 18,
   },
   scroller: {
-    maxHeight: 500,
+    flexShrink: 1,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -383,6 +573,32 @@ const styles = StyleSheet.create({
   title: {
     color: APP_COLORS.textPrimary,
     fontSize: 21,
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
+  },
+  incomeInput: {
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: APP_COLORS.textPrimary,
+    fontFamily: 'DMSerifDisplay_400Regular',
+    fontSize: 36,
+    minHeight: 72,
+    padding: 12,
+    textAlign: 'center',
+  },
+  incomeQuestionLabel: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 12,
     fontWeight: '400',
+  },
+  incomeToggleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  incomeFieldWrap: {
+    overflow: 'hidden',
   },
 });

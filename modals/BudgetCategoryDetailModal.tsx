@@ -1,9 +1,9 @@
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,16 +12,18 @@ import {
   View,
 } from 'react-native';
 import { TransactionTile } from '../components/TransactionTile';
+import { AppModal as Modal } from '../components/AppModal';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 import { CATEGORIES } from '../constants/categories';
+import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import { useAppStore } from '../store/useAppStore';
 import type { BudgetCategory, CurrencyCode, Transaction } from '../types';
-import { calcBudgetCategorySpending } from '../utils/calculations';
-import { getPaid, setPaid } from '../utils/filters';
-import { fmt, todayStr } from '../utils/format';
+import { calcBudgetCategorySpending, calcBudgetCategoryIncome } from '../utils/calculations';
+import { fmt } from '../utils/format';
 import { TransactionModal } from './TransactionModal';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { BudgetCategoryModal } from './BudgetCategoryModal';
+import { runAfterKeyboardDismiss } from '../utils/keyboard';
 
 interface BudgetCategoryDetailModalProps {
   category: BudgetCategory | null;
@@ -36,6 +38,7 @@ export function BudgetCategoryDetailModal({
   selectedYM,
   onClose,
 }: BudgetCategoryDetailModalProps) {
+  const insets = useSafeAreaInsets();
   const payload = useAppStore((s) => s.payload);
   const updateTx = useAppStore((s) => s.updateTransaction);
   const deleteTx = useAppStore((s) => s.deleteTransaction);
@@ -49,9 +52,15 @@ export function BudgetCategoryDetailModal({
   const [noteText, setNoteText] = useState('');
 
   const spent = category ? calcBudgetCategorySpending(payload, category.id, selectedYM) : 0;
+  const incomeReal = category ? calcBudgetCategoryIncome(payload, category.id, selectedYM) : 0;
   const available = category ? category.monthlyBudget - spent : 0;
   const isOver = available < 0;
   const pct = category && category.monthlyBudget > 0 ? Math.min(1, spent / category.monthlyBudget) : 0;
+
+  const hasIncomeEstimate = (category?.monthlyIncomeEstimate ?? 0) > 0;
+  const incomeEstimate = category?.monthlyIncomeEstimate ?? 0;
+  const incomeDiff = incomeReal - incomeEstimate;
+  const incomeAhead = incomeDiff >= 0;
 
   const transactions = useMemo(() => {
     if (!category) return [];
@@ -60,16 +69,6 @@ export function BudgetCategoryDetailModal({
       .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
   }, [category, payload.expenses]);
 
-  const toggleTx = (t: Transaction) => {
-    const next = {
-      ...t,
-      paid: t.paid ? { ...t.paid } : {},
-      paidAt: t.paidAt ? { ...t.paidAt } : {},
-    };
-    setPaid(next, selectedYM, !getPaid(t, selectedYM), todayStr());
-    updateTx(next);
-    setSelectedTx((prev) => (prev?.id === next.id ? next : prev));
-  };
 
   const confirmDeleteTx = (t: Transaction) => {
     Alert.alert(
@@ -126,9 +125,10 @@ export function BudgetCategoryDetailModal({
 
   return (
     <Modal visible={!!category} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-      <Pressable style={styles.screen} onPressIn={onClose}>
-        <Pressable style={styles.card} onPressIn={(event) => event.stopPropagation()}>
+      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
+      <Pressable style={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
+        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
+          <View style={styles.card}>
 
           {/* Header */}
           <View style={styles.header}>
@@ -172,6 +172,40 @@ export function BudgetCategoryDetailModal({
             </View>
           </View>
 
+          {/* Income section (optional) */}
+          {hasIncomeEstimate && (
+            <View style={styles.incomeSection}>
+              <View style={styles.incomeSectionHeader}>
+                <Ionicons
+                  name={incomeAhead ? 'trending-up' : 'trending-down'}
+                  size={14}
+                  color={incomeAhead ? '#16A34A' : '#EA580C'}
+                />
+                <Text style={styles.incomeSectionTitle}>Ingresos del mes</Text>
+                <View style={[styles.incomeDiffChip, { backgroundColor: incomeAhead ? '#DCFCE7' : '#FEF3C7' }]}>
+                  <Text style={[styles.incomeDiffChipText, { color: incomeAhead ? '#16A34A' : '#B45309' }]}>
+                    {incomeAhead
+                      ? `+${fmt(incomeDiff, currency)} del estimado`
+                      : `${fmt(Math.abs(incomeDiff), currency)} por llegar`}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.incomeNumbers}>
+                <View style={styles.incomeNumberCell}>
+                  <Text style={styles.incomeNumberLabel}>Real</Text>
+                  <Text style={[styles.incomeNumberValue, { color: incomeReal > 0 ? '#16A34A' : APP_COLORS.textMuted }]}>
+                    {fmt(incomeReal, currency)}
+                  </Text>
+                </View>
+                <View style={styles.incomeNumberDivider} />
+                <View style={styles.incomeNumberCell}>
+                  <Text style={styles.incomeNumberLabel}>Estimado</Text>
+                  <Text style={styles.incomeNumberValue}>{fmt(incomeEstimate, currency)}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Notes / comment area */}
           {noteEditing ? (
             <View style={styles.noteEditorWrap}>
@@ -185,10 +219,10 @@ export function BudgetCategoryDetailModal({
                 style={styles.noteInput}
               />
               <View style={styles.noteEditorActions}>
-                <Pressable onPress={cancelNote} style={({ pressed }) => [styles.noteBtn, pressed && styles.pressed]}>
+                <Pressable onPress={() => runAfterKeyboardDismiss(cancelNote)} style={({ pressed }) => [styles.noteBtn, pressed && styles.pressed]}>
                   <Text style={styles.noteBtnCancel}>Cancelar</Text>
                 </Pressable>
-                <Pressable onPress={saveNote} style={({ pressed }) => [styles.noteBtn, styles.noteBtnSave, pressed && styles.pressed]}>
+                <Pressable onPress={() => runAfterKeyboardDismiss(saveNote)} style={({ pressed }) => [styles.noteBtn, styles.noteBtnSave, pressed && styles.pressed]}>
                   <Text style={styles.noteBtnSaveText}>Guardar</Text>
                 </Pressable>
               </View>
@@ -221,8 +255,6 @@ export function BudgetCategoryDetailModal({
                   transaction={t}
                   ym={selectedYM}
                   onPress={() => setSelectedTx(t)}
-                  onConfirm={() => toggleTx(t)}
-                  onEdit={() => { setSelectedTx(null); setEditTx(t); }}
                   contentHorizontalPadding={16}
                 />
               ))
@@ -254,6 +286,7 @@ export function BudgetCategoryDetailModal({
               <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
             </Pressable>
           </View>
+          </View>
         </Pressable>
       </Pressable>
 
@@ -267,7 +300,6 @@ export function BudgetCategoryDetailModal({
         transaction={selectedTx}
         ym={selectedYM}
         onClose={() => setSelectedTx(null)}
-        onTogglePaid={toggleTx}
         onEdit={(t) => { setSelectedTx(null); setEditTx(t); }}
         onDelete={confirmDeleteTx}
       />
@@ -291,14 +323,14 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#E2E8F0',
     borderRadius: 12,
     flex: 1,
     justifyContent: 'center',
     paddingVertical: 14,
   },
   actionBtnDelete: {
-    backgroundColor: '#FFF1F2',
+    backgroundColor: '#FFE4E6',
   },
   availableLabel: {
     fontSize: 12,
@@ -313,20 +345,24 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: APP_COLORS.background,
     borderRadius: 22,
-    elevation: 8,
     maxHeight: '88%',
-    maxWidth: 520,
     overflow: 'hidden',
+    width: '100%',
+  },
+  cardShadow: {
+    borderRadius: 22,
+    elevation: 14,
+    maxWidth: 520,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.24,
+    shadowRadius: 30,
     width: '100%',
   },
   categoryName: {
     color: APP_COLORS.textPrimary,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
   closeButton: {
     alignItems: 'center',
@@ -465,7 +501,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    padding: 18,
+    paddingHorizontal: 18,
   },
   spentAmount: {
     fontWeight: '800',
@@ -474,5 +510,58 @@ const styles = StyleSheet.create({
     color: APP_COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '400',
+  },
+  incomeSection: {
+    borderBottomColor: APP_COLORS.border,
+    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  incomeSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+  },
+  incomeSectionTitle: {
+    color: APP_COLORS.textPrimary,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  incomeDiffChip: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  incomeDiffChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  incomeNumbers: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  incomeNumberCell: {
+    alignItems: 'center',
+    flex: 1,
+    gap: 3,
+    paddingVertical: 10,
+  },
+  incomeNumberDivider: {
+    backgroundColor: APP_COLORS.border,
+    width: 1,
+  },
+  incomeNumberLabel: {
+    color: APP_COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  incomeNumberValue: {
+    color: APP_COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

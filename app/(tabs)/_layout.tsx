@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
 import { Tabs } from 'expo-router';
 import { Animated, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
@@ -10,11 +11,33 @@ import { APP_COLORS } from '../../constants/colors';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
-  index: { active: 'home', inactive: 'home-outline' },
-  movimientos: { active: 'repeat', inactive: 'repeat-outline' },
-  ahorro: { active: 'bookmark', inactive: 'bookmark-outline' },
-  perfil: { active: 'person', inactive: 'person-outline' },
+  movimientos: { active: 'receipt-outline', inactive: 'receipt-outline' },
+  ahorro: { active: 'bookmark-outline', inactive: 'bookmark-outline' },
+  categorias: { active: 'pie-chart-outline', inactive: 'pie-chart-outline' },
 };
+
+const TAB_LABELS: Record<string, string> = {
+  index: 'Inicio',
+  movimientos: 'Movimientos',
+  ahorro: 'Ahorro',
+  categorias: 'Categorias',
+};
+
+const TAB_ACTIVE_WIDTHS: Record<string, number> = {
+  index: 84,
+  movimientos: 120,
+  ahorro: 90,
+  categorias: 112,
+};
+
+const TAB_LABEL_WIDTHS: Record<string, number> = {
+  index: 38,
+  movimientos: 76,
+  ahorro: 44,
+  categorias: 68,
+};
+
+const HIDDEN_TAB_ROUTES = new Set(['create', 'perfil', 'ahorros']);
 
 const DROPUP_OPTIONS: Array<{ label: string; icon: IoniconName; key: string }> = [
   { key: 'ahorro', label: 'Nuevo ahorro', icon: 'bookmark-outline' },
@@ -39,9 +62,8 @@ export default function TabLayout() {
       mass: 0.6,
     }).start();
   }, [dropupOpen, rotateAnim]);
-  const fabWidth = Math.min(86, Math.max(66, width * 0.2));
-  const fabHeight = Math.min(56, Math.max(48, width * 0.13));
-  const fabIconSize = width < 360 ? 28 : 31;
+  const fabSize = 58;
+  const fabIconSize = width < 360 ? 25 : 28;
 
   const handleOption = (key: string) => {
     setDropupOpen(false);
@@ -53,11 +75,13 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        detachInactiveScreens={false}
         screenOptions={({ route }) => ({
           tabBarActiveTintColor: '#303236',
           tabBarInactiveTintColor: '#B3B5B8',
           tabBarStyle: styles.tabBar,
           tabBarLabelStyle: styles.tabLabel,
+          tabBarShowLabel: false,
           headerStyle: styles.header,
           headerShadowVisible: false,
           headerTitleStyle: styles.headerTitle,
@@ -74,6 +98,16 @@ export default function TabLayout() {
             );
           },
         })}
+        tabBar={(props) => (
+          <FloatingTabBar
+            {...props}
+            createOpen={dropupOpen}
+            fabIconSize={fabIconSize}
+            fabSize={fabSize}
+            onCreatePress={() => setDropupOpen((v) => !v)}
+            rotateAnim={rotateAnim}
+          />
+        )}
       >
         <Tabs.Screen
           name="index"
@@ -85,7 +119,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="movimientos"
           options={{
-            title: '',
+            title: 'Movimientos',
             headerShown: false,
           }}
         />
@@ -94,43 +128,26 @@ export default function TabLayout() {
           options={{
             title: '',
             headerShown: false,
-            tabBarButton: () => (
-              <TouchableOpacity
-                activeOpacity={0.86}
-                accessibilityLabel="Crear"
-                onPress={() => setDropupOpen((v) => !v)}
-                style={styles.fabSlot}
-              >
-                <View
-                  style={[
-                    styles.fab,
-                    {
-                      borderRadius: fabHeight / 2,
-                      height: fabHeight,
-                      width: fabWidth,
-                    },
-                  ]}
-                >
-                  <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
-                    <Ionicons name="add" size={fabIconSize} color="#FFFFFF" />
-                  </Animated.View>
-                </View>
-              </TouchableOpacity>
-            ),
           }}
         />
         <Tabs.Screen
           name="ahorro"
           options={{
-            title: '',
+            title: 'Ahorro',
+            headerShown: false,
+          }}
+        />
+        <Tabs.Screen
+          name="categorias"
+          options={{
+            title: 'Categorias',
             headerShown: false,
           }}
         />
         <Tabs.Screen
           name="perfil"
           options={{
-            title: '',
-            headerShown: false,
+            href: null,
           }}
         />
         <Tabs.Screen
@@ -225,14 +242,169 @@ function DropupOverlay({
   );
 }
 
+function FloatingTabBar({
+  state,
+  descriptors,
+  navigation,
+  insets,
+  createOpen,
+  fabIconSize,
+  fabSize,
+  onCreatePress,
+  rotateAnim,
+}: any) {
+  const visibleRoutes = state.routes.filter((route: any) => !HIDDEN_TAB_ROUTES.has(route.name));
+  const bottom = Math.max(insets?.bottom ?? 0, 12);
+
+  return (
+    <View pointerEvents="box-none" style={[styles.floatingBarWrap, { bottom }]}>
+      <View style={styles.tabPill}>
+        {visibleRoutes.map((route: any) => {
+          const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
+          const focused = state.index === routeIndex;
+          const icons = TAB_ICONS[route.name];
+          const descriptor = descriptors[route.key];
+          const label = TAB_LABELS[route.name] ?? descriptor?.options?.title ?? route.name;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!focused && !event.defaultPrevented) {
+              navigation.navigate(route.name, route.params);
+            }
+          };
+
+          return (
+            <FloatingTabItem
+              key={route.key}
+              accessibilityLabel={descriptor?.options?.tabBarAccessibilityLabel ?? label}
+              focused={focused}
+              icons={icons}
+              label={label}
+              onPress={onPress}
+              routeName={route.name}
+            />
+          );
+        })}
+      </View>
+
+      <TouchableOpacity
+        activeOpacity={0.86}
+        accessibilityLabel="Crear"
+        onPress={onCreatePress}
+        style={[
+          styles.floatingFab,
+          createOpen && styles.floatingFabOpen,
+          {
+            borderRadius: fabSize / 2,
+            height: fabSize,
+            width: fabSize,
+          },
+        ]}
+      >
+        <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
+          <Ionicons name="add" size={fabIconSize} color={createOpen ? '#111827' : '#FFFFFF'} />
+        </Animated.View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function FloatingTabItem({
+  accessibilityLabel,
+  focused,
+  icons,
+  label,
+  onPress,
+  routeName,
+}: {
+  accessibilityLabel: string;
+  focused: boolean;
+  icons?: { active: IoniconName; inactive: IoniconName };
+  label: string;
+  onPress: () => void;
+  routeName: string;
+}) {
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: focused ? 1 : 0,
+      duration: 230,
+      easing: focused ? EASE_OUT_CUBIC : EASE_IN_OUT_CUBIC,
+      useNativeDriver: false,
+    }).start();
+  }, [focused, progress]);
+
+  const activeWidth = TAB_ACTIVE_WIDTHS[routeName] ?? 112;
+  const activeLabelWidth = TAB_LABEL_WIDTHS[routeName] ?? 68;
+  const width = progress.interpolate({ inputRange: [0, 1], outputRange: [44, activeWidth] });
+  const backgroundColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['#252A32', '#FFFFFF'] });
+  const labelWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, activeLabelWidth] });
+  const labelMarginLeft = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+  const labelOpacity = progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0, 1] });
+  const iconColor = focused ? '#111827' : '#D3D8E0';
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={focused ? { selected: true } : {}}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={({ pressed }) => [pressed && styles.pressed]}
+    >
+      <Animated.View style={[styles.tabItem, { backgroundColor, width }]}>
+        <View style={styles.tabIconBox}>
+          {routeName === 'index' ? (
+            <HomeMinimalIcon color={iconColor} />
+          ) : icons ? (
+            <Ionicons
+              name={icons.inactive}
+              size={21}
+              color={iconColor}
+            />
+          ) : null}
+        </View>
+        <Animated.View style={{ marginLeft: labelMarginLeft, opacity: labelOpacity, overflow: 'hidden', width: labelWidth }}>
+          <Text numberOfLines={1} style={styles.tabItemLabel}>{label}</Text>
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+const EASE_OUT_CUBIC = (value: number) => 1 - Math.pow(1 - value, 3);
+const EASE_IN_OUT_CUBIC = (value: number) => (
+  value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2
+);
+
+
+function HomeMinimalIcon({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1H15v-5h-6v5H4a1 1 0 0 1-1-1V10.5z"
+        fill="none"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
   dropupAnchor: {
-    bottom: 90,
-    alignItems: 'center',
+    bottom: 92,
+    alignItems: 'flex-end',
     justifyContent: 'flex-end',
     position: 'absolute',
-    left: 0,
-    right: 0,
+    right: 18,
   },
   dropupCard: {
     borderRadius: 14,
@@ -266,7 +438,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     alignItems: 'center',
-    backgroundColor: '#303236',
+    backgroundColor: '#252A32',
     justifyContent: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -278,6 +450,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     marginTop: -14,
+  },
+  floatingBarWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    left: 14,
+    position: 'absolute',
+    right: 14,
+  },
+  floatingFab: {
+    alignItems: 'center',
+    backgroundColor: '#252A32',
+    elevation: 8,
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+  },
+  floatingFabOpen: {
+    backgroundColor: '#FFFFFF',
   },
   header: {
     backgroundColor: '#FFFFFF',
@@ -301,4 +495,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  tabItem: {
+    alignItems: 'center',
+    borderRadius: 22,
+    flexDirection: 'row',
+    height: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 9,
+  },
+  tabIconBox: {
+    alignItems: 'center',
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
+  tabItemLabel: {
+    color: '#111827',
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tabPill: {
+    alignItems: 'center',
+    backgroundColor: '#252A32',
+    borderRadius: 29,
+    elevation: 8,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 2,
+    height: 58,
+    justifyContent: 'space-between',
+    maxWidth: 390,
+    paddingHorizontal: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+  },
+
 });

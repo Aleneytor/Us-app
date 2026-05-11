@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { APP_COLORS } from '../constants/colors';
 
 interface EmojiPickerProps {
@@ -8,25 +8,41 @@ interface EmojiPickerProps {
 }
 
 export function EmojiPicker({ options, value, onChange }: EmojiPickerProps) {
+  const columns = options.reduce<string[][]>((acc, emoji, index) => {
+    const columnIndex = Math.floor(index / 3);
+    if (!acc[columnIndex]) acc[columnIndex] = [];
+    acc[columnIndex].push(emoji);
+    return acc;
+  }, []);
+
   return (
-    <View style={styles.grid}>
-      {options.map((emoji) => {
-        const active = emoji === value;
-        return (
-          <Pressable
-            key={emoji}
-            onPress={() => onChange(emoji)}
-            style={({ pressed }) => [
-              styles.item,
-              active && styles.active,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.scroller}
+      contentContainerStyle={styles.grid}
+    >
+      {columns.map((column, columnIndex) => (
+        <View key={`emoji-column-${columnIndex}`} style={styles.column}>
+          {column.map((emoji) => {
+            const active = emoji === value;
+            return (
+              <Pressable
+                key={emoji}
+                onPress={() => onChange(emoji)}
+                style={({ pressed }) => [
+                  styles.item,
+                  active && styles.active,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.emoji}>{emoji}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -40,7 +56,10 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    gap: 8,
+    paddingRight: 2,
+  },
+  column: {
     gap: 8,
   },
   item: {
@@ -55,5 +74,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  scroller: {
+    maxHeight: 148,
   },
 });

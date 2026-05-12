@@ -59,8 +59,9 @@ export function BudgetCategoryDetailModal({
 
   const hasIncomeEstimate = (category?.monthlyIncomeEstimate ?? 0) > 0;
   const incomeEstimate = category?.monthlyIncomeEstimate ?? 0;
-  const incomeDiff = incomeReal - incomeEstimate;
-  const incomeAhead = incomeDiff >= 0;
+  const incomeRemaining = Math.max(0, incomeEstimate - incomeReal);
+  const incomeReached = incomeReal >= incomeEstimate;
+  const incomePct = incomeEstimate > 0 ? Math.min(1, incomeReal / incomeEstimate) : 0;
 
   const transactions = useMemo(() => {
     if (!category) return [];
@@ -177,31 +178,29 @@ export function BudgetCategoryDetailModal({
             <View style={styles.incomeSection}>
               <View style={styles.incomeSectionHeader}>
                 <Ionicons
-                  name={incomeAhead ? 'trending-up' : 'trending-down'}
+                  name="arrow-up"
                   size={14}
-                  color={incomeAhead ? '#16A34A' : '#EA580C'}
+                  color={APP_COLORS.income}
                 />
                 <Text style={styles.incomeSectionTitle}>Ingresos del mes</Text>
-                <View style={[styles.incomeDiffChip, { backgroundColor: incomeAhead ? '#DCFCE7' : '#FEF3C7' }]}>
-                  <Text style={[styles.incomeDiffChipText, { color: incomeAhead ? '#16A34A' : '#B45309' }]}>
-                    {incomeAhead
-                      ? `+${fmt(incomeDiff, currency)} del estimado`
-                      : `${fmt(Math.abs(incomeDiff), currency)} por llegar`}
-                  </Text>
-                </View>
+                <Text style={styles.incomeEstimateText}>Estimado {fmt(incomeEstimate, currency)}</Text>
               </View>
-              <View style={styles.incomeNumbers}>
-                <View style={styles.incomeNumberCell}>
-                  <Text style={styles.incomeNumberLabel}>Real</Text>
-                  <Text style={[styles.incomeNumberValue, { color: incomeReal > 0 ? '#16A34A' : APP_COLORS.textMuted }]}>
-                    {fmt(incomeReal, currency)}
-                  </Text>
-                </View>
-                <View style={styles.incomeNumberDivider} />
-                <View style={styles.incomeNumberCell}>
-                  <Text style={styles.incomeNumberLabel}>Estimado</Text>
-                  <Text style={styles.incomeNumberValue}>{fmt(incomeEstimate, currency)}</Text>
-                </View>
+              <View style={styles.incomeBarTrack}>
+                <View
+                  style={[
+                    styles.incomeBarFill,
+                    { width: `${Math.round(incomePct * 100)}%` as `${number}%` },
+                  ]}
+                />
+              </View>
+              <View style={styles.incomeNumbersRow}>
+                <Text style={styles.incomeCurrentText}>
+                  <Text style={styles.incomeCurrentAmount}>{fmt(incomeReal, currency)}</Text>
+                  {' '}actual
+                </Text>
+                <Text style={[styles.incomeRemainingText, incomeReached && styles.incomeReachedText]}>
+                  {`${fmt(incomeRemaining, currency)} por alcanzar`}
+                </Text>
               </View>
             </View>
           )}
@@ -255,7 +254,6 @@ export function BudgetCategoryDetailModal({
                   transaction={t}
                   ym={selectedYM}
                   onPress={() => setSelectedTx(t)}
-                  contentHorizontalPadding={16}
                 />
               ))
             )}
@@ -515,13 +513,13 @@ const styles = StyleSheet.create({
     borderBottomColor: APP_COLORS.border,
     borderBottomWidth: 1,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   incomeSectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 10,
+    marginBottom: 7,
   },
   incomeSectionTitle: {
     color: APP_COLORS.textPrimary,
@@ -529,39 +527,48 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  incomeDiffChip: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  incomeDiffChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  incomeNumbers: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  incomeNumberCell: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 3,
-    paddingVertical: 10,
-  },
-  incomeNumberDivider: {
-    backgroundColor: APP_COLORS.border,
-    width: 1,
-  },
-  incomeNumberLabel: {
+  incomeEstimateText: {
     color: APP_COLORS.textMuted,
     fontSize: 11,
-    fontWeight: '500',
-  },
-  incomeNumberValue: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 15,
     fontWeight: '700',
+  },
+  incomeBarTrack: {
+    backgroundColor: '#EEF0F3',
+    borderRadius: 6,
+    height: 8,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  incomeBarFill: {
+    backgroundColor: APP_COLORS.income,
+    borderRadius: 6,
+    height: '100%',
+  },
+  incomeNumbersRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  incomeCurrentAmount: {
+    color: APP_COLORS.income,
+    fontWeight: '800',
+  },
+  incomeCurrentText: {
+    color: APP_COLORS.textMuted,
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  incomeReachedText: {
+    color: APP_COLORS.income,
+  },
+  incomeRemainingText: {
+    color: '#EA580C',
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
   },
 });

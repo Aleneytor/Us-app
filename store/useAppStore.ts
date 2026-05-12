@@ -70,6 +70,7 @@ interface AppActions {
 
 let _syncTimer: ReturnType<typeof setTimeout> | null = null;
 let _channel: RealtimeChannel | null = null;
+let _payloadReady = false; // true only after first successful load — prevents pushing stale/empty state
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
@@ -444,6 +445,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 function _syncToCloud(): void {
+  if (!_payloadReady) return;
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async () => {
     const { payload, currentUser, clientId, roomForUser } = useAppStore.getState();
@@ -482,6 +484,8 @@ async function _connectToRoom(uid: UserId): Promise<void> {
     _channel = null;
   }
 
+  _payloadReady = false;
+
   const { roomForUser } = useAppStore.getState();
   const roomId = roomForUser[uid] ?? `${uid}-main`;
   const { clientId } = useAppStore.getState();
@@ -493,8 +497,13 @@ async function _connectToRoom(uid: UserId): Promise<void> {
       useAppStore.getState()._setPayload(snapshot);
       await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(snapshot));
     } else {
-      useAppStore.getState()._setPayload(emptyPayload());
-      await AsyncStorage.removeItem(payloadStorageKey(roomId));
+      // Server has no row — prefer local cache over wiping state
+      const cached = await AsyncStorage.getItem(payloadStorageKey(roomId));
+      if (cached) {
+        useAppStore.getState()._setPayload(normalizeAppPayload(JSON.parse(cached)));
+      } else {
+        useAppStore.getState()._setPayload(emptyPayload());
+      }
     }
 
     _channel = subscribeToRoom(roomId, clientId, async (incoming) => {
@@ -513,6 +522,8 @@ async function _connectToRoom(uid: UserId): Promise<void> {
     } catch {
       // Nothing to fall back to
     }
+  } finally {
+    _payloadReady = true;
   }
 }
 

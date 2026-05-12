@@ -11,7 +11,6 @@ const AVAILABLE_TEXT_COLOR = '#94A3B8';
 interface BudgetCategoryCardProps {
   category: BudgetCategory;
   spent: number;
-  incomeReal?: number;   // real income linked to this category in selected month
   currency: CurrencyCode;
   onPress: () => void;
   onLongPress?: () => void;
@@ -20,7 +19,6 @@ interface BudgetCategoryCardProps {
 export function BudgetCategoryCard({
   category,
   spent,
-  incomeReal = 0,
   currency,
   onPress,
   onLongPress,
@@ -32,12 +30,6 @@ export function BudgetCategoryCard({
 
   const barColor = isOver ? '#DC2626' : pct >= 0.75 ? '#EA580C' : iconColorSet.color;
   const iconInfo = CATEGORIES[category.icon] ?? CATEGORIES.other;
-
-  // Income estimate logic
-  const hasIncomeEstimate = (category.monthlyIncomeEstimate ?? 0) > 0;
-  const incomeEstimate = category.monthlyIncomeEstimate ?? 0;
-  const incomeDiff = incomeReal - incomeEstimate;
-  const incomeAhead = incomeDiff >= 0;
 
   return (
     <Pressable
@@ -79,26 +71,6 @@ export function BudgetCategoryCard({
           </Text>
         </View>
 
-      {/* Row 3 (optional): ingreso real vs estimado */}
-        {hasIncomeEstimate && (
-          <View style={styles.incomeRow}>
-            <Ionicons
-              name={incomeAhead ? 'trending-up' : 'trending-down'}
-              size={12}
-              color={incomeAhead ? '#16A34A' : '#EA580C'}
-            />
-            <Text style={styles.incomeLabel}>Ingreso</Text>
-            <Text style={[styles.incomeReal, { color: incomeAhead ? '#16A34A' : APP_COLORS.textSecondary }]}>
-              {fmt(incomeReal, currency)}
-            </Text>
-            <Text style={styles.incomeOf}>/ {fmt(incomeEstimate, currency)}</Text>
-            {incomeDiff !== 0 && (
-              <Text style={[styles.incomeDiff, { color: incomeAhead ? '#16A34A' : '#EA580C' }]}>
-                {incomeAhead ? `+${fmt(incomeDiff, currency)}` : `-${fmt(Math.abs(incomeDiff), currency)}`}
-              </Text>
-            )}
-          </View>
-        )}
       </View>
     </Pressable>
   );
@@ -158,34 +130,6 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     width: 40,
-  },
-  incomeDiff: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  incomeLabel: {
-    color: APP_COLORS.textMuted,
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  incomeOf: {
-    color: APP_COLORS.textMuted,
-    fontSize: 10,
-    fontWeight: '400',
-  },
-  incomeReal: {
-    fontSize: 10,
-    fontWeight: '700',
-    marginLeft: 2,
-  },
-  incomeRow: {
-    alignItems: 'center',
-    borderTopColor: '#F1F5F9',
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 8,
-    paddingTop: 7,
   },
   info: {
     flex: 1,

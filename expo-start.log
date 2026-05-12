@@ -1,8 +1,5 @@
-
-> nosotros@1.0.0 start
-> expo start --host lan --port 8083
-
 Starting project at C:\Users\arios\OneDrive\Documents\Apps\nosotros
 Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
 Waiting on http://localhost:8083
 Logs for your project will appear below.

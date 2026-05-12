@@ -134,11 +134,6 @@ export function FinanceTrendCard({
           onPress={() => setModalOpen(true)}
           style={({ pressed }) => pressed && styles.pressed}
         >
-          <View style={styles.previewHead}>
-            <Text style={styles.previewTitle}>Tendencia</Text>
-            <Text style={styles.previewMonth}>{formatYM(selectedYM)}</Text>
-          </View>
-
           <View style={styles.previewMetrics}>
             <PreviewMetricRow
               label="Ingresos"
@@ -968,8 +963,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     elevation: 4,
-    marginHorizontal: 24,
-    marginTop: 12,
     padding: 14,
     shadowColor: '#7E7E7E',
     shadowOffset: { width: 0, height: 8 },

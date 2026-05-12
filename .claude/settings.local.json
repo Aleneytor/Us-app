@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)",
+      "Bash(grep -v \"^--$\")"
     ]
   }
 }

@@ -153,20 +153,22 @@ export function GuidelineCard<State extends string>({
         ) : null}
       </Animated.View>
 
-      <View style={styles.indicators}>
-        {items.map((item, i) => (
-          <Animated.View
-            key={item.key}
-            style={[
-              styles.indicator,
-              {
-                backgroundColor: item.key === activeItem.key ? activeItem.accent : '#DADDE2',
-                width: indicatorWidths[i],
-              },
-            ]}
-          />
-        ))}
-      </View>
+      {items.length > 1 && (
+        <View style={styles.indicators}>
+          {items.map((item, i) => (
+            <Animated.View
+              key={item.key}
+              style={[
+                styles.indicator,
+                {
+                  backgroundColor: item.key === activeItem.key ? activeItem.accent : '#DADDE2',
+                  width: indicatorWidths[i],
+                },
+              ]}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }

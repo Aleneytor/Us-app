@@ -28,7 +28,6 @@ import { useAppStore } from '../../store/useAppStore';
 import type { BudgetCategory, Transaction } from '../../types';
 import {
   calcBudgetCategorySpending,
-  calcBudgetCategoryIncome,
   calcGastosActual,
   calcGastosProyectados,
   calcSaldoActual,
@@ -36,6 +35,8 @@ import {
 } from '../../utils/calculations';
 import { isMonthVisible } from '../../utils/filters';
 import { getUserData } from '../../utils/users';
+import { formatYM } from '../../utils/format';
+import { useTabPadding } from '../../hooks/useTabPadding';
 
 const CARD_SUBTITLES: Record<CardState, { prefix: string; accent: string; color: string }> = {
   saldo: { prefix: 'Este es tu ', accent: 'saldo actual', color: '#23C55E' },
@@ -45,6 +46,7 @@ const CARD_SUBTITLES: Record<CardState, { prefix: string; accent: string; color:
 
 
 export default function DashboardScreen() {
+  const tabPadding = useTabPadding();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const selectedYM = useAppStore((s) => s.selectedYM);
@@ -109,7 +111,7 @@ export default function DashboardScreen() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
       showsVerticalScrollIndicator={false}
       bounces={false}
       overScrollMode="never"
@@ -163,14 +165,20 @@ export default function DashboardScreen() {
         />
       </View>
 
-      <FinanceTrendCard
-        payload={payload}
-        uid={currentUser}
-        selectedYM={selectedYM}
-        currency={currency}
-        categories={budgetCategories}
-        onOpenDetail={(kind) => setDetailModal({ visible: true, kind })}
-      />
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Tendencia</Text>
+          <Text style={styles.sectionMonth}>{formatYM(selectedYM)}</Text>
+        </View>
+        <FinanceTrendCard
+          payload={payload}
+          uid={currentUser}
+          selectedYM={selectedYM}
+          currency={currency}
+          categories={budgetCategories}
+          onOpenDetail={(kind) => setDetailModal({ visible: true, kind })}
+        />
+      </View>
 
       {/* Categorias de presupuesto */}
       <View style={[styles.section, styles.catSection]}>
@@ -235,7 +243,6 @@ export default function DashboardScreen() {
                         key={bc.id}
                         category={bc}
                         spent={calcBudgetCategorySpending(payload, bc.id, selectedYM)}
-                        incomeReal={calcBudgetCategoryIncome(payload, bc.id, selectedYM)}
                         currency={currency}
                         onPress={() => setSelectedCategory(bc)}
                       />
@@ -279,9 +286,9 @@ export default function DashboardScreen() {
                 transaction={t}
                 ym={selectedYM}
                 onPress={() => setSelectedTransaction(t)}
-                contentHorizontalPadding={24}
                 amountCategoryFontSize={12}
                 amountCategoryColor={APP_COLORS.textMuted}
+                flat
               />
             ))}
           </View>
@@ -375,9 +382,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#EDF2F6',
   },
-  content: {
-    paddingBottom: 48,
-  },
+  content: {},
   headerSection: {
     backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 32,
@@ -437,6 +442,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   recentSectionHeader: {
+    marginBottom: 12,
     paddingHorizontal: 24,
   },
   sectionHead: {
@@ -449,6 +455,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#0F172A',
+  },
+  sectionMonth: {
+    color: APP_COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
   },
   categoriesEmpty: {
     alignItems: 'center',
@@ -555,8 +566,8 @@ const styles = StyleSheet.create({
   },
   tileList: {
     alignSelf: 'stretch',
-    gap: 0,
-    width: '100%',
+    gap: 8,
+    paddingHorizontal: 20,
   },
   emptyText: {
     fontSize: 14,

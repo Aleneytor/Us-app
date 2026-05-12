@@ -13,9 +13,9 @@ interface TransactionTileProps {
   ym: string;
   onPress: () => void;
   onLongPress?: () => void;
-  contentHorizontalPadding?: number;
   amountCategoryFontSize?: number;
   amountCategoryColor?: string;
+  flat?: boolean;
 }
 
 export function TransactionTile({
@@ -23,9 +23,9 @@ export function TransactionTile({
   ym: _ym,
   onPress,
   onLongPress,
-  contentHorizontalPadding = 0,
   amountCategoryFontSize,
   amountCategoryColor,
+  flat = false,
 }: TransactionTileProps) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressPressRef = useRef(false);
@@ -46,86 +46,79 @@ export function TransactionTile({
   };
 
   return (
-    <View style={styles.tileWrap}>
-      <Pressable
-        onLongPress={onLongPress}
-        onPress={handlePress}
-        onTouchStart={(event) => {
-          const { pageX, pageY } = event.nativeEvent;
-          touchStartRef.current = { x: pageX, y: pageY };
-          suppressPressRef.current = false;
-        }}
-        onTouchMove={(event) => {
-          const start = touchStartRef.current;
-          if (!start) return;
+    <Pressable
+      onLongPress={onLongPress}
+      onPress={handlePress}
+      onTouchStart={(event) => {
+        const { pageX, pageY } = event.nativeEvent;
+        touchStartRef.current = { x: pageX, y: pageY };
+        suppressPressRef.current = false;
+      }}
+      onTouchMove={(event) => {
+        const start = touchStartRef.current;
+        if (!start) return;
+        const { pageX, pageY } = event.nativeEvent;
+        const dx = Math.abs(pageX - start.x);
+        const dy = Math.abs(pageY - start.y);
+        if (dx > 14 && dx > dy * 1.35) {
+          suppressPressRef.current = true;
+        }
+      }}
+      onTouchCancel={() => {
+        touchStartRef.current = null;
+        suppressPressRef.current = false;
+      }}
+      onTouchEnd={() => {
+        touchStartRef.current = null;
+      }}
+      style={({ pressed }) => [styles.card, flat && styles.cardFlat, pressed && styles.pressed]}
+    >
+      <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
+        <Ionicons name={category.icon} size={20} color={iconColor.color} />
+      </View>
 
-          const { pageX, pageY } = event.nativeEvent;
-          const dx = Math.abs(pageX - start.x);
-          const dy = Math.abs(pageY - start.y);
-          if (dx > 14 && dx > dy * 1.35) {
-            suppressPressRef.current = true;
-          }
-        }}
-        onTouchCancel={() => {
-          touchStartRef.current = null;
-          suppressPressRef.current = false;
-        }}
-        onTouchEnd={() => {
-          touchStartRef.current = null;
-        }}
-        style={({ pressed }) => [
-          styles.row,
-          contentHorizontalPadding > 0 && { paddingHorizontal: contentHorizontalPadding },
-          pressed && styles.pressed,
-        ]}
-      >
-        <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
-          <Ionicons name={category.icon} size={23} color={iconColor.color} />
-        </View>
-
-        <View style={styles.body}>
-          <View style={styles.topLine}>
-            <View style={[styles.userAvatar, { backgroundColor: user.bg }]}>
-              {user.photo ? (
-                <Image source={user.photo} style={styles.userPhoto} />
-              ) : (
-                <Text style={[styles.userInitial, { color: user.color }]}>{user.initials}</Text>
-              )}
-            </View>
-            <Text numberOfLines={1} style={styles.title}>
-              {transaction.desc || category.label}
-            </Text>
+      <View style={styles.body}>
+        <View style={styles.topLine}>
+          <View style={[styles.userAvatar, { backgroundColor: user.bg }]}>
+            {user.photo ? (
+              <Image source={user.photo} style={styles.userPhoto} />
+            ) : (
+              <Text style={[styles.userInitial, { color: user.color }]}>{user.initials}</Text>
+            )}
           </View>
-
-          <View style={styles.metaLine}>
-            <Text style={styles.meta}>{formatDateShort(transaction.date)}</Text>
-            {transaction.account ? (
-              <>
-                <View style={styles.dot} />
-                <Text style={styles.meta} numberOfLines={1}>{transaction.account}</Text>
-              </>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.amountBlock}>
-          <Text style={[styles.amount, { color: amountColor }]}>
-            <Text style={styles.amountSign}>{sign}</Text>
-            {fmt(transaction.amt, currency)}
-          </Text>
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.amountCategory,
-              amountCategoryFontSize !== undefined && { fontSize: amountCategoryFontSize },
-              amountCategoryColor !== undefined && { color: amountCategoryColor },
-            ]}
-          >
-            {category.label}
+          <Text numberOfLines={1} style={styles.title}>
+            {transaction.desc || category.label}
           </Text>
         </View>
-      </Pressable>
-    </View>
+
+        <View style={styles.metaLine}>
+          <Text style={styles.meta}>{formatDateShort(transaction.date)}</Text>
+          {transaction.account ? (
+            <>
+              <View style={styles.dot} />
+              <Text style={styles.meta} numberOfLines={1}>{transaction.account}</Text>
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.amountBlock}>
+        <Text style={[styles.amount, { color: amountColor }]}>
+          <Text style={styles.amountSign}>{sign}</Text>
+          {fmt(transaction.amt, currency)}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.amountCategory,
+            amountCategoryFontSize !== undefined && { fontSize: amountCategoryFontSize },
+            amountCategoryColor !== undefined && { color: amountCategoryColor },
+          ]}
+        >
+          {category.label}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -158,6 +151,24 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 0,
   },
+  card: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
+    borderRadius: 16,
+    elevation: 3,
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#7E7E7E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+  },
+  cardFlat: {
+    elevation: 0,
+    shadowOpacity: 0,
+  },
   dot: {
     backgroundColor: '#CBD5E1',
     borderRadius: 2,
@@ -167,9 +178,10 @@ const styles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
     borderRadius: 16,
-    height: 48,
+    flexShrink: 0,
+    height: 40,
     justifyContent: 'center',
-    width: 48,
+    width: 40,
   },
   meta: {
     color: APP_COLORS.textSecondary,
@@ -181,29 +193,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
-
   pressed: {
-    opacity: 0.74,
-  },
-  tileWrap: {
-    borderBottomColor: '#EEF2F7',
-    borderBottomWidth: 1,
-    width: '100%',
-  },
-  row: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 72,
-    paddingVertical: 10,
-    width: '100%',
+    opacity: 0.72,
   },
   title: {
     color: APP_COLORS.textPrimary,
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   topLine: {
     alignItems: 'center',

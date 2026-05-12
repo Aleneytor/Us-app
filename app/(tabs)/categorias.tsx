@@ -16,13 +16,12 @@ import { BudgetCategoryDetailModal } from '../../modals/BudgetCategoryDetailModa
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import type { BudgetCategory } from '../../types';
-import {
-  calcBudgetCategoryIncome,
-  calcBudgetCategorySpending,
-} from '../../utils/calculations';
+import { calcBudgetCategorySpending } from '../../utils/calculations';
 import { fmt } from '../../utils/format';
+import { useTabPadding } from '../../hooks/useTabPadding';
 
 export default function CategoriasScreen() {
+  const tabPadding = useTabPadding();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const users = useAppStore((s) => s.users);
@@ -83,7 +82,7 @@ export default function CategoriasScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         showsVerticalScrollIndicator={false}
         bounces={false}
@@ -102,9 +101,6 @@ export default function CategoriasScreen() {
 
           {allBudgetCategories.length > 0 && (
             <View style={styles.balanceSummary}>
-              <Text style={styles.balanceSummaryTitle}>
-                Gastos en <Text style={styles.balanceSummaryAccent}>categorias</Text>
-              </Text>
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -163,7 +159,6 @@ export default function CategoriasScreen() {
                 key={category.id}
                 category={category}
                 spent={calcBudgetCategorySpending(payload, category.id, selectedYM)}
-                incomeReal={calcBudgetCategoryIncome(payload, category.id, selectedYM)}
                 currency={currency}
                 onPress={() => setSelectedCategory(category)}
               />
@@ -196,9 +191,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
   },
-  content: {
-    paddingBottom: 96,
-  },
+  content: {},
   emptyButton: {
     alignItems: 'center',
     backgroundColor: '#303236',
@@ -279,22 +272,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 18,
   },
-  balanceSummaryAccent: {
-    color: '#7C3AED',
-  },
   balanceSummaryAmount: {
     color: '#2F3033',
     fontFamily: 'DMSerifDisplay_400Regular',
     fontSize: 46,
     lineHeight: 52,
     minWidth: 0,
-    textAlign: 'center',
-  },
-  balanceSummaryTitle: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 2,
     textAlign: 'center',
   },
   list: {

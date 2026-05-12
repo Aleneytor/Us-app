@@ -8,6 +8,7 @@ interface SavingsCardProps {
   saved: number;
   target: number;
   currency: CurrencyCode;
+  showObjectiveSlide?: boolean;
   onStateChange?: (state: SavingsCardState) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
@@ -30,6 +31,7 @@ export function SavingsCard({
   saved,
   target,
   currency,
+  showObjectiveSlide = true,
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
@@ -39,7 +41,9 @@ export function SavingsCard({
     objetivo: { primary: target, secondary: saved },
   };
 
-  const items: GuidelineCardItem<SavingsCardState>[] = (['ahorrado', 'objetivo'] as const).map((state) => ({
+  const states: SavingsCardState[] = showObjectiveSlide ? ['ahorrado', 'objetivo'] : ['ahorrado'];
+
+  const items: GuidelineCardItem<SavingsCardState>[] = states.map((state) => ({
     key: state,
     value: values[state].primary,
     accent: SAVINGS_ACCENT,

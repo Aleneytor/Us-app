@@ -5,17 +5,20 @@ import type { Transaction } from '../types';
 const REMINDER_DAYS = [7, 3, 1] as const;
 const CHANNEL_ID = 'transaction-reminders';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export async function requestNotificationPermissions(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
   try {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
@@ -41,6 +44,7 @@ export async function scheduleTransactionReminder(
   dueDate: string,
   daysAhead: number[] = [3, 1],
 ): Promise<void> {
+  if (Platform.OS === 'web') return;
   if (!dueDate || !dueDate.includes('-')) return;
 
   const [year, month, day] = dueDate.split('-').map(Number);
@@ -79,6 +83,7 @@ export async function scheduleTransactionReminder(
 }
 
 export async function cancelTransactionReminders(transactionId: number): Promise<void> {
+  if (Platform.OS === 'web') return;
   await Promise.all(
     REMINDER_DAYS.map((days) =>
       Notifications.cancelScheduledNotificationAsync(reminderId(transactionId, days)),

@@ -25,6 +25,7 @@ import { formatDateShort, fmt } from '../../utils/format';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
 import { getPartnerId, getUserData } from '../../utils/users';
+import { useTabPadding } from '../../hooks/useTabPadding';
 
 type OwnerFilter = 'mine' | 'partner' | 'both';
 
@@ -50,6 +51,7 @@ interface GoalSection {
 }
 
 export default function AhorrosScreen() {
+  const tabPadding = useTabPadding();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const deleteGoal = useAppStore((s) => s.deleteGoal);
@@ -137,7 +139,7 @@ export default function AhorrosScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         bounces={false}
         overScrollMode="never"
@@ -607,7 +609,6 @@ const styles = StyleSheet.create({
   content: {
     gap: 18,
     padding: 16,
-    paddingBottom: 96,
   },
   detailPill: {
     backgroundColor: '#F8FAFC',

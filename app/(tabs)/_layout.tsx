@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
 import { Tabs } from 'expo-router';
 import { Animated, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
@@ -11,9 +12,9 @@ import { APP_COLORS } from '../../constants/colors';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
-  movimientos: { active: 'receipt-outline', inactive: 'receipt-outline' },
-  ahorro: { active: 'bookmark-outline', inactive: 'bookmark-outline' },
-  categorias: { active: 'pie-chart-outline', inactive: 'pie-chart-outline' },
+  movimientos: { active: 'receipt', inactive: 'receipt-outline' },
+  ahorro: { active: 'bookmark', inactive: 'bookmark-outline' },
+  categorias: { active: 'pie-chart', inactive: 'pie-chart-outline' },
 };
 
 const TAB_LABELS: Record<string, string> = {
@@ -24,10 +25,10 @@ const TAB_LABELS: Record<string, string> = {
 };
 
 const TAB_ACTIVE_WIDTHS: Record<string, number> = {
-  index: 84,
-  movimientos: 120,
-  ahorro: 90,
-  categorias: 112,
+  index: 88,
+  movimientos: 128,
+  ahorro: 96,
+  categorias: 120,
 };
 
 const TAB_LABEL_WIDTHS: Record<string, number> = {
@@ -259,6 +260,7 @@ function FloatingTabBar({
   return (
     <View pointerEvents="box-none" style={[styles.floatingBarWrap, { bottom }]}>
       <View style={styles.tabPill}>
+        <BlurView intensity={32} tint="light" style={StyleSheet.absoluteFill} />
         {visibleRoutes.map((route: any) => {
           const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
           const focused = state.index === routeIndex;
@@ -306,8 +308,9 @@ function FloatingTabBar({
           },
         ]}
       >
+        <BlurView intensity={34} tint="light" style={StyleSheet.absoluteFill} />
         <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
-          <Ionicons name="add" size={fabIconSize} color={createOpen ? '#111827' : '#FFFFFF'} />
+          <Ionicons name="add" size={fabIconSize} color="#111827" />
         </Animated.View>
       </TouchableOpacity>
     </View>
@@ -330,6 +333,7 @@ function FloatingTabItem({
   routeName: string;
 }) {
   const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const iconFill = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -338,16 +342,22 @@ function FloatingTabItem({
       easing: focused ? EASE_OUT_CUBIC : EASE_IN_OUT_CUBIC,
       useNativeDriver: false,
     }).start();
-  }, [focused, progress]);
+    Animated.timing(iconFill, {
+      toValue: focused ? 1 : 0,
+      duration: 50,
+      useNativeDriver: false,
+    }).start();
+  }, [focused, iconFill, progress]);
 
   const activeWidth = TAB_ACTIVE_WIDTHS[routeName] ?? 112;
   const activeLabelWidth = TAB_LABEL_WIDTHS[routeName] ?? 68;
   const width = progress.interpolate({ inputRange: [0, 1], outputRange: [44, activeWidth] });
-  const backgroundColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['#252A32', '#FFFFFF'] });
+  const backgroundColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['rgba(255, 255, 255, 0)', '#F1F5F9'] });
   const labelWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, activeLabelWidth] });
   const labelMarginLeft = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
   const labelOpacity = progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0, 1] });
-  const iconColor = focused ? '#111827' : '#D3D8E0';
+  const iconBackgroundColor = iconFill.interpolate({ inputRange: [0, 1], outputRange: ['rgba(17, 24, 39, 0)', '#111827'] });
+  const iconColor = focused ? '#FFFFFF' : '#7B8491';
 
   return (
     <Pressable
@@ -358,17 +368,17 @@ function FloatingTabItem({
       style={({ pressed }) => [pressed && styles.pressed]}
     >
       <Animated.View style={[styles.tabItem, { backgroundColor, width }]}>
-        <View style={styles.tabIconBox}>
+        <Animated.View style={[styles.tabIconBox, { backgroundColor: iconBackgroundColor }]}>
           {routeName === 'index' ? (
-            <HomeMinimalIcon color={iconColor} />
+            <HomeMinimalIcon color={iconColor} filled={focused} />
           ) : icons ? (
             <Ionicons
-              name={icons.inactive}
+              name={focused ? icons.active : icons.inactive}
               size={21}
               color={iconColor}
             />
           ) : null}
-        </View>
+        </Animated.View>
         <Animated.View style={{ marginLeft: labelMarginLeft, opacity: labelOpacity, overflow: 'hidden', width: labelWidth }}>
           <Text numberOfLines={1} style={styles.tabItemLabel}>{label}</Text>
         </Animated.View>
@@ -383,12 +393,12 @@ const EASE_IN_OUT_CUBIC = (value: number) => (
 );
 
 
-function HomeMinimalIcon({ color }: { color: string }) {
+function HomeMinimalIcon({ color, filled = false }: { color: string; filled?: boolean }) {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <Path
         d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1H15v-5h-6v5H4a1 1 0 0 1-1-1V10.5z"
-        fill="none"
+        fill={filled ? color : 'none'}
         stroke={color}
         strokeWidth={1.8}
         strokeLinejoin="round"
@@ -462,16 +472,19 @@ const styles = StyleSheet.create({
   },
   floatingFab: {
     alignItems: 'center',
-    backgroundColor: '#252A32',
+    backgroundColor: 'rgba(255, 255, 255, 0.76)',
+    borderColor: 'rgba(255, 255, 255, 0.88)',
+    borderWidth: 1,
     elevation: 8,
     justifyContent: 'center',
+    overflow: 'hidden',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
   },
   floatingFabOpen: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(241, 245, 249, 0.9)',
   },
   header: {
     backgroundColor: '#FFFFFF',
@@ -501,13 +514,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 44,
     justifyContent: 'center',
-    paddingHorizontal: 9,
+    paddingHorizontal: 7,
   },
   tabIconBox: {
     alignItems: 'center',
-    height: 22,
+    borderRadius: 15,
+    height: 30,
     justifyContent: 'center',
-    width: 22,
+    width: 30,
   },
   tabItemLabel: {
     color: '#111827',
@@ -517,7 +531,9 @@ const styles = StyleSheet.create({
   },
   tabPill: {
     alignItems: 'center',
-    backgroundColor: '#252A32',
+    backgroundColor: 'rgba(255, 255, 255, 0.76)',
+    borderColor: 'rgba(255, 255, 255, 0.88)',
+    borderWidth: 1,
     borderRadius: 29,
     elevation: 8,
     flex: 1,
@@ -526,11 +542,12 @@ const styles = StyleSheet.create({
     height: 58,
     justifyContent: 'space-between',
     maxWidth: 390,
+    overflow: 'hidden',
     paddingHorizontal: 8,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
   },
 
 });

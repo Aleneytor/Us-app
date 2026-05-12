@@ -27,6 +27,7 @@ import { MONTHS_ES, fmt, splitAmount } from '../../utils/format';
 import { MonthNavigator } from '../../components/MonthNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
+import { useTabPadding } from '../../hooks/useTabPadding';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
 import { getPartnerId, getUserData } from '../../utils/users';
 
@@ -64,6 +65,7 @@ type CategoryDropdownInfo = {
 type DropdownInfo = SingleDropdownInfo | CategoryDropdownInfo;
 
 export default function MovimientosScreen() {
+  const tabPadding = useTabPadding();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const selectedYM = useAppStore((s) => s.selectedYM);
@@ -242,7 +244,7 @@ export default function MovimientosScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabPadding }]}
         extraData={listAnimationKey}
         bounces={false}
         overScrollMode="never"
@@ -357,12 +359,9 @@ export default function MovimientosScreen() {
             transaction={item}
             ym={selectedYM}
             index={index}
-            isFirst={index === 0}
-            isLast={index === filtered.length - 1}
             animationKey={listAnimationKey}
             onPress={() => setSelectedTransaction(item)}
             onLongPress={() => showActions(item)}
-            contentHorizontalPadding={24}
           />
         )}
       />
@@ -661,22 +660,16 @@ function HistoryTransactionItem({
   transaction,
   ym,
   index,
-  isFirst,
-  isLast,
   animationKey,
   onPress,
   onLongPress,
-  contentHorizontalPadding,
 }: {
   transaction: Transaction;
   ym: string;
   index: number;
-  isFirst: boolean;
-  isLast: boolean;
   animationKey: string;
   onPress: () => void;
   onLongPress: () => void;
-  contentHorizontalPadding: number;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -707,20 +700,12 @@ function HistoryTransactionItem({
   });
 
   return (
-    <Animated.View
-      style={[
-        styles.movementsSectionItem,
-        isFirst && styles.movementsSectionFirstItem,
-        isLast && styles.movementsSectionLastItem,
-        { opacity: anim, transform: [{ translateY }] },
-      ]}
-    >
+    <Animated.View style={[styles.transactionCard, { opacity: anim, transform: [{ translateY }] }]}>
       <TransactionTile
         transaction={transaction}
         ym={ym}
         onPress={onPress}
         onLongPress={onLongPress}
-        contentHorizontalPadding={contentHorizontalPadding}
       />
     </Animated.View>
   );
@@ -1025,7 +1010,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 0,
     paddingTop: 0,
-    paddingBottom: 96,
   },
   movementsSectionEmpty: {
     backgroundColor: APP_COLORS.surface,
@@ -1033,21 +1017,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 12,
   },
-  movementsSectionFirstItem: {
-    borderTopWidth: 1,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  movementsSectionItem: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-  },
-  movementsSectionLastItem: {
-    borderBottomWidth: 1,
+  transactionCard: {
+    marginBottom: 8,
+    marginHorizontal: 16,
   },
   pressed: {
     opacity: 0.72,

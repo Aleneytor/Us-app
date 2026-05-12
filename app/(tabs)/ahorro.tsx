@@ -1,6 +1,6 @@
 import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -14,8 +14,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { SavingsCard } from '../../components/SavingsCard';
-import type { SavingsCardState } from '../../components/SavingsCard';
 import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { CATEGORIES } from '../../constants/categories';
 import { APP_COLORS, getIconColor } from '../../constants/colors';
@@ -29,14 +29,10 @@ import { fmt } from '../../utils/format';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
 import { getPartnerId, getUserData } from '../../utils/users';
+import { useTabPadding } from '../../hooks/useTabPadding';
 
 type OwnerFilter = 'mine' | 'partner' | 'both';
 type ScreenMode = 'ahorros' | 'planes';
-
-const CARD_SUBTITLES: Record<SavingsCardState, { prefix: string; accent: string }> = {
-  ahorrado: { prefix: 'Este es tu ', accent: 'ahorro total hoy' },
-  objetivo: { prefix: 'Este es tu ', accent: 'objetivo total' },
-};
 
 const FILTER_OPTIONS: { label: string; value: OwnerFilter }[] = [
   { label: 'Ambos', value: 'both' },
@@ -47,6 +43,7 @@ const FILTER_OPTIONS: { label: string; value: OwnerFilter }[] = [
 const SAVINGS_ACCENT = '#7C3AED';
 
 export default function SavingsPreviewScreen() {
+  const tabPadding = useTabPadding();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
@@ -57,24 +54,27 @@ export default function SavingsPreviewScreen() {
   const plans = useAppStore((s) => s.payload.plans ?? []);
 
   const heroScrollRef = useRef<ScrollView>(null);
+  const heroPageRef = useRef(0);
+  const modeRef = useRef<ScreenMode>('ahorros');
   const contentAnim = useRef(new Animated.Value(1)).current;
 
   const [mode, setMode] = useState<ScreenMode>('ahorros');
+  const [transitionDirection, setTransitionDirection] = useState(1);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [editPlanId, setEditPlanId] = useState<number | null>(null);
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [detailPlanId, setDetailPlanId] = useState<number | null>(null);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [listScrollEnabled, setListScrollEnabled] = useState(true);
-  const [isCardSwiping, setIsCardSwiping] = useState(false);
-  const [savingsState, setSavingsState] = useState<SavingsCardState>('ahorrado');
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
   const [searchText, setSearchText] = useState('');
 
   const partner = getPartnerId(partnerForUser, currentUser);
-  const subtitle = CARD_SUBTITLES[savingsState];
   const isSearching = searchText.trim().length > 0;
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   const filteredSavings = useMemo<SavingPlan[]>(() => {
     const query = searchText.trim().toLowerCase();
@@ -115,7 +115,9 @@ export default function SavingsPreviewScreen() {
     selectedPlan.uid !== currentUser;
 
   const switchMode = (newMode: ScreenMode) => {
-    if (newMode === mode) return;
+    if (newMode === modeRef.current) return;
+    setTransitionDirection(newMode === 'planes' ? 1 : -1);
+    modeRef.current = newMode;
     Animated.timing(contentAnim, {
       toValue: 0,
       duration: 110,
@@ -130,6 +132,18 @@ export default function SavingsPreviewScreen() {
         useNativeDriver: true,
       }).start();
     });
+  };
+
+  const syncModeFromHeroOffset = (offsetX: number) => {
+    const pageWidth = Math.max(width, 1);
+    const page = Math.max(0, Math.min(1, Math.round(offsetX / pageWidth)));
+    if (page === heroPageRef.current) return;
+    heroPageRef.current = page;
+    switchMode(page === 0 ? 'ahorros' : 'planes');
+  };
+
+  const handleHeroScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    syncModeFromHeroOffset(event.nativeEvent.contentOffset.x);
   };
 
   const handleRefresh = async () => {
@@ -198,9 +212,14 @@ export default function SavingsPreviewScreen() {
   const contentAnimStyle = {
     opacity: contentAnim,
     transform: [{
-      translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
+      translateX: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [18 * transitionDirection, 0] }),
     }],
   };
+
+  const listData = useMemo<Array<SavingPlan | Plan>>(
+    () => (mode === 'ahorros' ? filteredSavings : plans),
+    [filteredSavings, mode, plans],
+  );
 
   return (
     <View style={styles.screen}>
@@ -212,14 +231,12 @@ export default function SavingsPreviewScreen() {
             ref={heroScrollRef}
             horizontal
             pagingEnabled
-            scrollEnabled={!isCardSwiping}
             showsHorizontalScrollIndicator={false}
             scrollEventThrottle={16}
             decelerationRate="fast"
-            onMomentumScrollEnd={(e) => {
-              const page = Math.round(e.nativeEvent.contentOffset.x / width);
-              switchMode(page === 0 ? 'ahorros' : 'planes');
-            }}
+            onScroll={handleHeroScroll}
+            onScrollEndDrag={handleHeroScroll}
+            onMomentumScrollEnd={handleHeroScroll}
             style={{ width }}
           >
             {/* Page 0: Ahorros */}
@@ -228,8 +245,8 @@ export default function SavingsPreviewScreen() {
                 <View style={styles.heroTextWrap}>
                   <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
                   <Text style={styles.heroSubtitle}>
-                    {subtitle.prefix}
-                    <Text style={styles.heroHighlight}>{subtitle.accent}</Text>
+                    {'Este es tu '}
+                    <Text style={styles.heroHighlight}>ahorro total hoy</Text>
                   </Text>
                 </View>
                 <UserHeaderButton />
@@ -238,15 +255,7 @@ export default function SavingsPreviewScreen() {
                 saved={savings.saved}
                 target={savings.target}
                 currency={currency}
-                onStateChange={setSavingsState}
-                onSwipeBegin={() => {
-                  setListScrollEnabled(false);
-                  setIsCardSwiping(true);
-                }}
-                onSwipeEnd={() => {
-                  setListScrollEnabled(true);
-                  setIsCardSwiping(false);
-                }}
+                showObjectiveSlide={false}
               />
             </View>
 
@@ -278,17 +287,17 @@ export default function SavingsPreviewScreen() {
 
       {/* ── Área de contenido animada ── */}
       <Animated.View style={[styles.contentWrap, contentAnimStyle]}>
-        <FlatList
-          data={mode === 'ahorros' ? filteredSavings : plans}
+        <FlatList<SavingPlan | Plan>
+          key={mode}
+          data={listData}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           onScrollBeginDrag={dismissKeyboardAndBlur}
           keyExtractor={(item) => `${mode}-${item.id}`}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           bounces={false}
           overScrollMode="never"
-          scrollEnabled={listScrollEnabled}
           ListHeaderComponent={mode === 'ahorros' ? AhorrosHeader : null}
           ListFooterComponent={mode === 'planes' ? PlanesFooter : null}
           ListEmptyComponent={
@@ -511,9 +520,7 @@ const styles = StyleSheet.create({
   contentWrap: {
     flex: 1,
   },
-  content: {
-    paddingBottom: 96,
-  },
+  content: {},
 
   // ── Hero ──
   heroShadowWrap: {

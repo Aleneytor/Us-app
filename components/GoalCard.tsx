@@ -43,7 +43,7 @@ export function GoalCard({
           {goal.em ? (
             <Text style={styles.emoji}>{goal.em}</Text>
           ) : (
-            <Ionicons name={category.icon} size={24} color={iconColor.color} />
+            <Ionicons name={category.icon} size={20} color={iconColor.color} />
           )}
         </View>
 
@@ -97,11 +97,15 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 12,
-    padding: 14,
+    borderRadius: 16,
+    elevation: 3,
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#7E7E7E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
   },
   contribute: {
     alignItems: 'center',
@@ -118,7 +122,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   emoji: {
-    fontSize: 22,
+    fontSize: 18,
   },
   footer: {
     alignItems: 'center',
@@ -142,10 +146,11 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
-    borderRadius: 12,
-    height: 48,
+    borderRadius: 16,
+    flexShrink: 0,
+    height: 40,
     justifyContent: 'center',
-    width: 48,
+    width: 40,
   },
   meta: {
     color: APP_COLORS.textSecondary,
@@ -180,13 +185,14 @@ const styles = StyleSheet.create({
   saved: {
     color: APP_COLORS.textPrimary,
     flexShrink: 0,
-    fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    fontWeight: '600',
   },
   title: {
     color: APP_COLORS.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
   },
   titleBlock: {
     flex: 1,

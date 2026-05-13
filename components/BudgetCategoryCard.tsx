@@ -24,9 +24,10 @@ export function BudgetCategoryCard({
   onLongPress,
 }: BudgetCategoryCardProps) {
   const iconColorSet = getIconColor(category.iconColor);
-  const pct = category.monthlyBudget > 0 ? Math.min(1, spent / category.monthlyBudget) : 0;
+  const hasBudget = category.monthlyBudget > 0;
+  const pct = hasBudget ? Math.min(1, spent / category.monthlyBudget) : 0;
   const available = category.monthlyBudget - spent;
-  const isOver = available < 0;
+  const isOver = hasBudget && available < 0;
 
   const barColor = isOver ? '#DC2626' : pct >= 0.75 ? '#EA580C' : iconColorSet.color;
   const iconInfo = CATEGORIES[category.icon] ?? CATEGORIES.other;
@@ -44,7 +45,9 @@ export function BudgetCategoryCard({
       <View style={styles.info}>
         <View style={styles.nameRow}>
           <Text style={styles.name} numberOfLines={1}>{category.name}</Text>
-          <Text style={styles.budgetText} numberOfLines={1}>{fmt(category.monthlyBudget, currency)}</Text>
+          <Text style={styles.budgetText} numberOfLines={1}>
+            {hasBudget ? fmt(category.monthlyBudget, currency) : 'Sin presupuesto'}
+          </Text>
           {isOver && (
             <View style={styles.overBadge}>
               <Text style={styles.overBadgeText}>Excedido</Text>
@@ -53,6 +56,7 @@ export function BudgetCategoryCard({
         </View>
 
       {/* Row 2: gasto · bar · disponible */}
+        {hasBudget ? (
         <View style={styles.barTrack}>
           <View
             style={[
@@ -61,7 +65,13 @@ export function BudgetCategoryCard({
             ]}
           />
         </View>
+        ) : (
+          <Text style={styles.budgetPrompt} numberOfLines={1}>
+            Agrega un presupuesto a esta categoria.
+          </Text>
+        )}
 
+        {hasBudget ? (
         <View style={styles.amountRow}>
           <Text style={[styles.spentText, { color: iconColorSet.color }]} numberOfLines={1}>
             {fmt(spent, currency)}
@@ -70,6 +80,7 @@ export function BudgetCategoryCard({
             {isOver ? `Excedido +${fmt(Math.abs(available), currency)}` : fmt(available, currency)}
           </Text>
         </View>
+        ) : null}
 
       </View>
     </Pressable>
@@ -108,6 +119,12 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     fontSize: 10,
     fontWeight: '500',
+  },
+  budgetPrompt: {
+    color: APP_COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 7,
   },
   card: {
     alignItems: 'center',

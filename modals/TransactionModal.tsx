@@ -1,6 +1,4 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -13,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 import { CATEGORIES } from '../constants/categories';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
@@ -20,8 +19,11 @@ import { CURRENCIES } from '../types';
 import type { BudgetCategory, CurrencyCode, Transaction } from '../types';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { calcBudgetCategorySpending } from '../utils/calculations';
+import { getTransactionAmountForMonth } from '../utils/filters';
 import { useAppStore } from '../store/useAppStore';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
+import { BudgetCategoryModal } from './BudgetCategoryModal';
+import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 
 interface TransactionModalProps {
   visible: boolean;
@@ -56,7 +58,6 @@ const MONTH_NAMES = [
 const WEEK_DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export function TransactionModal({ visible, transaction, initialKind = 'expense', initialBudgetCatId, onClose }: TransactionModalProps) {
-  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const payload = useAppStore((s) => s.payload);
@@ -76,9 +77,11 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
   const [date, setDate] = useState(todayStr());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarYM, setCalendarYM] = useState(todayStr().slice(0, 7));
-  const [type, setType] = useState<'monthly' | 'once'>('once');
+  const [type, setType] = useState<Transaction['type'] | null>(null);
   const [budgetCatId, setBudgetCatId] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
+  const [createBudgetCategoryOpen, setCreateBudgetCategoryOpen] = useState(false);
+  const notesScroll = useKeyboardAwareScroll();
   const editing = !!transaction;
 
   useEffect(() => {
@@ -88,11 +91,12 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
     setDesc(transaction?.desc ?? '');
     setAmt(transaction ? String(transaction.amt) : '');
     setDate(transaction?.date ?? todayStr());
-    setType(transaction?.type ?? 'once');
+    setType(transaction?.type ?? null);
     setCalendarOpen(false);
     setCalendarYM((transaction?.date ?? todayStr()).slice(0, 7));
     setBudgetCatId(transaction?.budgetCatId ?? initialBudgetCatId ?? null);
     setNotes(transaction?.notes ?? '');
+    setCreateBudgetCategoryOpen(false);
   }, [initialBudgetCatId, initialKind, transaction, visible]);
 
   const amountNumber = useMemo(() => parseAmt(amt), [amt]);
@@ -111,6 +115,10 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
       Alert.alert('Fecha requerida', 'Elige la fecha del movimiento.');
       return;
     }
+    if (step === 1 && !type) {
+      Alert.alert('Frecuencia requerida', 'Elige cada cuanto ocurre este movimiento.');
+      return;
+    }
     setStep((value) => Math.min(2, value + 1));
   };
 
@@ -118,6 +126,13 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
     dismissKeyboardAndBlur();
     setCalendarOpen(false);
     setStep((value) => Math.max(0, value - 1));
+  };
+
+  const goToPreviousStep = (nextStep: number) => {
+    if (nextStep >= step) return;
+    dismissKeyboardAndBlur();
+    setCalendarOpen(false);
+    setStep(nextStep);
   };
 
   const changeCalendarMonth = (direction: -1 | 1) => {
@@ -138,6 +153,10 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
     }
     if (!date.trim()) {
       Alert.alert('Fecha requerida', 'Elige la fecha del movimiento.');
+      return;
+    }
+    if (!type) {
+      Alert.alert('Frecuencia requerida', 'Elige cada cuanto ocurre este movimiento.');
       return;
     }
 
@@ -165,10 +184,11 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
     };
 
     let willExceedBudget = false;
-    if (selectedBudgetCat && kind === 'expense') {
+    if (selectedBudgetCat && selectedBudgetCat.monthlyBudget > 0 && kind === 'expense') {
       const currentSpending = calcBudgetCategorySpending(payload, selectedBudgetCat.id, selectedYM);
-      const oldAmt = editing ? (transaction?.amt ?? 0) : 0;
-      const newTotal = currentSpending - oldAmt + amountNumber;
+      const oldAmt = editing && transaction ? getTransactionAmountForMonth(transaction, selectedYM) : 0;
+      const previewTransaction = { ...transaction, amt: amountNumber, date: date.trim(), type, kind } as Transaction;
+      const newTotal = currentSpending - oldAmt + getTransactionAmountForMonth(previewTransaction, selectedYM);
       willExceedBudget = newTotal > selectedBudgetCat.monthlyBudget;
     }
 
@@ -187,32 +207,45 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
     }
   };
 
+  const handleBudgetCategoryCreated = (category: BudgetCategory) => {
+    setBudgetCatId(category.id);
+    setStep(2);
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.keyboardView}>
-      <Pressable style={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.card}>
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>{editing ? 'Editar movimiento' : 'Nuevo movimiento'}</Text>
-              <Text style={styles.subtitle}>Paso {step + 1} de 3</Text>
-            </View>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title={editing ? 'Editar movimiento' : 'Nuevo movimiento'}
+        breadcrumbs={['Tipo', 'Monto', 'Categoria']}
+        activeBreadcrumb={step}
+        canPressBreadcrumb={(index) => index < step}
+        onBreadcrumbPress={goToPreviousStep}
+        onBack={onClose}
+        contentContainerStyle={{ padding: 0 }}
+        footer={(
+          <>
+            <Pressable
+              disabled={step === 0}
+              onPress={goBack}
+              style={[styles.secondaryButton, step === 0 && styles.secondaryButtonDisabled]}
+            >
+              <Text style={[styles.secondaryText, step === 0 && styles.secondaryTextDisabled]}>
+                Atras
+              </Text>
             </Pressable>
-          </View>
-
-          <View style={styles.steps}>
-            {[0, 1, 2].map((item) => (
-              <View key={item} style={[styles.stepDot, item <= step && styles.stepDotActive]} />
-            ))}
-          </View>
-
+            <Pressable onPress={() => runAfterKeyboardDismiss(step === 2 ? save : goNext)} style={styles.primaryButton}>
+              <Text style={styles.primaryText}>{step === 2 ? 'Guardar' : 'Siguiente'}</Text>
+            </Pressable>
+          </>
+        )}
+      >
           <ScrollView
+            ref={notesScroll.scrollRef}
             style={styles.scroller}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[
+              styles.content,
+              notesScroll.bottomPadding !== undefined && { paddingBottom: notesScroll.bottomPadding },
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             onScrollBeginDrag={dismissKeyboardAndBlur}
@@ -248,15 +281,40 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
                   onNextMonth={() => changeCalendarMonth(1)}
                   onSelectDate={selectDate}
                 />
-                <Text style={styles.label}>Recurrente o único</Text>
-                <View style={styles.choiceRow}>
+                <Text style={styles.label}>Frecuencia</Text>
+                <View style={styles.frequencyGrid}>
+                  <View style={styles.frequencyRow}>
                   <Choice
                     label="Único"
-                    customIcon={<MaterialCommunityIcons name="star-four-points" size={15} color={type === 'once' ? '#FFFFFF' : APP_COLORS.blue} />}
+                    activeColor="#F97316"
+                    customIcon={<MaterialCommunityIcons name="star-four-points" size={15} color={type === 'once' ? '#FFFFFF' : '#F97316'} />}
                     active={type === 'once'}
                     onPress={() => setType('once')}
                   />
-                  <Choice label="Mensual" icon="refresh-outline" active={type === 'monthly'} onPress={() => setType('monthly')} />
+                  <Choice
+                    label="Semanal"
+                    icon="calendar-outline"
+                    activeColor="#7C3AED"
+                    active={type === 'weekly'}
+                    onPress={() => setType('weekly')}
+                  />
+                  </View>
+                  <View style={styles.frequencyRow}>
+                  <Choice
+                    label="Bi semanal"
+                    icon="git-compare-outline"
+                    activeColor="#7C3AED"
+                    active={type === 'biweekly'}
+                    onPress={() => setType('biweekly')}
+                  />
+                  <Choice
+                    label="Mensual"
+                    icon="refresh-outline"
+                    activeColor="#7C3AED"
+                    active={type === 'monthly'}
+                    onPress={() => setType('monthly')}
+                  />
+                  </View>
                 </View>
               </View>
             ) : null}
@@ -273,13 +331,6 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
                   </View>
                 ) : (
                   <View style={styles.budgetCatList}>
-                    <BudgetCatOption
-                      label="Sin categoría"
-                      icon="close-circle-outline"
-                      colorId="slate"
-                      active={budgetCatId === null}
-                      onPress={() => setBudgetCatId(null)}
-                    />
                     {budgetCategories.map((bc) => (
                       <BudgetCatOption
                         key={bc.id}
@@ -293,37 +344,43 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
                         onPress={() => setBudgetCatId(bc.id)}
                       />
                     ))}
+                    <BudgetCatOption
+                      label="Sin categoría"
+                      icon="close-circle-outline"
+                      colorId="slate"
+                      active={budgetCatId === null}
+                      onPress={() => setBudgetCatId(null)}
+                    />
                   </View>
                 )}
+                <Pressable
+                  onPress={() => {
+                    dismissKeyboardAndBlur();
+                    setCreateBudgetCategoryOpen(true);
+                  }}
+                  style={({ pressed }) => [styles.createCategoryButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="add" size={17} color={APP_COLORS.textSecondary} />
+                  <Text style={styles.createCategoryText}>Crear categoria</Text>
+                </Pressable>
                 <Field
                   label="Notas"
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Opcional"
                   multiline
+                  onFocus={notesScroll.onFocus}
+                  onBlur={notesScroll.onBlur}
                 />
               </View>
             ) : null}
           </ScrollView>
-
-          <View style={styles.footer}>
-            <Pressable
-              disabled={step === 0}
-              onPress={goBack}
-              style={[styles.secondaryButton, step === 0 && styles.secondaryButtonDisabled]}
-            >
-              <Text style={[styles.secondaryText, step === 0 && styles.secondaryTextDisabled]}>
-                Atras
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => runAfterKeyboardDismiss(step === 2 ? save : goNext)} style={styles.primaryButton}>
-              <Text style={styles.primaryText}>{step === 2 ? 'Guardar' : 'Siguiente'}</Text>
-            </Pressable>
-          </View>
-          </View>
-        </Pressable>
-      </Pressable>
-      </View>
+      </ModalScreen>
+      <BudgetCategoryModal
+        visible={createBudgetCategoryOpen}
+        onClose={() => setCreateBudgetCategoryOpen(false)}
+        onSaved={handleBudgetCategoryCreated}
+      />
     </Modal>
   );
 }
@@ -482,6 +539,7 @@ function BudgetCatOption({
       style={({ pressed }) => [
         styles.budgetCatOption,
         active && styles.budgetCatOptionActive,
+        active && { borderColor: colorSet.color },
         pressed && styles.pressed,
       ]}
     >
@@ -520,6 +578,7 @@ function Choice({
   customIcon,
   active,
   tone,
+  activeColor,
   onPress,
 }: {
   label: string;
@@ -527,19 +586,20 @@ function Choice({
   customIcon?: React.ReactNode;
   active: boolean;
   tone?: 'income' | 'expense';
+  activeColor?: string;
   onPress: () => void;
 }) {
-  const activeColor = tone === 'income' ? APP_COLORS.income : tone === 'expense' ? APP_COLORS.expense : APP_COLORS.blue;
+  const color = activeColor ?? (tone === 'income' ? APP_COLORS.income : tone === 'expense' ? APP_COLORS.expense : APP_COLORS.blue);
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.choice,
-        active && { backgroundColor: activeColor, borderColor: activeColor },
+        active && { backgroundColor: color, borderColor: color },
         pressed && styles.pressed,
       ]}
     >
-      {customIcon ?? (icon ? <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : activeColor} /> : null)}
+      {customIcon ?? (icon ? <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : color} /> : null)}
       <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -753,6 +813,21 @@ const styles = StyleSheet.create({
   choiceTextActive: {
     color: '#FFFFFF',
   },
+  createCategoryButton: {
+    alignItems: 'center',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  createCategoryText: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   card: {
     backgroundColor: APP_COLORS.background,
     borderRadius: 22,
@@ -800,6 +875,13 @@ const styles = StyleSheet.create({
   field: {
     gap: 8,
   },
+  frequencyGrid: {
+    gap: 8,
+  },
+  frequencyRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   footer: {
     backgroundColor: APP_COLORS.surface,
     borderTopColor: APP_COLORS.border,
@@ -842,7 +924,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.blue,
+    backgroundColor: '#7C3AED',
     borderRadius: 13,
     flex: 1,
     height: 48,

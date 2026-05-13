@@ -1,6 +1,4 @@
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -13,6 +11,7 @@ import {
 } from 'react-native';
 import { TransactionTile } from '../components/TransactionTile';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 import { CATEGORIES } from '../constants/categories';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
@@ -38,7 +37,6 @@ export function BudgetCategoryDetailModal({
   selectedYM,
   onClose,
 }: BudgetCategoryDetailModalProps) {
-  const insets = useSafeAreaInsets();
   const payload = useAppStore((s) => s.payload);
   const updateTx = useAppStore((s) => s.updateTransaction);
   const deleteTx = useAppStore((s) => s.deleteTransaction);
@@ -54,14 +52,11 @@ export function BudgetCategoryDetailModal({
   const spent = category ? calcBudgetCategorySpending(payload, category.id, selectedYM) : 0;
   const incomeReal = category ? calcBudgetCategoryIncome(payload, category.id, selectedYM) : 0;
   const available = category ? category.monthlyBudget - spent : 0;
-  const isOver = available < 0;
-  const pct = category && category.monthlyBudget > 0 ? Math.min(1, spent / category.monthlyBudget) : 0;
+  const hasBudget = !!category && category.monthlyBudget > 0;
+  const isOver = hasBudget && available < 0;
+  const pct = hasBudget ? Math.min(1, spent / category.monthlyBudget) : 0;
 
-  const hasIncomeEstimate = (category?.monthlyIncomeEstimate ?? 0) > 0;
-  const incomeEstimate = category?.monthlyIncomeEstimate ?? 0;
-  const incomeRemaining = Math.max(0, incomeEstimate - incomeReal);
-  const incomeReached = incomeReal >= incomeEstimate;
-  const incomePct = incomeEstimate > 0 ? Math.min(1, incomeReal / incomeEstimate) : 0;
+  const hasIncome = incomeReal > 0;
 
   const transactions = useMemo(() => {
     if (!category) return [];
@@ -125,21 +120,51 @@ export function BudgetCategoryDetailModal({
   const iconInfo = CATEGORIES[category.icon] ?? CATEGORIES.other;
 
   return (
-    <Modal visible={!!category} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <Pressable style={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.card}>
+    <Modal visible={!!category} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title={category.name}
+        subtitle={hasBudget ? `${fmt(category.monthlyBudget, currency)} / mes` : 'Sin presupuesto'}
+        breadcrumbs={['Categorias', 'Presupuesto', 'Movimientos']}
+        activeBreadcrumb={2}
+        onBack={onClose}
+        contentContainerStyle={{ padding: 0 }}
+        footer={(
+          <>
+            <Pressable
+              onPress={openNoteEditor}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons
+                name={category.notes ? 'chatbubble' : 'chatbubble-outline'}
+                size={20}
+                color={category.notes ? APP_COLORS.blue : APP_COLORS.textSecondary}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => setEditCategoryOpen(true)}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="pencil-outline" size={20} color={APP_COLORS.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={confirmDeleteCategory}
+              style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
+            >
+              <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
+            </Pressable>
+          </>
+        )}
+      >
 
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { display: 'none' }]}>
             <View style={[styles.iconCircle, { backgroundColor: iconColorSet.bg }]}>
               <Ionicons name={iconInfo.icon} size={22} color={iconColorSet.color} />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.categoryName}>{category.name}</Text>
               <Text style={styles.budgetLabel}>
-                {fmt(category.monthlyBudget, currency)} / mes
+                {hasBudget ? `${fmt(category.monthlyBudget, currency)} / mes` : 'Sin presupuesto'}
               </Text>
             </View>
             <Pressable
@@ -152,29 +177,38 @@ export function BudgetCategoryDetailModal({
 
           {/* Progress summary */}
           <View style={styles.progressSection}>
-            <View style={styles.progressBarTrack}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  { width: `${Math.round(pct * 100)}%` as `${number}%`, backgroundColor: isOver ? '#DC2626' : iconColorSet.color },
-                ]}
-              />
-            </View>
-            <View style={styles.progressNumbers}>
-              <Text style={styles.spentLabel}>
-                <Text style={styles.spentAmount}>{fmt(spent, currency)}</Text>
-                {' '}gastado
-              </Text>
-              <Text style={[styles.availableLabel, { color: isOver ? '#DC2626' : iconColorSet.color }]}>
-                {isOver
-                  ? `Excediste por ${fmt(Math.abs(available), currency)}`
-                  : `${fmt(available, currency)} disponible`}
-              </Text>
-            </View>
+            {hasBudget ? (
+              <>
+                <View style={styles.progressBarTrack}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      { width: `${Math.round(pct * 100)}%` as `${number}%`, backgroundColor: isOver ? '#DC2626' : iconColorSet.color },
+                    ]}
+                  />
+                </View>
+                <View style={styles.progressNumbers}>
+                  <Text style={styles.spentLabel}>
+                    <Text style={styles.spentAmount}>{fmt(spent, currency)}</Text>
+                    {' '}gastado
+                  </Text>
+                  <Text style={[styles.availableLabel, { color: isOver ? '#DC2626' : iconColorSet.color }]}>
+                    {isOver
+                      ? `Excediste por ${fmt(Math.abs(available), currency)}`
+                      : `${fmt(available, currency)} disponible`}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.noBudgetBox}>
+                <Ionicons name="wallet-outline" size={18} color={APP_COLORS.textMuted} />
+                <Text style={styles.noBudgetText}>Agrega un presupuesto a esta categoria.</Text>
+              </View>
+            )}
           </View>
 
-          {/* Income section (optional) */}
-          {hasIncomeEstimate && (
+          {/* Income section */}
+          {hasIncome && (
             <View style={styles.incomeSection}>
               <View style={styles.incomeSectionHeader}>
                 <Ionicons
@@ -183,23 +217,14 @@ export function BudgetCategoryDetailModal({
                   color={APP_COLORS.income}
                 />
                 <Text style={styles.incomeSectionTitle}>Ingresos del mes</Text>
-                <Text style={styles.incomeEstimateText}>Estimado {fmt(incomeEstimate, currency)}</Text>
               </View>
               <View style={styles.incomeBarTrack}>
-                <View
-                  style={[
-                    styles.incomeBarFill,
-                    { width: `${Math.round(incomePct * 100)}%` as `${number}%` },
-                  ]}
-                />
+                <View style={styles.incomeBarFill} />
               </View>
               <View style={styles.incomeNumbersRow}>
                 <Text style={styles.incomeCurrentText}>
                   <Text style={styles.incomeCurrentAmount}>{fmt(incomeReal, currency)}</Text>
-                  {' '}actual
-                </Text>
-                <Text style={[styles.incomeRemainingText, incomeReached && styles.incomeReachedText]}>
-                  {`${fmt(incomeRemaining, currency)} por alcanzar`}
+                  {' '}registrado
                 </Text>
               </View>
             </View>
@@ -260,7 +285,7 @@ export function BudgetCategoryDetailModal({
           </ScrollView>
 
           {/* Actions footer */}
-          <View style={styles.actions}>
+          <View style={[styles.actions, { display: 'none' }]}>
             <Pressable
               onPress={openNoteEditor}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
@@ -284,9 +309,7 @@ export function BudgetCategoryDetailModal({
               <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
             </Pressable>
           </View>
-          </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
 
       <TransactionModal
         visible={!!editTx}
@@ -448,6 +471,23 @@ const styles = StyleSheet.create({
     minHeight: 64,
     textAlignVertical: 'top',
   },
+  noBudgetBox: {
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderColor: APP_COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  noBudgetText: {
+    color: APP_COLORS.textSecondary,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   notesRow: {
     alignItems: 'flex-start',
     backgroundColor: '#F8FAFC',
@@ -527,11 +567,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  incomeEstimateText: {
-    color: APP_COLORS.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-  },
   incomeBarTrack: {
     backgroundColor: '#EEF0F3',
     borderRadius: 6,
@@ -543,6 +578,7 @@ const styles = StyleSheet.create({
     backgroundColor: APP_COLORS.income,
     borderRadius: 6,
     height: '100%',
+    width: '100%',
   },
   incomeNumbersRow: {
     alignItems: 'center',
@@ -560,15 +596,5 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 12,
     fontWeight: '400',
-  },
-  incomeReachedText: {
-    color: APP_COLORS.income,
-  },
-  incomeRemainingText: {
-    color: '#EA580C',
-    flexShrink: 1,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'right',
   },
 });

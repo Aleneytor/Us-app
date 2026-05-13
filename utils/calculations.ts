@@ -1,5 +1,5 @@
 import type { AppPayload, UserId, Goal, SavingPlan, Contribution, Transaction, BudgetCategory } from '../types';
-import { getPaid, isMonthVisible } from './filters';
+import { getOccurrenceDatesInMonth, getPaid, getTransactionAmountForMonth, isMonthVisible } from './filters';
 import { todayStr } from './format';
 
 export function calcDashboard(
@@ -10,8 +10,8 @@ export function calcDashboard(
   const visible = payload.expenses.filter(
     (t) => t.uid === uid && !t.del && isMonthVisible(t, ym),
   );
-  const gastos   = visible.filter((t) => t.kind === 'expense').reduce((s, t) => s + t.amt, 0);
-  const ingresos = visible.filter((t) => t.kind === 'income').reduce((s, t) => s + t.amt, 0);
+  const gastos   = visible.filter((t) => t.kind === 'expense').reduce((s, t) => s + getTransactionAmountForMonth(t, ym), 0);
+  const ingresos = visible.filter((t) => t.kind === 'income').reduce((s, t) => s + getTransactionAmountForMonth(t, ym), 0);
   const ahorrado = payload.contribs
     .filter((c) => c.uid === uid && c.date.slice(0, 7) === ym)
     .reduce((s, c) => s + c.amt, 0);
@@ -28,7 +28,7 @@ export function goalProgress(goal: Goal, contribs: Contribution[]) {
 }
 
 export function savingPlanMonthlyAmount(plan: SavingPlan): number {
-  return plan.targetAmount / plan.months;
+  return plan.months ? plan.targetAmount / plan.months : 0;
 }
 
 export function savingPlanSavedAmount(plan: SavingPlan): number {
@@ -54,8 +54,11 @@ export function calcSaldoActual(payload: AppPayload, uid: UserId): number {
     }
 
     if (!t.paid || typeof t.paid !== 'object') continue;
-    for (const isPaid of Object.values(t.paid)) {
-      if (isPaid) total += t.kind === 'income' ? t.amt : -t.amt;
+    for (const [ym, isPaid] of Object.entries(t.paid)) {
+      if (isPaid) {
+        const monthAmount = getTransactionAmountForMonth(t, ym);
+        total += t.kind === 'income' ? monthAmount : -monthAmount;
+      }
     }
   }
 
@@ -81,7 +84,7 @@ export function calcSaldoProyectado(
 export function calcGastosActual(payload: AppPayload, uid: UserId, ym: string): number {
   return payload.expenses
     .filter((t) => t.uid === uid && !t.del && t.kind === 'expense' && isMonthVisible(t, ym) && getPaid(t, ym))
-    .reduce((sum, t) => sum + t.amt, 0);
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 }
 
 export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: string): number {
@@ -100,7 +103,7 @@ export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: stri
         isMonthVisible(t, ym) &&
         !categoryIds.has(String(t.budgetCatId)),
     )
-    .reduce((sum, t) => sum + t.amt, 0);
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 
   return categoryBudgets + unbudgetedTransactions;
 }
@@ -108,34 +111,19 @@ export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: stri
 export function calcIngresosActual(payload: AppPayload, uid: UserId, ym: string): number {
   return payload.expenses
     .filter((t) => t.uid === uid && !t.del && t.kind === 'income' && isMonthVisible(t, ym) && getPaid(t, ym))
-    .reduce((sum, t) => sum + t.amt, 0);
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 }
 
 export function calcIngresosProyectados(payload: AppPayload, uid: UserId, ym: string): number {
-  const categories = getBudgetCategoriesForUser(payload, uid);
-  const incomeCategoryIds = new Set(
-    categories
-      .filter((bc) => (bc.monthlyIncomeEstimate ?? 0) > 0)
-      .map((bc) => String(bc.id)),
-  );
-  const categoryIncome = categories.reduce((sum, category) => {
-    const estimate = category.monthlyIncomeEstimate ?? 0;
-    if (estimate <= 0) return sum;
-    const received = sumTransactionsForBudgetCategory(payload, category.id, uid, ym, 'income');
-    return sum + Math.max(estimate, received);
-  }, 0);
-  const unbudgetedTransactions = payload.expenses
+  return payload.expenses
     .filter(
       (t) =>
         t.uid === uid &&
         !t.del &&
         t.kind === 'income' &&
-        isMonthVisible(t, ym) &&
-        !incomeCategoryIds.has(String(t.budgetCatId)),
+        isMonthVisible(t, ym),
     )
-    .reduce((sum, t) => sum + t.amt, 0);
-
-  return categoryIncome + unbudgetedTransactions;
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 }
 
 export function calcBudgetCategorySpending(
@@ -151,7 +139,7 @@ export function calcBudgetCategorySpending(
         String(t.budgetCatId) === String(catId) &&
         isMonthVisible(t, ym),
     )
-    .reduce((sum, t) => sum + t.amt, 0);
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 }
 
 export function calcBudgetCategoryIncome(
@@ -167,7 +155,7 @@ export function calcBudgetCategoryIncome(
         String(t.budgetCatId) === String(catId) &&
         isMonthVisible(t, ym),
     )
-    .reduce((sum, t) => sum + t.amt, 0);
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 }
 
 function getBudgetCategoriesForUser(payload: AppPayload, uid: UserId): BudgetCategory[] {
@@ -190,7 +178,7 @@ function sumTransactionsForBudgetCategory(
         String(t.budgetCatId) === String(catId) &&
         isMonthVisible(t, ym),
     )
-    .reduce((sum, t) => sum + t.amt, 0);
+    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
 }
 
 export function getProximosMovimientos(
@@ -203,6 +191,7 @@ export function getProximosMovimientos(
   const todayMs = new Date(ty, tm - 1, td).getTime();
   const limitMs = todayMs + daysAhead * 86_400_000;
   const currentYM = today.slice(0, 7);
+  const nextYM = addMonths(currentYM, 1);
   const results: Array<{ transaction: Transaction; dueDate: string; daysLeft: number }> = [];
 
   for (const t of payload.expenses) {
@@ -211,13 +200,15 @@ export function getProximosMovimientos(
     let dueDate = t.date;
     let paidYM = t.date.slice(0, 7);
 
-    if (t.type === 'monthly') {
-      const [year, month] = currentYM.split('-').map(Number);
-      const sourceDay = Number(t.date.slice(8, 10));
-      const lastDay = new Date(year, month, 0).getDate();
-      const day = Math.min(sourceDay, lastDay);
-      dueDate = `${currentYM}-${String(day).padStart(2, '0')}`;
-      paidYM = currentYM;
+    if (t.type !== 'once') {
+      const candidateDates = [
+        ...getOccurrenceDatesInMonth(t, currentYM),
+        ...getOccurrenceDatesInMonth(t, nextYM),
+      ];
+      const nextDueDate = candidateDates.find((candidate) => candidate >= today);
+      if (!nextDueDate) continue;
+      dueDate = nextDueDate;
+      paidYM = dueDate.slice(0, 7);
     }
 
     if (dueDate < today) continue;
@@ -232,4 +223,10 @@ export function getProximosMovimientos(
   }
 
   return results.sort((a, b) => a.daysLeft - b.daysLeft);
+}
+
+function addMonths(ym: string, amount: number): string {
+  const [year, month] = ym.split('-').map(Number);
+  const next = new Date(year, month - 1 + amount, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
 }

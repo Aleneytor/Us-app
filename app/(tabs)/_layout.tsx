@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import Svg, { Path } from 'react-native-svg';
 import { Tabs } from 'expo-router';
 import { Animated, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
+import { PlanModal } from '../../modals/PlanModal';
 import { SavingPlanModal } from '../../modals/SavingPlanModal';
 import { TransactionModal } from '../../modals/TransactionModal';
 import { APP_COLORS } from '../../constants/colors';
@@ -13,14 +16,14 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
   movimientos: { active: 'receipt', inactive: 'receipt-outline' },
-  ahorro: { active: 'bookmark', inactive: 'bookmark-outline' },
+  ahorro: { active: 'map', inactive: 'map-outline' },
   categorias: { active: 'pie-chart', inactive: 'pie-chart-outline' },
 };
 
 const TAB_LABELS: Record<string, string> = {
   index: 'Inicio',
   movimientos: 'Movimientos',
-  ahorro: 'Ahorro',
+  ahorro: 'Planes',
   categorias: 'Categorias',
 };
 
@@ -40,19 +43,22 @@ const TAB_LABEL_WIDTHS: Record<string, number> = {
 
 const HIDDEN_TAB_ROUTES = new Set(['create', 'perfil', 'ahorros']);
 
-const DROPUP_OPTIONS: Array<{ label: string; icon: IoniconName; key: string }> = [
-  { key: 'ahorro', label: 'Nuevo ahorro', icon: 'bookmark-outline' },
-  { key: 'categoria', label: 'Nueva categoría', icon: 'pie-chart-outline' },
-  { key: 'movimiento', label: 'Nuevo movimiento', icon: 'add-circle-outline' },
+const DROPUP_OPTIONS: Array<{ label: string; description: string; icon: IoniconName; key: string }> = [
+  { key: 'movimiento', label: 'Nuevo movimiento', description: 'Registra un ingreso o gasto en tu cuenta', icon: 'add-circle-outline' },
+  { key: 'categoria', label: 'Nueva categoría', description: 'Agrupa gastos y establece un presupuesto mensual', icon: 'pie-chart-outline' },
+  { key: 'plan', label: 'Nuevo plan', description: 'Organiza gastos compartidos con tu pareja', icon: 'map-outline' },
+  { key: 'ahorro', label: 'Nuevo ahorro', description: 'Define una meta y sigue tu progreso de ahorro', icon: 'bookmark-outline' },
 ];
 
 export default function TabLayout() {
   const [showCreate, setShowCreate] = useState(false);
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [savingPlanCreateOpen, setSavingPlanCreateOpen] = useState(false);
+  const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [dropupOpen, setDropupOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     Animated.spring(rotateAnim, {
@@ -65,12 +71,19 @@ export default function TabLayout() {
   }, [dropupOpen, rotateAnim]);
   const fabSize = 58;
   const fabIconSize = width < 360 ? 25 : 28;
+  const fabBottom = Math.max(insets.bottom, 12);
+
+  const handleCreatePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDropupOpen((v) => !v);
+  };
 
   const handleOption = (key: string) => {
     setDropupOpen(false);
     if (key === 'movimiento') setShowCreate(true);
     else if (key === 'categoria') setNewCategoryOpen(true);
     else if (key === 'ahorro') setSavingPlanCreateOpen(true);
+    else if (key === 'plan') setNewPlanOpen(true);
   };
 
   return (
@@ -102,11 +115,6 @@ export default function TabLayout() {
         tabBar={(props) => (
           <FloatingTabBar
             {...props}
-            createOpen={dropupOpen}
-            fabIconSize={fabIconSize}
-            fabSize={fabSize}
-            onCreatePress={() => setDropupOpen((v) => !v)}
-            rotateAnim={rotateAnim}
           />
         )}
       >
@@ -163,8 +171,40 @@ export default function TabLayout() {
         <DropupOverlay
           onClose={() => setDropupOpen(false)}
           onSelect={handleOption}
+          fabBottom={fabBottom}
+          fabSize={fabSize}
         />
       )}
+
+      <View
+        pointerEvents="box-none"
+        style={[styles.floatingFabShadow, styles.standalonefab, {
+          bottom: fabBottom,
+          borderRadius: fabSize / 2,
+          height: fabSize,
+          width: fabSize,
+        }]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.86}
+          accessibilityLabel="Crear"
+          onPress={handleCreatePress}
+          style={[
+            styles.floatingFab,
+            dropupOpen && styles.floatingFabOpen,
+            {
+              borderRadius: fabSize / 2,
+              height: fabSize,
+              width: fabSize,
+            },
+          ]}
+        >
+          <BlurView intensity={34} tint="light" style={StyleSheet.absoluteFill} />
+          <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
+            <Ionicons name="add" size={fabIconSize} color="#111827" />
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
 
       <TransactionModal
         visible={showCreate}
@@ -179,6 +219,10 @@ export default function TabLayout() {
         visible={savingPlanCreateOpen}
         onClose={() => setSavingPlanCreateOpen(false)}
       />
+      <PlanModal
+        visible={newPlanOpen}
+        onClose={() => setNewPlanOpen(false)}
+      />
     </>
   );
 }
@@ -186,9 +230,13 @@ export default function TabLayout() {
 function DropupOverlay({
   onClose,
   onSelect,
+  fabBottom,
+  fabSize,
 }: {
   onClose: () => void;
   onSelect: (key: string) => void;
+  fabBottom: number;
+  fabSize: number;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -211,13 +259,18 @@ function DropupOverlay({
 
   return (
     <Pressable style={StyleSheet.absoluteFill} onPress={() => animateClose()}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: anim }]}>
+        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, styles.dropupScrim]} />
+      </Animated.View>
+
       <View style={styles.dropupAnchor}>
         <Animated.View
           style={[
             styles.dropupCard,
             {
               opacity: anim,
-              transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+              transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
             },
           ]}
         >
@@ -232,8 +285,14 @@ function DropupOverlay({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name={opt.icon} size={17} color={APP_COLORS.textSecondary} />
-                <Text style={styles.dropupOptionText}>{opt.label}</Text>
+                <View style={styles.dropupOptionIconWrap}>
+                  <Ionicons name={opt.icon} size={26} color="#7C3AED" />
+                </View>
+                <View style={styles.dropupOptionContent}>
+                  <Text style={styles.dropupOptionText}>{opt.label}</Text>
+                  <Text style={styles.dropupOptionDesc}>{opt.description}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={APP_COLORS.textMuted} />
               </Pressable>
             ))}
           </View>
@@ -243,76 +302,51 @@ function DropupOverlay({
   );
 }
 
-function FloatingTabBar({
-  state,
-  descriptors,
-  navigation,
-  insets,
-  createOpen,
-  fabIconSize,
-  fabSize,
-  onCreatePress,
-  rotateAnim,
-}: any) {
+function FloatingTabBar({ state, descriptors, navigation, insets }: any) {
   const visibleRoutes = state.routes.filter((route: any) => !HIDDEN_TAB_ROUTES.has(route.name));
   const bottom = Math.max(insets?.bottom ?? 0, 12);
 
   return (
     <View pointerEvents="box-none" style={[styles.floatingBarWrap, { bottom }]}>
-      <View style={styles.tabPill}>
-        <BlurView intensity={32} tint="light" style={StyleSheet.absoluteFill} />
-        {visibleRoutes.map((route: any) => {
-          const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
-          const focused = state.index === routeIndex;
-          const icons = TAB_ICONS[route.name];
-          const descriptor = descriptors[route.key];
-          const label = TAB_LABELS[route.name] ?? descriptor?.options?.title ?? route.name;
+      <View style={styles.tabPillShadow}>
+        <View style={styles.tabPill}>
+          <BlurView intensity={32} tint="light" style={StyleSheet.absoluteFill} />
+          {visibleRoutes.map((route: any) => {
+            const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
+            const focused = state.index === routeIndex;
+            const icons = TAB_ICONS[route.name];
+            const descriptor = descriptors[route.key];
+            const label = TAB_LABELS[route.name] ?? descriptor?.options?.title ?? route.name;
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
 
-            if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
-            }
-          };
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
 
-          return (
-            <FloatingTabItem
-              key={route.key}
-              accessibilityLabel={descriptor?.options?.tabBarAccessibilityLabel ?? label}
-              focused={focused}
-              icons={icons}
-              label={label}
-              onPress={onPress}
-              routeName={route.name}
-            />
-          );
-        })}
+            return (
+              <FloatingTabItem
+                key={route.key}
+                accessibilityLabel={descriptor?.options?.tabBarAccessibilityLabel ?? label}
+                focused={focused}
+                icons={icons}
+                label={label}
+                onPress={onPress}
+                routeName={route.name}
+              />
+            );
+          })}
+        </View>
       </View>
 
-      <TouchableOpacity
-        activeOpacity={0.86}
-        accessibilityLabel="Crear"
-        onPress={onCreatePress}
-        style={[
-          styles.floatingFab,
-          createOpen && styles.floatingFabOpen,
-          {
-            borderRadius: fabSize / 2,
-            height: fabSize,
-            width: fabSize,
-          },
-        ]}
-      >
-        <BlurView intensity={34} tint="light" style={StyleSheet.absoluteFill} />
-        <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
-          <Ionicons name="add" size={fabIconSize} color="#111827" />
-        </Animated.View>
-      </TouchableOpacity>
+      {/* Spacer to reserve FAB width in the row */}
+      <View style={{ height: 58, width: 58 }} />
     </View>
   );
 }
@@ -333,7 +367,6 @@ function FloatingTabItem({
   routeName: string;
 }) {
   const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
-  const iconFill = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -342,12 +375,7 @@ function FloatingTabItem({
       easing: focused ? EASE_OUT_CUBIC : EASE_IN_OUT_CUBIC,
       useNativeDriver: false,
     }).start();
-    Animated.timing(iconFill, {
-      toValue: focused ? 1 : 0,
-      duration: 50,
-      useNativeDriver: false,
-    }).start();
-  }, [focused, iconFill, progress]);
+  }, [focused, progress]);
 
   const activeWidth = TAB_ACTIVE_WIDTHS[routeName] ?? 112;
   const activeLabelWidth = TAB_LABEL_WIDTHS[routeName] ?? 68;
@@ -356,8 +384,7 @@ function FloatingTabItem({
   const labelWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, activeLabelWidth] });
   const labelMarginLeft = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
   const labelOpacity = progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0, 1] });
-  const iconBackgroundColor = iconFill.interpolate({ inputRange: [0, 1], outputRange: ['rgba(17, 24, 39, 0)', '#111827'] });
-  const iconColor = focused ? '#FFFFFF' : '#7B8491';
+  const iconColor = focused ? '#111827' : '#7B8491';
 
   return (
     <Pressable
@@ -368,7 +395,7 @@ function FloatingTabItem({
       style={({ pressed }) => [pressed && styles.pressed]}
     >
       <Animated.View style={[styles.tabItem, { backgroundColor, width }]}>
-        <Animated.View style={[styles.tabIconBox, { backgroundColor: iconBackgroundColor }]}>
+        <View style={styles.tabIconBox}>
           {routeName === 'index' ? (
             <HomeMinimalIcon color={iconColor} filled={focused} />
           ) : icons ? (
@@ -378,7 +405,7 @@ function FloatingTabItem({
               color={iconColor}
             />
           ) : null}
-        </Animated.View>
+        </View>
         <Animated.View style={{ marginLeft: labelMarginLeft, opacity: labelOpacity, overflow: 'hidden', width: labelWidth }}>
           <Text numberOfLines={1} style={styles.tabItemLabel}>{label}</Text>
         </Animated.View>
@@ -410,41 +437,58 @@ function HomeMinimalIcon({ color, filled = false }: { color: string; filled?: bo
 
 const styles = StyleSheet.create({
   dropupAnchor: {
-    bottom: 92,
+    bottom: 96,
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     position: 'absolute',
     right: 18,
   },
   dropupCard: {
-    borderRadius: 14,
-    elevation: 5,
-    shadowColor: '#7E7E7E',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    width: 210,
+    borderRadius: 20,
+    elevation: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    width: 300,
   },
   dropupInner: {
     backgroundColor: APP_COLORS.surface,
-    borderRadius: 14,
+    borderRadius: 20,
     overflow: 'hidden',
   },
   dropupOption: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    gap: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
   dropupOptionBorder: {
     borderTopColor: APP_COLORS.border,
     borderTopWidth: 1,
   },
+  dropupOptionContent: {
+    flex: 1,
+    gap: 3,
+  },
+  dropupOptionDesc: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  dropupOptionIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+  },
   dropupOptionText: {
     color: APP_COLORS.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  dropupScrim: {
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
   },
   fab: {
     alignItems: 'center',
@@ -464,7 +508,7 @@ const styles = StyleSheet.create({
   floatingBarWrap: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 16,
     justifyContent: 'center',
     left: 14,
     position: 'absolute',
@@ -475,16 +519,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.76)',
     borderColor: 'rgba(255, 255, 255, 0.88)',
     borderWidth: 1,
-    elevation: 8,
     justifyContent: 'center',
     overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
   },
   floatingFabOpen: {
     backgroundColor: 'rgba(241, 245, 249, 0.9)',
+  },
+  floatingFabShadow: {
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    elevation: 6,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+  },
+  standalonefab: {
+    position: 'absolute',
+    right: 22,
   },
   header: {
     backgroundColor: '#FFFFFF',
@@ -535,19 +586,25 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.88)',
     borderWidth: 1,
     borderRadius: 29,
-    elevation: 8,
     flex: 1,
     flexDirection: 'row',
     gap: 2,
     height: 58,
     justifyContent: 'space-between',
-    maxWidth: 390,
     overflow: 'hidden',
     paddingHorizontal: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
+  },
+  tabPillShadow: {
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderRadius: 29,
+    elevation: 6,
+    flex: 1,
+    height: 58,
+    maxWidth: 390,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
   },
 
 });

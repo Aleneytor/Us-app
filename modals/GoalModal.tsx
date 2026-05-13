@@ -1,6 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -16,6 +14,7 @@ import { ColorPicker } from '../components/ColorPicker';
 import { EmojiPicker } from '../components/EmojiPicker';
 import { IconPicker } from '../components/IconPicker';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { APP_COLORS } from '../constants/colors';
 import { GOAL_EMOJIS } from '../constants/emojis';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
@@ -31,7 +30,6 @@ interface GoalModalProps {
 }
 
 export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
-  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const addGoal = useAppStore((s) => s.addGoal);
   const updateGoal = useAppStore((s) => s.updateGoal);
@@ -84,13 +82,15 @@ export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.keyboardView}>
-      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.screenShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.screen}>
-          <ModalHeader title={editing ? 'Editar meta' : 'Nueva meta'} onClose={onClose} />
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title={editing ? 'Editar meta' : 'Nueva meta'}
+        breadcrumbs={['Tipo', 'Objetivo', 'Detalles']}
+        activeBreadcrumb={name.trim() ? target.trim() ? 2 : 1 : 0}
+        onBack={onClose}
+        contentContainerStyle={{ padding: 0 }}
+        footer={<Footer onCancel={onClose} onSave={save} />}
+      >
           <ScrollView
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
@@ -121,11 +121,7 @@ export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
             <ColorPicker value={iconColor} onChange={setIconColor} />
             <Field label="Notas" value={notes} onChangeText={setNotes} placeholder="Opcional" multiline />
           </ScrollView>
-          <Footer onCancel={onClose} onSave={save} />
-          </View>
-        </Pressable>
-      </Pressable>
-      </View>
+      </ModalScreen>
     </Modal>
   );
 }
@@ -174,14 +170,14 @@ function Choice({ label, active, onPress }: { label: string; active: boolean; on
 
 function Footer({ onCancel, onSave }: { onCancel: () => void; onSave: () => void }) {
   return (
-    <View style={styles.footer}>
+    <>
       <Pressable onPress={() => runAfterKeyboardDismiss(onCancel)} style={styles.secondaryButton}>
         <Text style={styles.secondaryText}>Cancelar</Text>
       </Pressable>
       <Pressable onPress={() => runAfterKeyboardDismiss(onSave)} style={styles.primaryButton}>
         <Text style={styles.primaryText}>Guardar</Text>
       </Pressable>
-    </View>
+    </>
   );
 }
 

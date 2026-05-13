@@ -1,11 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useEffect, useRef, useState } from 'react';
+import type { ComponentProps } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
-  Animated,
-  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,306 +10,258 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { AppModal as Modal } from '../components/AppModal';
 import { ColorPicker } from '../components/ColorPicker';
 import { IconPicker } from '../components/IconPicker';
-import { AppModal as Modal } from '../components/AppModal';
-import { APP_COLORS } from '../constants/colors';
-import { ALL_CATEGORY_KEYS } from '../constants/categories';
-import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
+import { ModalScreen } from '../components/ModalScreen';
+import { BUDGET_CATEGORY_ICON_KEYS, BUDGET_CATEGORY_PRESETS, CATEGORIES } from '../constants/categories';
+import { APP_COLORS, getIconColor } from '../constants/colors';
 import { useAppStore } from '../store/useAppStore';
-import type { BudgetCategory, UserId } from '../types';
+import type { BudgetCategory } from '../types';
 import { parseAmt } from '../utils/format';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
+import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 
 interface BudgetCategoryModalProps {
   visible: boolean;
   category?: BudgetCategory | null;
   onClose: () => void;
+  onSaved?: (category: BudgetCategory) => void;
 }
 
-export function BudgetCategoryModal({ visible, category, onClose }: BudgetCategoryModalProps) {
-  const insets = useSafeAreaInsets();
+export function BudgetCategoryModal({ visible, category, onClose, onSaved }: BudgetCategoryModalProps) {
   const currentUser = useAppStore((s) => s.currentUser);
   const addBudgetCategory = useAppStore((s) => s.addBudgetCategory);
   const updateBudgetCategory = useAppStore((s) => s.updateBudgetCategory);
 
+  const [step, setStep] = useState<0 | 1>(0);
   const [name, setName] = useState('');
+  const [budget, setBudget] = useState('');
   const [icon, setIcon] = useState('food');
   const [iconColor, setIconColor] = useState('purple');
-  const [budget, setBudget] = useState('');
-  const [hasIncome, setHasIncome] = useState(false);
-  const [incomeEstimate, setIncomeEstimate] = useState('');
-  const [showBudgetField, setShowBudgetField] = useState(true);
-  const [showCustomizeFields, setShowCustomizeFields] = useState(false);
   const [personal, setPersonal] = useState(false);
   const [notes, setNotes] = useState('');
-  const scrollerRef = useRef<ScrollView>(null);
-  const budgetInputRef = useRef<TextInput>(null);
-  const customizeYRef = useRef(0);
-
-  // Animation for income field reveal
-  const incomeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(incomeAnim, {
-      toValue: hasIncome ? 1 : 0,
-      duration: hasIncome ? 300 : 220,
-      easing: hasIncome ? Easing.out(Easing.quad) : Easing.inOut(Easing.quad),
-      useNativeDriver: false,
-    }).start();
-  }, [hasIncome, incomeAnim]);
+  const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
+  const notesScroll = useKeyboardAwareScroll();
 
   const editing = !!category;
-  const incomeEstimateNum = parseAmt(incomeEstimate);
   const budgetNum = parseAmt(budget);
-  const hasValidIncomeEstimate = Number.isFinite(incomeEstimateNum) && incomeEstimateNum > 0;
-  const hasValidBudget = Number.isFinite(budgetNum) && budgetNum > 0;
-  const shouldShowBudgetField = editing || showBudgetField || !hasIncome;
-  const shouldShowCustomizeFields = editing || showCustomizeFields;
-  const primaryLabel = hasIncome && !shouldShowBudgetField && hasValidIncomeEstimate
-    ? 'Continuar'
-    : hasValidBudget && !shouldShowCustomizeFields
-      ? 'Continuar'
-      : 'Guardar';
+  const normalizedBudget = Number.isFinite(budgetNum) && budgetNum > 0 ? budgetNum : 0;
+  const hasSelectedPresets = selectedPresets.length > 0;
 
   useEffect(() => {
     if (!visible) return;
+
+    setStep(category ? 1 : 0);
     setName(category?.name ?? '');
+    setBudget(category ? String(category.monthlyBudget) : '');
     setIcon(category?.icon ?? 'food');
     setIconColor(category?.iconColor ?? 'purple');
-    setBudget(category ? String(category.monthlyBudget) : '');
-    const existingIncome = category?.monthlyIncomeEstimate;
-    setHasIncome(existingIncome !== undefined && existingIncome > 0);
-    setIncomeEstimate(existingIncome ? String(existingIncome) : '');
-    setShowBudgetField(!existingIncome || existingIncome <= 0 || !!category);
-    setShowCustomizeFields(!!category);
     setPersonal(category?.uid !== undefined);
     setNotes(category?.notes ?? '');
+    setSelectedPresets([]);
   }, [visible, category]);
 
-  const continueToBudget = () => {
+  const validateDetails = () => {
     if (!name.trim()) {
       Alert.alert('Falta nombre', 'Ponle un nombre a la categoria.');
-      return;
+      return false;
     }
-    if (!hasValidIncomeEstimate) {
-      Alert.alert('Ingreso invalido', 'Escribe un ingreso estimado mayor a cero.');
-      return;
+    if (budget.trim() && (!Number.isFinite(budgetNum) || budgetNum < 0)) {
+      Alert.alert('Presupuesto invalido', 'Escribe un presupuesto valido o dejalo vacio.');
+      return false;
     }
-    setShowBudgetField(true);
-    requestAnimationFrame(() => budgetInputRef.current?.focus());
+    return true;
   };
 
-  const continueToCustomize = () => {
-    if (!name.trim()) {
-      Alert.alert('Falta nombre', 'Ponle un nombre a la categoria.');
-      return;
-    }
-    if (!hasValidBudget) {
-      Alert.alert('Presupuesto invalido', 'Escribe un presupuesto mayor a cero.');
-      return;
-    }
-    const randomIcon = ALL_CATEGORY_KEYS[Math.floor(Math.random() * ALL_CATEGORY_KEYS.length)] ?? 'food';
-    setIcon(randomIcon);
-    setShowCustomizeFields(true);
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        scrollerRef.current?.scrollTo({
-          y: Math.max(0, customizeYRef.current - 12),
-          animated: true,
-        });
-      }, 80);
-    });
+  const togglePreset = (name: string) => {
+    setSelectedPresets((current) =>
+      current.includes(name) ? current.filter((item) => item !== name) : [...current, name],
+    );
   };
 
-  const handlePrimaryAction = () => {
-    if (hasIncome && !shouldShowBudgetField) {
-      continueToBudget();
-      return;
-    }
-    if (!shouldShowCustomizeFields) {
-      continueToCustomize();
-      return;
-    }
-    save();
-  };
-
-  const handlePrimaryPress = () => {
-    if (hasIncome && !shouldShowBudgetField) {
-      handlePrimaryAction();
-      return;
-    }
-    if (!shouldShowCustomizeFields) {
-      runAfterKeyboardDismiss(handlePrimaryAction);
-      return;
-    }
-    runAfterKeyboardDismiss(handlePrimaryAction);
+  const startCustomCategory = () => {
+    setName('');
+    setBudget('');
+    setIcon('other');
+    setIconColor('purple');
+    setNotes('');
+    setStep(1);
   };
 
   const save = () => {
-    if (!name.trim()) {
-      Alert.alert('Falta nombre', 'Ponle un nombre a la categoría.');
-      return;
-    }
-    if (hasIncome && !hasValidIncomeEstimate) {
-      Alert.alert('Ingreso invalido', 'Escribe un ingreso estimado mayor a cero.');
-      return;
-    }
-    const budgetNum = parseAmt(budget);
-    if (!Number.isFinite(budgetNum) || budgetNum <= 0) {
-      Alert.alert('Presupuesto inválido', 'Escribe un presupuesto mayor a cero.');
-      return;
-    }
+    if (!validateDetails()) return;
 
     const next: BudgetCategory = {
       id: category?.id ?? Date.now(),
       name: name.trim(),
       icon,
       iconColor,
-      monthlyBudget: budgetNum,
-      monthlyIncomeEstimate: hasIncome ? incomeEstimateNum : undefined,
+      monthlyBudget: normalizedBudget,
       uid: personal ? currentUser : undefined,
       notes: notes.trim() || undefined,
     };
 
     if (editing) updateBudgetCategory(next);
     else addBudgetCategory(next);
+    onSaved?.(next);
+    onClose();
+  };
+
+  const saveSelectedPresets = () => {
+    const selected = BUDGET_CATEGORY_PRESETS.filter((preset) => selectedPresets.includes(preset.name));
+    if (selected.length === 0) return;
+
+    const created = selected.map((preset, index): BudgetCategory => ({
+      id: Date.now() + index,
+      name: preset.name,
+      icon: preset.icon,
+      iconColor: preset.iconColor,
+      monthlyBudget: 0,
+      uid: currentUser,
+    }));
+
+    created.forEach(addBudgetCategory);
+    onSaved?.(created[created.length - 1]);
+    onClose();
+  };
+
+  const handlePrimaryPress = () => {
+    if (!editing && step === 0) {
+      dismissKeyboardAndBlur();
+      if (hasSelectedPresets) {
+        saveSelectedPresets();
+        return;
+      }
+      startCustomCategory();
+      return;
+    }
+    runAfterKeyboardDismiss(save);
+  };
+
+  const handleBack = () => {
+    dismissKeyboardAndBlur();
+    if (!editing && step > 0) {
+      setStep(0);
+      return;
+    }
+    onClose();
+  };
+
+  const handleSecondaryPress = () => {
+    dismissKeyboardAndBlur();
+    if (!editing && step > 0) {
+      setStep(0);
+      return;
+    }
     onClose();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.keyboardView}>
-        <Pressable style={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-          <View style={styles.cardMotion}>
-          <Pressable
-            style={styles.card}
-            onPressIn={(event) => event.stopPropagation()}
-          >
-            <View style={styles.header}>
-              <View>
-                <Text style={styles.title}>{editing ? 'Editar categoría' : 'Nueva categoría'}</Text>
-              </View>
-              <Pressable onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleBack}>
+      <ModalScreen
+          title={editing ? 'Editar categoria' : 'Nueva categoria'}
+          breadcrumbs={editing ? ['Detalles'] : ['Elegir', 'Detalles']}
+          activeBreadcrumb={editing ? 0 : step}
+          canPressBreadcrumb={(index) => !editing && index < step}
+          onBreadcrumbPress={(index) => {
+            if (!editing && index < step) setStep(index as 0 | 1);
+          }}
+          onBack={handleBack}
+          contentContainerStyle={{ padding: 0 }}
+          footer={(
+            <>
+              <Pressable onPress={handleSecondaryPress} style={styles.secondaryButton}>
+                <Text style={styles.secondaryText}>{!editing && step === 1 ? 'Atras' : 'Cancelar'}</Text>
               </Pressable>
-            </View>
-
-            <ScrollView
-              ref={scrollerRef}
-              style={styles.scroller}
-              contentContainerStyle={styles.content}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              onScrollBeginDrag={dismissKeyboardAndBlur}
-            >
-              <View style={styles.block}>
-                <LabeledInput
-                  label="Nombre"
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Ej. Unas, Comida, Renta"
-                />
-
-                {/* ── Income estimate toggle (top) ── */}
-                <View style={styles.incomeToggleRow}>
-                  <Text style={[styles.label, styles.incomeQuestionLabel]}>
-                    ¿Esta categoría genera ingresos?
-                  </Text>
-                  <ChoiceButton
-                    label={hasIncome ? 'Sí' : 'No'}
-                    icon={hasIncome ? 'checkmark-circle-outline' : 'close-circle-outline'}
-                    active={hasIncome}
-                    onPress={() => {
-                      setHasIncome((value) => {
-                        const next = !value;
-                        setShowBudgetField(!next);
-                        setShowCustomizeFields(false);
-                        return next;
-                      });
-                    }}
-                  />
-                </View>
-
-                <Animated.View
-                  style={[
-                    styles.incomeFieldWrap,
-                    {
-                      opacity: incomeAnim,
-                      maxHeight: incomeAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, 112],
-                      }),
-                      marginTop: incomeAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [-8, 0],
-                      }),
-                      transform: [{
-                        translateY: incomeAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-10, 0],
-                        }),
-                      }, {
-                        scale: incomeAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.98, 1],
-                        }),
-                      }],
-                    },
-                  ]}
-                  pointerEvents={hasIncome ? 'auto' : 'none'}
-                >
-                  <View style={styles.field}>
-                    <Text style={styles.label}>Ingreso mensual estimado</Text>
-                    <TextInput
-                      value={incomeEstimate}
-                      onChangeText={setIncomeEstimate}
-                      keyboardType="decimal-pad"
-                      placeholder="0"
-                      placeholderTextColor="#CBD5E1"
-                      selectTextOnFocus
-                      style={styles.incomeInput}
+              <Pressable onPress={handlePrimaryPress} style={styles.primaryButton}>
+                <Text style={styles.primaryText}>
+                  {!editing && step === 0
+                    ? hasSelectedPresets ? `Guardar ${selectedPresets.length}` : 'Crear propia'
+                    : 'Guardar'}
+                </Text>
+              </Pressable>
+            </>
+          )}
+      >
+        <ScrollView
+          ref={notesScroll.scrollRef}
+          style={styles.scroller}
+          contentContainerStyle={[
+            styles.content,
+            notesScroll.bottomPadding !== undefined && { paddingBottom: notesScroll.bottomPadding },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={dismissKeyboardAndBlur}
+          showsVerticalScrollIndicator={false}
+        >
+          {!editing && step === 0 ? (
+            <View style={styles.block}>
+              <View style={styles.field}>
+                <Text style={styles.label}>Categorias prediseñadas</Text>
+                <Text style={styles.helperText}>
+                  Selecciona todas las que quieras agregar ahora. Podras ponerles presupuesto despues.
+                </Text>
+                <View style={styles.presetGrid}>
+                  {BUDGET_CATEGORY_PRESETS.map((preset) => (
+                    <PresetButton
+                      key={preset.name}
+                      name={preset.name}
+                      icon={preset.icon}
+                      iconColor={preset.iconColor}
+                      active={selectedPresets.includes(preset.name)}
+                      onPress={() => togglePreset(preset.name)}
                     />
-                  </View>
-                </Animated.View>
-
-
-                {shouldShowBudgetField ? (
-                <View style={styles.field}>
-                  <Text style={styles.label}>Presupuesto mensual</Text>
-                  <TextInput
-                    ref={budgetInputRef}
-                    value={budget}
-                    onChangeText={setBudget}
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor="#CBD5E1"
-                    selectTextOnFocus
-                    style={styles.budgetInput}
-                  />
+                  ))}
                 </View>
-                ) : null}
-
-                {shouldShowCustomizeFields ? (
-                <View
-                  style={styles.customizeSection}
-                  onLayout={(event) => {
-                    customizeYRef.current = event.nativeEvent.layout.y;
+                <Pressable
+                  onPress={() => {
+                    dismissKeyboardAndBlur();
+                    startCustomCategory();
                   }}
+                  style={({ pressed }) => [styles.customCategoryButton, pressed && styles.pressed]}
                 >
-                <Text style={styles.label}>Ícono</Text>
-                <IconPicker
-                  value={icon}
-                  colorId={iconColor}
-                  keys={ALL_CATEGORY_KEYS}
-                  horizontalInset={18}
-                  onChange={setIcon}
+                  <Ionicons name="add" size={17} color={APP_COLORS.textSecondary} />
+                  <Text style={styles.customCategoryText}>Crear Categoria</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.block}>
+              <LabeledInput
+                label="Titulo de la categoria"
+                value={name}
+                onChangeText={setName}
+                placeholder="Ej. Comida"
+              />
+
+              <View style={styles.field}>
+                <Text style={styles.label}>Presupuesto mensual</Text>
+                <TextInput
+                  value={budget}
+                  onChangeText={setBudget}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor="#CBD5E1"
+                  selectTextOnFocus
+                  style={styles.amountInput}
                 />
+              </View>
 
-                <Text style={styles.label}>Color</Text>
-                <ColorPicker value={iconColor} onChange={setIconColor} />
+              <Text style={styles.label}>Icono</Text>
+              <IconPicker
+                value={icon}
+                colorId={iconColor}
+                keys={BUDGET_CATEGORY_ICON_KEYS}
+                horizontalInset={18}
+                onChange={setIcon}
+              />
 
+              <Text style={styles.label}>Color</Text>
+              <ColorPicker value={iconColor} onChange={setIconColor} />
+
+              <View style={styles.field}>
                 <Text style={styles.label}>Visible para</Text>
                 <View style={styles.choiceRow}>
                   <ChoiceButton
@@ -328,35 +277,60 @@ export function BudgetCategoryModal({ visible, category, onClose }: BudgetCatego
                     onPress={() => setPersonal(true)}
                   />
                 </View>
-
-                <LabeledInput
-                  label="Notas (opcional)"
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Opcional"
-                  multiline
-                />
-                </View>
-                ) : null}
               </View>
-            </ScrollView>
 
-            <View style={styles.footer}>
-              <Pressable
-                onPress={() => runAfterKeyboardDismiss(onClose)}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryText}>Cancelar</Text>
-              </Pressable>
-              <Pressable onPress={handlePrimaryPress} style={styles.primaryButton}>
-                <Text style={styles.primaryText}>{primaryLabel}</Text>
-              </Pressable>
+              <LabeledInput
+                label="Notas"
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Opcional"
+                multiline
+                onFocus={notesScroll.onFocus}
+                onBlur={notesScroll.onBlur}
+              />
             </View>
-          </Pressable>
-          </View>
-        </Pressable>
-      </View>
+          )}
+        </ScrollView>
+      </ModalScreen>
     </Modal>
+  );
+}
+
+function PresetButton({
+  name,
+  icon,
+  iconColor,
+  active,
+  onPress,
+}: {
+  name: string;
+  icon: string;
+  iconColor: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const category = CATEGORIES[icon] ?? CATEGORIES.other;
+  const color = getIconColor(iconColor);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.presetButton,
+        active && { borderColor: color.color, backgroundColor: color.bg },
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.presetIcon, { backgroundColor: color.bg }]}>
+        <Ionicons name={category.icon} size={20} color={color.color} />
+      </View>
+      <Text style={styles.presetText} numberOfLines={1}>{name}</Text>
+      {active ? (
+        <View style={[styles.presetCheck, { backgroundColor: color.color }]}>
+          <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -364,7 +338,7 @@ function LabeledInput({
   label,
   multiline,
   ...props
-}: React.ComponentProps<typeof TextInput> & { label: string }) {
+}: ComponentProps<typeof TextInput> & { label: string }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -385,7 +359,7 @@ function ChoiceButton({
   onPress,
 }: {
   label: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: ComponentProps<typeof Ionicons>['name'];
   active: boolean;
   onPress: () => void;
 }) {
@@ -405,10 +379,7 @@ function ChoiceButton({
 }
 
 const styles = StyleSheet.create({
-  block: {
-    gap: 14,
-  },
-  budgetInput: {
+  amountInput: {
     backgroundColor: APP_COLORS.surface,
     borderColor: APP_COLORS.border,
     borderRadius: 12,
@@ -420,22 +391,8 @@ const styles = StyleSheet.create({
     padding: 12,
     textAlign: 'center',
   },
-  card: {
-    backgroundColor: APP_COLORS.background,
-    borderRadius: 22,
-    maxHeight: '96%',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  cardMotion: {
-    borderRadius: 22,
-    elevation: 14,
-    maxWidth: 520,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.24,
-    shadowRadius: 30,
-    width: '100%',
+  block: {
+    gap: 16,
   },
   choiceBtn: {
     alignItems: 'center',
@@ -466,45 +423,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  closeButton: {
-    alignItems: 'center',
-    borderRadius: 12,
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
-  },
   content: {
     padding: 18,
-    paddingBottom: 22,
+    paddingBottom: 28,
   },
-  customizeSection: {
-    gap: 14,
+  customCategoryButton: {
+    alignItems: 'center',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  customCategoryText: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
   },
   field: {
     gap: 7,
   },
-  footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    padding: 16,
-  },
-  header: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  headerSub: {
-    color: APP_COLORS.textSecondary,
+  helperText: {
+    color: APP_COLORS.textMuted,
     fontSize: 12,
-    fontWeight: '700',
-    marginTop: 3,
+    lineHeight: 17,
   },
   input: {
     backgroundColor: APP_COLORS.surface,
@@ -515,20 +459,61 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
     minHeight: 46,
+    padding: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  keyboardView: {
-    flex: 1,
-    justifyContent: 'center',
   },
   label: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.72,
+  },
+  presetButton: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexBasis: '31%',
+    flexGrow: 1,
+    gap: 8,
+    minHeight: 92,
+    minWidth: 92,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    position: 'relative',
+  },
+  presetCheck: {
+    alignItems: 'center',
+    borderRadius: 9,
+    height: 18,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 7,
+    top: 7,
+    width: 18,
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  presetIcon: {
+    alignItems: 'center',
+    borderRadius: 18,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  presetText: {
+    color: APP_COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: '100%',
+    textAlign: 'center',
   },
   primaryButton: {
     alignItems: 'center',
@@ -543,14 +528,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
   },
-  screen: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
   scroller: {
-    flexShrink: 1,
+    flex: 1,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -567,38 +546,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   textarea: {
-    minHeight: 72,
+    minHeight: 86,
     textAlignVertical: 'top',
-  },
-  title: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 21,
-    fontWeight: MODAL_TITLE_FONT_WEIGHT,
-  },
-  incomeInput: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    color: APP_COLORS.textPrimary,
-    fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 36,
-    minHeight: 72,
-    padding: 12,
-    textAlign: 'center',
-  },
-  incomeQuestionLabel: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '400',
-  },
-  incomeToggleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  incomeFieldWrap: {
-    overflow: 'hidden',
   },
 });

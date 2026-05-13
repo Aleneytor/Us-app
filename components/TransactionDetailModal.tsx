@@ -1,9 +1,8 @@
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppModal as Modal } from './AppModal';
+import { ModalScreen } from './ModalScreen';
 import { CATEGORIES } from '../constants/categories';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
@@ -25,7 +24,6 @@ export function TransactionDetailModal({
   onEdit: (t: Transaction) => void;
   onDelete: (t: Transaction) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const currency = useAppStore((s) => s.currency);
   const users = useAppStore((s) => s.users);
 
@@ -40,14 +38,40 @@ export function TransactionDetailModal({
   const showCategorySubtitle = !!transaction.desc && transaction.desc !== category.label;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.card}>
+    <Modal visible animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title={titleText}
+        subtitle={showCategorySubtitle ? category.label : formatDateShort(transaction.date)}
+        breadcrumbs={['Movimientos', 'Detalle']}
+        activeBreadcrumb={1}
+        onBack={onClose}
+        contentContainerStyle={{ padding: 0 }}
+        footer={(
+          <>
+              <Pressable
+                onPress={() => {}}
+                style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="chatbubble-outline" size={20} color={APP_COLORS.textSecondary} />
+              </Pressable>
+              <Pressable
+                onPress={() => onEdit(transaction)}
+                style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="pencil-outline" size={20} color={APP_COLORS.textSecondary} />
+              </Pressable>
+              <Pressable
+                onPress={() => onDelete(transaction)}
+                style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
+              >
+                <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
+              </Pressable>
+          </>
+        )}
+      >
 
             {/* Header: icon + title + date + close */}
-            <View style={styles.header}>
+            <View style={[styles.header, { display: 'none' }]}>
               <View style={[styles.iconCircle, { backgroundColor: iconColor.bg }]}>
                 <Ionicons name={category.icon} size={22} color={iconColor.color} />
               </View>
@@ -79,13 +103,13 @@ export function TransactionDetailModal({
                   </Text>
                 </View>
                 <View style={[styles.badge, { backgroundColor: '#FFF7ED' }]}>
-                  {transaction.type === 'monthly' ? (
-                    <Ionicons name="refresh-outline" size={11} color="#F97316" />
-                  ) : (
+                  {transaction.type === 'once' ? (
                     <MaterialCommunityIcons name="star-four-points" size={11} color="#F97316" />
+                  ) : (
+                    <Ionicons name={getTransactionTypeIcon(transaction.type)} size={11} color="#F97316" />
                   )}
                   <Text style={[styles.badgeText, { color: '#F97316' }]}>
-                    {transaction.type === 'monthly' ? 'MENSUAL' : 'ÚNICO'}
+                    {getTransactionTypeLabel(transaction.type).toUpperCase()}
                   </Text>
                 </View>
               </View>
@@ -120,7 +144,7 @@ export function TransactionDetailModal({
             ) : null}
 
             {/* Action buttons */}
-            <View style={styles.actions}>
+            <View style={[styles.actions, { display: 'none' }]}>
               <Pressable
                 onPress={() => {}}
                 style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
@@ -141,11 +165,23 @@ export function TransactionDetailModal({
               </Pressable>
             </View>
 
-          </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
+}
+
+function getTransactionTypeLabel(type: Transaction['type']): string {
+  if (type === 'monthly') return 'Mensual';
+  if (type === 'weekly') return 'Semanal';
+  if (type === 'biweekly') return 'Bi semanal';
+  return 'Unico';
+}
+
+function getTransactionTypeIcon(type: Transaction['type']) {
+  if (type === 'monthly') return 'refresh-outline';
+  if (type === 'weekly') return 'calendar-outline';
+  if (type === 'biweekly') return 'git-compare-outline';
+  return 'radio-button-on-outline';
 }
 
 const styles = StyleSheet.create({

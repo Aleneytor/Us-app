@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppModal as Modal } from './AppModal';
+import { ModalScreen } from './ModalScreen';
 import { APP_COLORS } from '../constants/colors';
 import { MONTHS_ES, formatYM, nextYM, prevYM } from '../utils/format';
 
@@ -72,10 +72,14 @@ function MonthPickerModal({
   }, [visible, year]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <Pressable style={styles.pickerBackdrop} onPressIn={onClose}>
-        <Pressable style={styles.pickerCardShadow} onPressIn={(event) => event.stopPropagation()}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <ModalScreen
+        title="Elegir mes"
+        subtitle={String(pickerYear)}
+        breadcrumbs={['Periodo', 'Mes']}
+        activeBreadcrumb={1}
+        onBack={onClose}
+      >
           <View style={styles.pickerCard}>
             <View style={styles.pickerYearRow}>
               <Pressable
@@ -114,8 +118,7 @@ function MonthPickerModal({
               })}
             </View>
           </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
 }

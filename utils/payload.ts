@@ -1,4 +1,4 @@
-import type { AppPayload, Plan, PlanCategory, PlanExpense, PlanMember, SavingPlan, SavingPlanHistoryEntry, UserId } from '../types';
+import type { AppPayload, Plan, PlanCategory, PlanExpense, PlanExpenseSplit, PlanMember, PlanSettlement, SavingPlan, SavingPlanHistoryEntry, UserId } from '../types';
 
 const fallbackDate = () => new Date().toISOString().slice(0, 10);
 
@@ -40,7 +40,8 @@ function normalizeSavingPlan(value: unknown): SavingPlan | null {
   if (!record) return null;
 
   const targetAmount = asNumber(record.targetAmount ?? record.price);
-  const months = Math.max(1, Math.trunc(asNumber(record.months)));
+  const monthsRaw = Math.trunc(asNumber(record.months));
+  const months = monthsRaw > 0 ? monthsRaw : undefined;
   const titleValue = record.title ?? record.name;
   const title = typeof titleValue === 'string' ? titleValue.trim() : '';
   const rawType = record.type === 'joint' || record.scope === 'joint' ? 'joint' : 'personal';
@@ -58,7 +59,9 @@ function normalizeSavingPlan(value: unknown): SavingPlan | null {
     title,
     targetAmount,
     months,
+    iconColor: typeof record.iconColor === 'string' && record.iconColor.trim() ? record.iconColor.trim() : undefined,
     link: typeof record.link === 'string' && record.link.trim() ? record.link.trim() : undefined,
+    notes: typeof record.notes === 'string' && record.notes.trim() ? record.notes.trim() : undefined,
     date: typeof record.date === 'string' && record.date.trim() ? record.date.trim() : fallbackDate(),
     history: historySource
       .map(normalizeSavingPlanHistoryEntry)
@@ -91,18 +94,70 @@ function normalizePlanCategory(value: unknown): PlanCategory | null {
   };
 }
 
-function normalizePlanExpense(value: unknown): PlanExpense | null {
+function normalizePlanExpenseSplit(value: unknown): PlanExpenseSplit | null {
   const r = asRecord(value);
   if (!r || typeof r.memberId !== 'string' || !r.memberId) return null;
+  const amount = asNumber(r.amount);
+  if (amount < 0) return null;
+  return {
+    memberId: r.memberId,
+    parts: typeof r.parts === 'number' && r.parts > 0 ? r.parts : undefined,
+    pct: typeof r.pct === 'number' && r.pct >= 0 ? r.pct : undefined,
+    amount,
+  };
+}
+
+function normalizePlanSettlement(value: unknown): PlanSettlement | null {
+  const r = asRecord(value);
+  if (!r || typeof r.fromMemberId !== 'string' || typeof r.toMemberId !== 'string') return null;
   const amount = asNumber(r.amount);
   if (amount <= 0) return null;
   return {
     id: asNumber(r.id) || Date.now(),
-    categoryId: asNumber(r.categoryId),
-    memberId: r.memberId,
-    memberName: typeof r.memberName === 'string' ? r.memberName : '',
+    fromMemberId: r.fromMemberId,
+    toMemberId: r.toMemberId,
     amount,
     date: typeof r.date === 'string' && r.date ? r.date : fallbackDate(),
+    note: typeof r.note === 'string' && r.note ? r.note : undefined,
+  };
+}
+
+// memberCount is used to generate fallback equal splits for legacy expenses
+function normalizePlanExpense(value: unknown, memberCount: number): PlanExpense | null {
+  const r = asRecord(value);
+  if (!r || typeof r.memberId !== 'string' || !r.memberId) return null;
+  const amount = asNumber(r.amount);
+  if (amount <= 0) return null;
+
+  const rawSplitMode = r.splitMode;
+  const splitMode: PlanExpense['splitMode'] =
+    rawSplitMode === 'parts' || rawSplitMode === 'percentage' ? rawSplitMode : 'equal';
+
+  const rawSplits = Array.isArray(r.splits)
+    ? r.splits.map(normalizePlanExpenseSplit).filter((x): x is PlanExpenseSplit => !!x)
+    : [];
+
+  // Legacy migration: if no splits stored, leave empty — computeMemberBalances handles it
+  const splits = rawSplits.length > 0 ? rawSplits : [];
+
+  // title: prefer explicit title, fall back to legacy note or memberName
+  const rawTitle = r.title ?? r.note;
+  const title = typeof rawTitle === 'string' && rawTitle.trim()
+    ? rawTitle.trim()
+    : typeof r.memberName === 'string' && r.memberName
+      ? r.memberName
+      : 'Gasto';
+
+  return {
+    id: asNumber(r.id) || Date.now(),
+    categoryId: r.categoryId !== undefined ? asNumber(r.categoryId) : undefined,
+    memberId: r.memberId,
+    memberName: typeof r.memberName === 'string' ? r.memberName : '',
+    title,
+    amount,
+    date: typeof r.date === 'string' && r.date ? r.date : fallbackDate(),
+    splitMode,
+    splits,
     note: typeof r.note === 'string' && r.note ? r.note : undefined,
   };
 }
@@ -117,18 +172,31 @@ function normalizePlan(value: unknown): Plan | null {
     ? r.categories.map(normalizePlanCategory).filter((x): x is PlanCategory => !!x)
     : [];
   const expenses = Array.isArray(r.expenses)
-    ? r.expenses.map(normalizePlanExpense).filter((x): x is PlanExpense => !!x)
+    ? r.expenses.map((e) => normalizePlanExpense(e, members.length)).filter((x): x is PlanExpense => !!x)
     : [];
+  const settlements = Array.isArray(r.settlements)
+    ? r.settlements.map(normalizePlanSettlement).filter((x): x is PlanSettlement => !!x)
+    : [];
+
+  // Migrate old splitMode: 'custom' → 'percentage' (closest semantic match)
+  const rawSplitMode = r.splitMode;
+  const splitMode: Plan['splitMode'] =
+    rawSplitMode === 'parts' || rawSplitMode === 'percentage'
+      ? rawSplitMode
+      : 'equal';
+
   return {
     id: asNumber(r.id) || Date.now(),
     title: r.title.trim(),
     icon: typeof r.icon === 'string' ? r.icon : 'map',
+    iconColor: typeof r.iconColor === 'string' ? r.iconColor : undefined,
     description: typeof r.description === 'string' && r.description ? r.description : undefined,
     date: typeof r.date === 'string' && r.date ? r.date : fallbackDate(),
     members,
     categories,
     expenses,
-    splitMode: r.splitMode === 'custom' ? 'custom' : 'equal',
+    settlements,
+    splitMode,
   };
 }
 

@@ -15,6 +15,7 @@ interface BalanceCardProps {
   onStateChange: (state: CardState) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
+  onPillToggle?: (expanded: boolean) => void;
 }
 
 const STATES: CardState[] = ['saldo', 'gastos'];
@@ -49,6 +50,7 @@ export function BalanceCard({
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
+  onPillToggle,
 }: BalanceCardProps) {
   const monthIndex = Number(selectedYM.split('-')[1]) - 1;
   const monthName = MONTHS_ES[monthIndex] ?? '';
@@ -79,6 +81,7 @@ export function BalanceCard({
       onStateChange={onStateChange}
       onSwipeBegin={onSwipeBegin}
       onSwipeEnd={onSwipeEnd}
+      onPillToggle={onPillToggle}
     />
   );
 }

@@ -1,6 +1,4 @@
-import { BlurView } from 'expo-blur';
 import * as Linking from 'expo-linking';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -15,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { CATEGORIES } from '../constants/categories';
 import { APP_COLORS, getIconColor } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
@@ -24,6 +23,7 @@ import { fmt, formatDateShort, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { getUserData } from '../utils/users';
+import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 
 const SAVINGS_ACCENT = '#7C3AED';
 const SAVINGS_ACCENT_BG = '#EDE9FE';
@@ -43,7 +43,6 @@ export function SavingPlanDetailModal({
   onEdit,
   onDelete,
 }: SavingPlanDetailModalProps) {
-  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const updateSavingPlan = useAppStore((s) => s.updateSavingPlan);
@@ -53,6 +52,7 @@ export function SavingPlanDetailModal({
   const [entryAmount, setEntryAmount] = useState('');
   const [entryDate, setEntryDate] = useState(todayStr());
   const [entryNote, setEntryNote] = useState('');
+  const noteScroll = useKeyboardAwareScroll();
 
   const entryNumber = useMemo(() => parseAmt(entryAmount), [entryAmount]);
 
@@ -66,7 +66,7 @@ export function SavingPlanDetailModal({
   if (!plan) return null;
 
   const history = [...(plan.history ?? [])].sort((a, b) => b.date.localeCompare(a.date));
-  const iconColor = getIconColor('purple');
+  const iconColor = getIconColor(plan.iconColor ?? 'purple');
   const iconInfo = CATEGORIES[plan.icon ?? 'savings'] ?? CATEGORIES.savings;
   const progress = savingPlanProgress(plan);
   const progressPct = Math.min(100, Math.round(progress.pct));
@@ -134,14 +134,40 @@ export function SavingPlanDetailModal({
   })();
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.card}>
+    <Modal visible animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title="Detalles"
+        subtitle={plan.title}
+        breadcrumbs={['Ahorro', 'Detalle', readOnly ? 'Lectura' : 'Aportes']}
+        activeBreadcrumb={readOnly ? 1 : 2}
+        onBack={onClose}
+        contentContainerStyle={{ padding: 0 }}
+        footer={!readOnly ? (
+          <>
+            <Pressable
+              onPress={() => {}}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="chatbubble-outline" size={20} color={APP_COLORS.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={() => { onClose(); setTimeout(() => onEdit?.(), 120); }}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="pencil-outline" size={20} color={APP_COLORS.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={handleDelete}
+              style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
+            >
+              <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
+            </Pressable>
+          </>
+        ) : undefined}
+      >
 
           {/* ── Header ── */}
-          <View style={styles.header}>
+          <View style={[styles.header, { display: 'none' }]}>
             <Text style={styles.headerTitle}>Detalles</Text>
             <Pressable onPress={onClose} style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}>
               <Ionicons name="close" size={20} color={APP_COLORS.textSecondary} />
@@ -218,7 +244,11 @@ export function SavingPlanDetailModal({
           ) : null}
 
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            ref={noteScroll.scrollRef}
+            contentContainerStyle={[
+              styles.scrollContent,
+              noteScroll.bottomPadding !== undefined && { paddingBottom: noteScroll.bottomPadding },
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             onScrollBeginDrag={dismissKeyboardAndBlur}
@@ -266,7 +296,15 @@ export function SavingPlanDetailModal({
                     onSubmitEditing={() => runAfterKeyboardDismiss(addHistoryEntry)}
                   />
                   <Field label="Fecha" value={entryDate} onChangeText={setEntryDate} placeholder="YYYY-MM-DD" />
-                  <Field label="Nota" value={entryNote} onChangeText={setEntryNote} placeholder="Opcional" />
+                  <Field
+                    label="Nota"
+                    value={entryNote}
+                    onChangeText={setEntryNote}
+                    placeholder="Opcional"
+                    multiline
+                    onFocus={noteScroll.onFocus}
+                    onBlur={noteScroll.onBlur}
+                  />
                   <Pressable onPress={() => runAfterKeyboardDismiss(addHistoryEntry)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
                     <Ionicons name="add" size={18} color="#FFFFFF" />
                     <Text style={styles.addButtonText}>Agregar monto</Text>
@@ -277,7 +315,7 @@ export function SavingPlanDetailModal({
           </ScrollView>
 
           {/* ── Action buttons ── */}
-          <View style={styles.actions}>
+          <View style={[styles.actions, { display: 'none' }]}>
             <Pressable
               onPress={() => {}}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
@@ -298,9 +336,7 @@ export function SavingPlanDetailModal({
             </Pressable>
           </View>
 
-          </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
 }

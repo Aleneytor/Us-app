@@ -57,6 +57,8 @@ export const CATEGORIES: Record<string, CategoryInfo> = {
   music:       { label: 'Musica',      icon: 'musical-notes-outline' },
   subscriptions: { label: 'Suscripcion', icon: 'card-outline' },
   education:   { label: 'Educacion',   icon: 'school-outline' },
+  events:      { label: 'Eventos',     icon: 'calendar-outline' },
+  outings:     { label: 'Salidas',     icon: 'ticket-outline' },
   scissors:    { label: 'Corte',       icon: 'cut-outline' },
   gifts:       { label: 'Regalos',     icon: 'gift-outline' },
   pets:        { label: 'Mascota',     icon: 'paw-outline' },
@@ -132,6 +134,39 @@ export const CATEGORY_GROUPS: Record<CategoryGroupId, CategoryGroupInfo> = {
 export const CATEGORY_GROUP_ORDER: CategoryGroupId[] = ['food', 'travel', 'health', 'fashion', 'home', 'tech'];
 
 export const ALL_CATEGORY_KEYS = CATEGORY_GROUP_ORDER.flatMap((groupId) => CATEGORY_GROUPS[groupId].keys);
+
+export interface BudgetCategoryPreset {
+  name: string;
+  icon: string;
+  iconColor: string;
+}
+
+export const BUDGET_CATEGORY_PRESETS: BudgetCategoryPreset[] = [
+  { name: 'Sueldo', icon: 'salary', iconColor: 'green' },
+  { name: 'Freelance', icon: 'freelance', iconColor: 'blue' },
+  { name: 'Servicios', icon: 'utilities', iconColor: 'yellow' },
+  { name: 'Casa', icon: 'home', iconColor: 'slate' },
+  { name: 'Comida', icon: 'food', iconColor: 'orange' },
+  { name: 'Carro', icon: 'car', iconColor: 'blueLight' },
+  { name: 'Ropa', icon: 'clothing', iconColor: 'pink' },
+  { name: 'Salidas', icon: 'outings', iconColor: 'purple' },
+  { name: 'Eventos', icon: 'events', iconColor: 'teal' },
+  { name: 'Viajes', icon: 'travel', iconColor: 'sky' },
+  { name: 'Escuela', icon: 'education', iconColor: 'indigo' },
+];
+
+export const BUDGET_CATEGORY_ICON_KEYS = Array.from(new Set([
+  ...ALL_CATEGORY_KEYS,
+  ...BUDGET_CATEGORY_PRESETS.map((preset) => preset.icon),
+  'savings',
+  'education',
+  'entertainment',
+  'events',
+  'outings',
+  'salary',
+  'freelance',
+  'other',
+])).filter((key) => !!CATEGORIES[key]);
 
 export const SAVING_ICON_KEYS = [
   'savings',

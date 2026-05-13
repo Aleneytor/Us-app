@@ -1,6 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -12,16 +10,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { ColorPicker } from '../components/ColorPicker';
 import { IconPicker } from '../components/IconPicker';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { SAVING_ICON_KEYS } from '../constants/categories';
 import { APP_COLORS } from '../constants/colors';
-import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { SavingPlan } from '../types';
 import { savingPlanMonthlyAmount } from '../utils/calculations';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
+import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 
 const SAVINGS_ACCENT = '#7C3AED';
 
@@ -32,53 +32,76 @@ interface SavingPlanModalProps {
 }
 
 export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps) {
-  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const addSavingPlan = useAppStore((s) => s.addSavingPlan);
   const updateSavingPlan = useAppStore((s) => s.updateSavingPlan);
 
+  const [step, setStep] = useState(0);
   const [title, setTitle] = useState('');
-  const [icon, setIcon] = useState('savings');
   const [targetAmount, setTargetAmount] = useState('');
   const [months, setMonths] = useState('');
-  const [link, setLink] = useState('');
+  const [icon, setIcon] = useState('savings');
+  const [iconColor, setIconColor] = useState('purple');
   const [planType, setPlanType] = useState<'joint' | 'personal'>('personal');
+  const [link, setLink] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const notesScroll = useKeyboardAwareScroll();
+
   const targetNumber = useMemo(() => parseAmt(targetAmount), [targetAmount]);
   const monthsNumber = Number.parseInt(months, 10);
-  const monthlyPreview = Number.isFinite(targetNumber) && targetNumber > 0 && Number.isFinite(monthsNumber) && monthsNumber > 0
-    ? savingPlanMonthlyAmount({
-      id: plan?.id ?? 0,
-      type: planType,
-      uid: planType === 'personal' ? (plan?.uid ?? currentUser) : undefined,
-      icon,
-      title: title.trim() || 'Ahorro',
-      targetAmount: targetNumber,
-      months: monthsNumber,
-      link: link.trim() || undefined,
-      date: plan?.date ?? todayStr(),
-      history: plan?.history ?? [],
-    })
-    : null;
+  const monthlyPreview =
+    Number.isFinite(targetNumber) && targetNumber > 0 && Number.isFinite(monthsNumber) && monthsNumber > 0
+      ? savingPlanMonthlyAmount({
+          id: plan?.id ?? 0,
+          type: planType,
+          uid: planType === 'personal' ? (plan?.uid ?? currentUser) : undefined,
+          icon,
+          iconColor,
+          title: title.trim() || 'Ahorro',
+          targetAmount: targetNumber,
+          months: monthsNumber,
+          date: plan?.date ?? todayStr(),
+          history: plan?.history ?? [],
+        })
+      : null;
+
   const editing = !!plan;
 
   useEffect(() => {
     if (!visible) return;
+    setStep(0);
     setTitle(plan?.title ?? '');
-    setIcon(plan?.icon ?? 'savings');
     setTargetAmount(plan ? String(plan.targetAmount) : '');
-    setMonths(plan ? String(plan.months) : '');
-    setLink(plan?.link ?? '');
+    setMonths(plan?.months ? String(plan.months) : '');
+    setIcon(plan?.icon ?? 'savings');
+    setIconColor(plan?.iconColor ?? 'purple');
     setPlanType(plan?.type ?? 'personal');
+    setLink(plan?.link ?? '');
+    setNotes(plan?.notes ?? '');
   }, [visible, plan]);
 
-  const save = () => {
-    if (!title.trim() || !Number.isFinite(targetNumber) || targetNumber <= 0) {
-      Alert.alert('Datos incompletos', 'Revisa el titulo y el monto objetivo.');
-      return;
+  const validateDataStep = () => {
+    if (!title.trim()) {
+      Alert.alert('Falta el titulo', 'Ponle un nombre a tu ahorro.');
+      return false;
     }
-    if (!Number.isFinite(monthsNumber) || monthsNumber <= 0) {
-      Alert.alert('Falta el plazo', 'Indica en cuantos meses quieres lograr este ahorro.');
+    if (!Number.isFinite(targetNumber) || targetNumber <= 0) {
+      Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
+      return false;
+    }
+    return true;
+  };
+
+  const continueFromData = () => {
+    if (!validateDataStep()) return;
+    setStep(1);
+  };
+
+  const save = () => {
+    if (!validateDataStep()) {
+      setStep(0);
       return;
     }
 
@@ -87,10 +110,12 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
       type: planType,
       uid: planType === 'personal' ? (plan?.uid ?? currentUser) : undefined,
       icon,
+      iconColor,
       title: title.trim(),
       targetAmount: targetNumber,
-      months: monthsNumber,
+      months: monthsNumber > 0 ? monthsNumber : undefined,
       link: link.trim() || undefined,
+      notes: notes.trim() || undefined,
       date: plan?.date ?? todayStr(),
       history: plan?.history ?? [],
     };
@@ -100,105 +125,176 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
     onClose();
   };
 
+  const handlePrimaryPress = () => {
+    if (step === 0) runAfterKeyboardDismiss(continueFromData);
+    else if (step === 1) runAfterKeyboardDismiss(() => setStep(2));
+    else runAfterKeyboardDismiss(save);
+  };
+
+  const handleSecondaryPress = () => {
+    dismissKeyboardAndBlur();
+    if (step > 0) { setStep(step - 1); return; }
+    onClose();
+  };
+
+  const handleBack = () => {
+    dismissKeyboardAndBlur();
+    if (step > 0) { setStep(step - 1); return; }
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.keyboardView}>
-      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.screenShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.screen}>
-          <View style={styles.header}>
-            <Text style={styles.title}>{editing ? 'Editar ahorro' : 'Nuevo ahorro'}</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleBack}>
+      <ModalScreen
+        title={editing ? 'Editar ahorro' : 'Nuevo ahorro'}
+        breadcrumbs={['Datos', 'Personalizar', 'Extra']}
+        activeBreadcrumb={step}
+        canPressBreadcrumb={(index) => index < step}
+        onBreadcrumbPress={setStep}
+        onBack={handleBack}
+        contentContainerStyle={{ padding: 0 }}
+        footer={(
+          <>
+            <Pressable onPress={handleSecondaryPress} style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>{step === 0 ? 'Cancelar' : 'Atrás'}</Text>
             </Pressable>
-          </View>
-          <ScrollView
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            onScrollBeginDrag={dismissKeyboardAndBlur}
-          >
-            <Field label="Titulo" value={title} onChangeText={setTitle} placeholder="Ej. Auriculares" autoFocus />
-            <View style={styles.field}>
-              <Text style={styles.label}>Monto a ahorrar</Text>
-              <TextInput
-                value={targetAmount}
-                onChangeText={setTargetAmount}
-                placeholder="0"
-                placeholderTextColor="#CBD5E1"
-                keyboardType="decimal-pad"
-                selectTextOnFocus
-                style={styles.amountInput}
+            <Pressable onPress={handlePrimaryPress} style={styles.primaryButton}>
+              <Text style={styles.primaryText}>{step < 2 ? 'Continuar' : 'Guardar'}</Text>
+            </Pressable>
+          </>
+        )}
+      >
+        <ScrollView
+          ref={notesScroll.scrollRef}
+          style={styles.scroller}
+          contentContainerStyle={[
+            styles.content,
+            notesScroll.bottomPadding !== undefined && { paddingBottom: notesScroll.bottomPadding },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={dismissKeyboardAndBlur}
+          showsVerticalScrollIndicator={false}
+        >
+          {step === 0 && (
+            <View style={styles.block}>
+              <LabeledInput
+                label="Titulo"
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Ej. Auriculares"
+                autoFocus
               />
-            </View>
-            <Field
-              label="Plazo en meses"
-              value={months}
-              onChangeText={setMonths}
-              placeholder="Ej. 6"
-              keyboardType="number-pad"
-            />
-            <View style={styles.field}>
-              <Text style={styles.label}>Icono</Text>
-              <IconPicker
-                value={icon}
-                colorId="purple"
-                keys={SAVING_ICON_KEYS}
-                horizontalInset={16}
-                onChange={setIcon}
-              />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Tipo de ahorro</Text>
-              <View style={styles.segmented}>
-                <SegmentOption
-                  label="En conjunto"
-                  icon="people-outline"
-                  active={planType === 'joint'}
-                  onPress={() => setPlanType('joint')}
-                />
-                <SegmentOption
-                  label="Solo yo"
-                  icon="person-outline"
-                  active={planType === 'personal'}
-                  onPress={() => setPlanType('personal')}
+              <View style={styles.field}>
+                <Text style={styles.label}>Monto a ahorrar</Text>
+                <TextInput
+                  value={targetAmount}
+                  onChangeText={setTargetAmount}
+                  placeholder="0"
+                  placeholderTextColor="#CBD5E1"
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  style={styles.amountInput}
                 />
               </View>
+              <LabeledInput
+                label="Plazo en meses (opcional)"
+                value={months}
+                onChangeText={setMonths}
+                placeholder="Ej. 6"
+                keyboardType="number-pad"
+              />
+              {monthlyPreview !== null && (
+                <View style={styles.preview}>
+                  <Text style={styles.previewLabel}>Debes ahorrar al mes</Text>
+                  <Text style={styles.previewAmount}>{fmt(monthlyPreview, currency)}</Text>
+                </View>
+              )}
             </View>
-            <Field
-              label="Link"
-              value={link}
-              onChangeText={setLink}
-              placeholder="https://..."
-              keyboardType="url"
-              autoCapitalize="none"
-            />
+          )}
 
-            <View style={styles.preview}>
-              <Text style={styles.previewLabel}>Debes ahorrar al mes</Text>
-              <Text style={styles.previewAmount}>
-                {monthlyPreview === null ? '--' : fmt(monthlyPreview, currency)}
-              </Text>
+          {step === 1 && (
+            <View style={styles.block}>
+              <View style={styles.field}>
+                <Text style={styles.label}>Icono</Text>
+                <IconPicker
+                  value={icon}
+                  colorId={iconColor}
+                  keys={SAVING_ICON_KEYS}
+                  horizontalInset={18}
+                  onChange={setIcon}
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>Color</Text>
+                <ColorPicker value={iconColor} onChange={setIconColor} />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>Tipo de ahorro</Text>
+                <View style={styles.choiceRow}>
+                  <ChoiceButton
+                    label="En conjunto"
+                    icon="people-outline"
+                    active={planType === 'joint'}
+                    onPress={() => setPlanType('joint')}
+                  />
+                  <ChoiceButton
+                    label="Solo yo"
+                    icon="person-outline"
+                    active={planType === 'personal'}
+                    onPress={() => setPlanType('personal')}
+                  />
+                </View>
+              </View>
             </View>
-          </ScrollView>
-          <View style={styles.footer}>
-            <Pressable onPress={() => runAfterKeyboardDismiss(onClose)} style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>Cancelar</Text>
-            </Pressable>
-            <Pressable onPress={() => runAfterKeyboardDismiss(save)} style={styles.primaryButton}>
-              <Text style={styles.primaryText}>Guardar</Text>
-            </Pressable>
-          </View>
-          </View>
-        </Pressable>
-      </Pressable>
-      </View>
+          )}
+
+          {step === 2 && (
+            <View style={styles.block}>
+              <LabeledInput
+                label="Link del producto (opcional)"
+                value={link}
+                onChangeText={setLink}
+                placeholder="https://..."
+                keyboardType="url"
+                autoCapitalize="none"
+              />
+              <LabeledInput
+                label="Notas (opcional)"
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Agrega una nota..."
+                multiline
+                onFocus={notesScroll.onFocus}
+                onBlur={notesScroll.onBlur}
+              />
+            </View>
+          )}
+        </ScrollView>
+      </ModalScreen>
     </Modal>
   );
 }
 
-function SegmentOption({
+function LabeledInput({
+  label,
+  multiline,
+  ...props
+}: ComponentProps<typeof TextInput> & { label: string }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        placeholderTextColor={APP_COLORS.textMuted}
+        style={[styles.input, multiline && styles.textarea]}
+        multiline={multiline}
+        {...props}
+      />
+    </View>
+  );
+}
+
+function ChoiceButton({
   label,
   icon,
   active,
@@ -213,47 +309,18 @@ function SegmentOption({
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.segmentOption,
-        active && styles.segmentOptionActive,
+        styles.choiceBtn,
+        active && styles.choiceBtnActive,
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons name={icon} size={16} color={active ? SAVINGS_ACCENT : APP_COLORS.textSecondary} />
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : APP_COLORS.textSecondary} />
+      <Text style={[styles.choiceBtnText, active && styles.choiceBtnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
-function Field({
-  label,
-  ...props
-}: ComponentProps<typeof TextInput> & { label: string }) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
-        style={styles.input}
-        {...props}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  backdrop: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  closeButton: {
-    alignItems: 'center',
-    borderRadius: 12,
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
-  },
   amountInput: {
     backgroundColor: APP_COLORS.surface,
     borderColor: APP_COLORS.border,
@@ -266,30 +333,44 @@ const styles = StyleSheet.create({
     padding: 12,
     textAlign: 'center',
   },
+  block: {
+    gap: 16,
+  },
+  choiceBtn: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
+    borderColor: APP_COLORS.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    minHeight: 42,
+    paddingHorizontal: 12,
+  },
+  choiceBtnActive: {
+    backgroundColor: SAVINGS_ACCENT,
+    borderColor: SAVINGS_ACCENT,
+  },
+  choiceBtnText: {
+    color: APP_COLORS.textPrimary,
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  choiceBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   content: {
-    gap: 14,
-    padding: 16,
-    paddingBottom: 32,
+    padding: 18,
+    paddingBottom: 28,
   },
   field: {
     gap: 7,
-  },
-  footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    padding: 16,
-  },
-  header: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
   },
   input: {
     backgroundColor: APP_COLORS.surface,
@@ -298,18 +379,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     color: APP_COLORS.textPrimary,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '400',
     minHeight: 46,
+    padding: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  keyboardView: {
-    flex: 1,
   },
   label: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '600',
+  },
+  pressed: {
+    opacity: 0.72,
   },
   preview: {
     backgroundColor: '#F8FAFC',
@@ -329,9 +411,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
-  pressed: {
-    opacity: 0.72,
-  },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: SAVINGS_ACCENT,
@@ -345,22 +424,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
   },
-  screen: {
-    backgroundColor: APP_COLORS.background,
-    borderRadius: 22,
-    maxHeight: '96%',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  screenShadow: {
-    borderRadius: 22,
-    elevation: 14,
-    maxWidth: 560,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.24,
-    shadowRadius: 30,
-    width: '100%',
+  scroller: {
+    flex: 1,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -376,41 +441,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
   },
-  segmented: {
-    backgroundColor: '#F8FAFC',
-    borderColor: APP_COLORS.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
-    padding: 4,
-  },
-  segmentOption: {
-    alignItems: 'center',
-    borderRadius: 9,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    minHeight: 38,
-  },
-  segmentOptionActive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: APP_COLORS.border,
-    borderWidth: 1,
-  },
-  segmentText: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  segmentTextActive: {
-    color: APP_COLORS.textPrimary,
-  },
-  title: {
-    color: APP_COLORS.textPrimary,
-    flex: 1,
-    fontSize: 21,
-    fontWeight: MODAL_TITLE_FONT_WEIGHT,
+  textarea: {
+    minHeight: 86,
+    textAlignVertical: 'top',
   },
 });

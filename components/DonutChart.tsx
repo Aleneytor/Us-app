@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Easing,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
@@ -15,6 +16,8 @@ import { APP_COLORS } from '../constants/colors';
 import type { CurrencyCode } from '../types';
 import { fmt } from '../utils/format';
 
+const AnimatedPath = Animated.createAnimatedComponent(Path as React.ComponentType<any>) as React.ComponentType<any>;
+
 export interface DonutSlice {
   id: number;
   label: string;
@@ -27,14 +30,15 @@ interface Props {
   slices: DonutSlice[];
   currency: CurrencyCode;
   size?: number;
-  onSlicePress?: (slice: DonutSlice) => void;
+  disabledIds?: Set<number>;
+  onLegendToggle?: (id: number) => void;
 }
 
-const ARC_START_DEG = 126;
-const ARC_END_DEG = 414;
+const ARC_START_DEG = 180;
+const ARC_END_DEG = 360;
 const LEGENDS_PER_PAGE = 6;
 const LEGEND_PAGE_GAP = 32;
-const TRACK_COLOR = '#E8EDF3';
+const TRACK_COLOR = '#BFC9D4';
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -48,24 +52,96 @@ function arcLinePath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M${start.x},${start.y} A${r},${r},0,${largeArc},1,${end.x},${end.y}`;
 }
 
-export function DonutChart({ slices, currency, size, onSlicePress }: Props) {
+interface LegendRowProps {
+  slice: DonutSlice;
+  isDisabled: boolean;
+  onPress: () => void;
+  width: number;
+  currency: CurrencyCode;
+}
+
+function LegendRow({ slice, isDisabled, onPress, width, currency }: LegendRowProps) {
+  const available = slice.budget - slice.value;
+  const isOver = slice.value > slice.budget && slice.budget > 0;
+
+  return (
+    <View style={{ width }}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.legendRow, isDisabled && styles.legendRowDisabled, pressed && styles.pressed]}
+      >
+        <View style={[styles.dot, { backgroundColor: isDisabled ? '#9CA3AF' : slice.color }]} />
+        <Text style={[styles.legendName, isDisabled && styles.legendNameDisabled]} numberOfLines={1}>{slice.label}</Text>
+        <Text style={[styles.legendAmt, !isDisabled && isOver && styles.legendAmtOver]} numberOfLines={1}>
+          {isOver && !isDisabled ? `+${fmt(Math.abs(available), currency)}` : fmt(available, currency)}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function DonutChart({ slices, currency, size, disabledIds, onLegendToggle }: Props) {
   const { width } = useWindowDimensions();
   const [legendPage, setLegendPage] = useState(0);
   const legendPageRef = useRef(0);
-  const chartWidth = Math.min(size ?? 342, Math.max(286, width - 64));
+
+  const drawAnim = useRef(new Animated.Value(0)).current;
+  const [drawPct, setDrawPct] = useState(0);
+
+  // Full-width arch that bleeds beyond screen edges → endpoints never visible
+  //
+  // Geometry:
+  //   cy = outerRadius  → center sits at y=outerRadius (below visible area)
+  //   arc top (270°)    → y = cy − r = 0  (flush with SVG top)
+  //   arc endpoints     → y = cy = outerRadius  (hidden: below chartHeight)
+  //   arc ∩ left edge   → y ≈ outerRadius × 0.36  (well inside chart)
+  //
+  // SIDE_CLIP: how many px each endpoint extends past the screen edge
+  const SIDE_CLIP = 64;
   const legendWidth = Math.max(286, width - 40);
   const legendSnapWidth = legendWidth + LEGEND_PAGE_GAP;
   const legendColumnWidth = (legendWidth - 8) / 2;
+  const chartWidth = width;
   const cx = chartWidth / 2;
-  const outerRadius = chartWidth * 0.41;
-  const cy = outerRadius + 20;
-  const chartHeight = outerRadius * 2 + 44;
+  const outerRadius = Math.max(150, cx + SIDE_CLIP);
+  const cy = outerRadius;                  // center below visible area
+  const chartHeight = outerRadius - 28;    // clip 28px from bottom → hides endpoints
+
+  // Adaptive step: spread arcs evenly across outerRadius
+  const n = slices.length;
+  const maxStep = n > 1 ? Math.floor((outerRadius - 20) / (n - 1)) : 40;
+  const step      = Math.max(8, Math.min(22, maxStep));
+  const strokeWidth = Math.min(13, Math.max(6, Math.round(step * 0.72)));
+  const strokeGap   = Math.max(2, step - strokeWidth);
+
+  // Animation refs for arc toggles
+  const arcOpacities = useRef(new Map<number, Animated.Value>()).current;
+  const isFirstEffect = useRef(true);
+  const chartContainerHeightAnim = useRef(new Animated.Value(chartHeight)).current;
+
+  const getArcOpacity = (id: number): Animated.Value => {
+    if (!arcOpacities.has(id)) {
+      arcOpacities.set(id, new Animated.Value(disabledIds?.has(id) ? 0 : 1));
+    }
+    return arcOpacities.get(id)!;
+  };
+
+  useEffect(() => {
+    const id = drawAnim.addListener(({ value }) => setDrawPct(value));
+    Animated.timing(drawAnim, {
+      toValue: 1,
+      duration: 520,
+      delay: 150,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    return () => drawAnim.removeListener(id);
+  }, []);
+
   const sortedSlices = useMemo(
     () => [...slices].sort((a, b) => b.value - a.value || a.label.localeCompare(b.label)),
     [slices],
   );
-  const strokeWidth = slices.length > 7 ? 8 : 11;
-  const strokeGap = slices.length > 7 ? 5 : 8;
   const arcSpanDeg = ARC_END_DEG - ARC_START_DEG;
 
   const arcs = useMemo(() => {
@@ -78,10 +154,46 @@ export function DonutChart({ slices, currency, size, onSlicePress }: Props) {
         pct,
         path: arcLinePath(cx, cy, radius, ARC_START_DEG, ARC_END_DEG),
         dash: `${arcLength * pct} ${arcLength}`,
+        arcLength,
         radius,
       };
     });
   }, [arcSpanDeg, cx, cy, outerRadius, sortedSlices, strokeGap, strokeWidth]);
+
+  useEffect(() => {
+    const effectiveRadius = () => {
+      const visible = arcs.filter(a => !disabledIds?.has(a.id));
+      return visible.length > 0 ? Math.max(...visible.map(a => a.radius)) : outerRadius * 0.5;
+    };
+
+    // Height = effectiveRadius - 28 (mirrors chartHeight = outerRadius - 28)
+    const containerHeight = () => Math.max(60, effectiveRadius() - 28);
+
+    if (isFirstEffect.current) {
+      isFirstEffect.current = false;
+      chartContainerHeightAnim.setValue(containerHeight());
+      return;
+    }
+
+    const opacityAnims = arcs.map(arc =>
+      Animated.timing(getArcOpacity(arc.id), {
+        toValue: disabledIds?.has(arc.id) ? 0 : 1,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    );
+
+    Animated.parallel([
+      ...opacityAnims,
+      Animated.spring(chartContainerHeightAnim, {
+        toValue: containerHeight(),
+        useNativeDriver: false,
+        damping: 20,
+        stiffness: 180,
+      }),
+    ]).start();
+  }, [disabledIds, arcs]);
 
   const legendPages = useMemo(() => {
     return Array.from({ length: Math.ceil(arcs.length / LEGENDS_PER_PAGE) }, (_, index) => (
@@ -121,57 +233,42 @@ export function DonutChart({ slices, currency, size, onSlicePress }: Props) {
     goToLegendPage(nextPage);
   };
 
-  const renderLegendRow = (slice: DonutSlice) => {
-    const available = slice.budget - slice.value;
-    const isOver = slice.value > slice.budget && slice.budget > 0;
-    return (
-      <Pressable
-        key={slice.id}
-        onPress={() => onSlicePress?.(slice)}
-        style={({ pressed }) => [
-          styles.legendRow,
-          { width: legendColumnWidth },
-          pressed && styles.pressed,
-        ]}
-      >
-        <View style={[styles.dot, { backgroundColor: slice.color }]} />
-        <Text style={styles.legendName} numberOfLines={1}>{slice.label}</Text>
-        <Text style={[styles.legendAmt, isOver && styles.legendAmtOver]} numberOfLines={1}>
-          {isOver ? `+${fmt(Math.abs(available), currency)}` : fmt(available, currency)}
-        </Text>
-      </Pressable>
-    );
-  };
-
   return (
     <View style={styles.card}>
-      <View style={styles.chartWrap}>
-        <Svg width={chartWidth} height={chartHeight}>
+      <Animated.View style={[styles.chartWrap, { height: chartContainerHeightAnim, overflow: 'hidden' }]}>
+        <Svg width={chartWidth} height={chartHeight} overflow="hidden">
           {arcs.map((arc) => (
-            <Path
-              key={`track-${arc.label}-${arc.radius}`}
+            <AnimatedPath
+              key={`track-${arc.id}`}
               d={arc.path}
               fill="none"
               stroke={TRACK_COLOR}
               strokeLinecap="round"
               strokeWidth={strokeWidth}
+              opacity={getArcOpacity(arc.id)}
             />
           ))}
-          {arcs.map((arc) => (
-            arc.pct > 0 ? (
-              <Path
-                key={`fill-${arc.label}-${arc.radius}`}
+          {arcs.map((arc, index) => {
+            if (arc.pct <= 0) return null;
+            const stagger = arcs.length > 1 ? (index / (arcs.length - 1)) * 0.12 : 0;
+            const arcPct = Math.max(0, Math.min(1, (drawPct - stagger) / Math.max(0.01, 1 - stagger)));
+            return (
+              <AnimatedPath
+                key={`fill-${arc.id}`}
                 d={arc.path}
                 fill="none"
                 stroke={arc.color}
-                strokeDasharray={arc.dash}
+                strokeDasharray={`${arc.arcLength * arc.pct * arcPct} ${arc.arcLength}`}
                 strokeLinecap="round"
                 strokeWidth={strokeWidth}
+                opacity={getArcOpacity(arc.id)}
               />
-            ) : null
-          ))}
+            );
+          })}
         </Svg>
-      </View>
+      </Animated.View>
+
+      <Text style={styles.legendHint}>Presiona una categoría para filtrarla</Text>
 
       {arcs.length > LEGENDS_PER_PAGE ? (
         <View>
@@ -197,7 +294,16 @@ export function DonutChart({ slices, currency, size, onSlicePress }: Props) {
                   { width: legendWidth, marginRight: index === legendPages.length - 1 ? 0 : LEGEND_PAGE_GAP },
                 ]}
               >
-                {page.map(renderLegendRow)}
+                {page.map((slice) => (
+                  <LegendRow
+                    key={slice.id}
+                    slice={slice}
+                    isDisabled={disabledIds?.has(slice.id) ?? false}
+                    onPress={() => onLegendToggle?.(slice.id)}
+                    width={legendColumnWidth}
+                    currency={currency}
+                  />
+                ))}
               </View>
             ))}
           </ScrollView>
@@ -218,7 +324,16 @@ export function DonutChart({ slices, currency, size, onSlicePress }: Props) {
         </View>
       ) : (
         <View style={[styles.legend, { width: legendWidth }]}>
-          {arcs.map(renderLegendRow)}
+          {arcs.map((slice) => (
+            <LegendRow
+              key={slice.id}
+              slice={slice}
+              isDisabled={disabledIds?.has(slice.id) ?? false}
+              onPress={() => onLegendToggle?.(slice.id)}
+              width={legendColumnWidth}
+              currency={currency}
+            />
+          ))}
         </View>
       )}
     </View>
@@ -258,6 +373,15 @@ const styles = StyleSheet.create({
   indicatorActive: {
     backgroundColor: '#1F2937',
     width: 28,
+  },
+  legendHint: {
+    alignSelf: 'flex-start',
+    color: APP_COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: '500',
+    paddingHorizontal: 20,
+    paddingBottom: 6,
+    paddingTop: 2,
   },
   legend: {
     alignSelf: 'center',
@@ -299,6 +423,12 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  legendRowDisabled: {
+    backgroundColor: '#F3F4F6',
+  },
+  legendNameDisabled: {
+    color: '#9CA3AF',
   },
   legendScroller: {
     alignSelf: 'center',

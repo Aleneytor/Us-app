@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRef } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORIES } from '../constants/categories';
@@ -93,6 +93,11 @@ export function TransactionTile({
 
         <View style={styles.metaLine}>
           <Text style={styles.meta}>{formatDateShort(transaction.date)}</Text>
+          {transaction.type === 'once' ? (
+            <MaterialCommunityIcons name="star-four-points" size={11} color="#F97316" />
+          ) : (
+            <Ionicons name={getTransactionTypeIcon(transaction.type)} size={11} color="#F97316" />
+          )}
           {transaction.account ? (
             <>
               <View style={styles.dot} />
@@ -122,10 +127,17 @@ export function TransactionTile({
   );
 }
 
+function getTransactionTypeIcon(type: Transaction['type']): React.ComponentProps<typeof Ionicons>['name'] {
+  if (type === 'monthly') return 'refresh-outline';
+  if (type === 'weekly') return 'calendar-outline';
+  if (type === 'biweekly') return 'git-compare-outline';
+  return 'radio-button-on-outline';
+}
+
 const styles = StyleSheet.create({
   amount: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     textAlign: 'right',
   },
@@ -138,7 +150,7 @@ const styles = StyleSheet.create({
   },
   amountSign: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   amountCategory: {

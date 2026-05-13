@@ -4,14 +4,21 @@ import {
   Alert,
   Animated,
   Dimensions,
+  LayoutAnimation,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { APP_COLORS } from '../../constants/colors';
 import { BalanceCard } from '../../components/BalanceCard';
 import type { CardState } from '../../components/BalanceCard';
@@ -35,12 +42,18 @@ import {
 } from '../../utils/calculations';
 import { isMonthVisible } from '../../utils/filters';
 import { getUserData } from '../../utils/users';
-import { formatYM } from '../../utils/format';
+import { formatYM, MONTHS_ES } from '../../utils/format';
+import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
 
 const CARD_SUBTITLES: Record<CardState, { prefix: string; accent: string; color: string }> = {
   saldo: { prefix: 'Este es tu ', accent: 'saldo actual', color: '#23C55E' },
   gastos: { prefix: 'Este es tu ', accent: 'gasto actual', color: '#EC1147' },
+};
+
+const CARD_SUBTITLES_EXPANDED: Record<CardState, (monthName: string) => { prefix: string; accent: string; color: string }> = {
+  saldo: (_m) => ({ prefix: 'Mira tu ', accent: 'saldo a final de mes', color: '#23C55E' }),
+  gastos: (_m) => ({ prefix: 'Mira tus ', accent: 'gastos a final de mes', color: '#EC1147' }),
 };
 
 
@@ -56,6 +69,27 @@ export default function DashboardScreen() {
 
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [cardState, setCardState] = useState<CardState>('saldo');
+  const [pillExpanded, setPillExpanded] = useState(false);
+
+  const subtitleFade = useRef(new Animated.Value(1)).current;
+  const subtitleSlide = useRef(new Animated.Value(0)).current;
+
+  const animateSubtitle = () => {
+    subtitleFade.setValue(0);
+    subtitleSlide.setValue(-6);
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(subtitleFade, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.spring(subtitleSlide, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 220 }),
+      ]).start();
+    }, 32);
+  };
+
+  const handlePillToggle = (expanded: boolean) => {
+    if (expanded === pillExpanded) return;
+    animateSubtitle();
+    setPillExpanded(expanded);
+  };
   const [createKind, setCreateKind] = useState<'income' | 'expense' | null>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
@@ -67,6 +101,7 @@ export default function DashboardScreen() {
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null);
   const [catPage, setCatPage] = useState(0);
   const catScrollRef = useRef<ScrollView>(null);
+  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation();
 
   const user = getUserData(users, currentUser);
 
@@ -106,7 +141,10 @@ export default function DashboardScreen() {
     );
   };
 
-  const subtitle = CARD_SUBTITLES[cardState];
+  const monthName = MONTHS_ES[Number(selectedYM.split('-')[1]) - 1] ?? '';
+  const subtitle = pillExpanded
+    ? CARD_SUBTITLES_EXPANDED[cardState](monthName)
+    : CARD_SUBTITLES[cardState];
 
   return (
     <ScrollView
@@ -118,16 +156,18 @@ export default function DashboardScreen() {
       scrollEnabled={scrollEnabled}
     >
       {/* ── Header + Balance Card ── */}
-      <View style={styles.headerSection}>
+      <Animated.View style={[styles.headerSection, { opacity: heroAnim, transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.greeting}>¡Hola {user.name}!</Text>
-            <Text style={styles.subtitle}>
+            <Animated.Text
+              style={[styles.subtitle, { opacity: subtitleFade, transform: [{ translateY: subtitleSlide }] }]}
+            >
               {subtitle.prefix}
               <Text style={[styles.subtitleAccent, { color: subtitle.color }]}>
                 {subtitle.accent}
               </Text>
-            </Text>
+            </Animated.Text>
           </View>
           <UserHeaderButton />
         </View>
@@ -139,16 +179,15 @@ export default function DashboardScreen() {
           gastosProyectados={gastosProyectados}
           currency={currency}
           selectedYM={selectedYM}
-          onStateChange={setCardState}
-          onSwipeBegin={() => {
-            setScrollEnabled(false);
-          }}
+          onStateChange={(state) => { setCardState(state); setPillExpanded(false); animateSubtitle(); }}
+          onSwipeBegin={() => setScrollEnabled(false)}
           onSwipeEnd={() => setScrollEnabled(true)}
+          onPillToggle={handlePillToggle}
         />
-      </View>
+      </Animated.View>
 
       {/* ── Botones Ingresos / Gastos ── */}
-      <View style={styles.quickActions}>
+      <Animated.View style={[styles.quickActions, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
         <FinanceToggleButton
           label="Ingresos"
           icon="arrow-up"
@@ -163,9 +202,9 @@ export default function DashboardScreen() {
           accent="#EC1147"
           onPress={() => setDetailModal({ visible: true, kind: 'expense' })}
         />
-      </View>
+      </Animated.View>
 
-      <View style={styles.section}>
+      <Animated.View style={[styles.section, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Tendencia</Text>
           <Text style={styles.sectionMonth}>{formatYM(selectedYM)}</Text>
@@ -178,10 +217,10 @@ export default function DashboardScreen() {
           categories={budgetCategories}
           onOpenDetail={(kind) => setDetailModal({ visible: true, kind })}
         />
-      </View>
+      </Animated.View>
 
       {/* Categorias de presupuesto */}
-      <View style={[styles.section, styles.catSection]}>
+      <Animated.View style={[styles.section, styles.catSection, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
         <View style={[styles.sectionHead, styles.catSectionHead]}>
           <Text style={styles.sectionTitle}>Categorías</Text>
         </View>
@@ -268,10 +307,10 @@ export default function DashboardScreen() {
             )}
           </View>
         )}
-      </View>
+      </Animated.View>
 
       {/* ── Movimientos Recientes ── */}
-      <View style={[styles.section, styles.recentSection]}>
+      <Animated.View style={[styles.section, styles.recentSection, { opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>
         <View style={styles.recentSectionHeader}>
           <Text style={styles.sectionTitle}>Movimientos Recientes</Text>
         </View>
@@ -280,20 +319,27 @@ export default function DashboardScreen() {
           <Text style={styles.emptyText}>Sin movimientos este mes</Text>
         ) : (
           <View style={styles.tileList}>
-            {recent.map((t) => (
-              <TransactionTile
+            {recent.map((t, i) => (
+              <Animated.View
                 key={t.id}
-                transaction={t}
-                ym={selectedYM}
-                onPress={() => setSelectedTransaction(t)}
-                amountCategoryFontSize={12}
-                amountCategoryColor={APP_COLORS.textMuted}
-                flat
-              />
+                style={{
+                  opacity: itemAnims[i],
+                  transform: [{ translateY: itemAnims[i].interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+                }}
+              >
+                <TransactionTile
+                  transaction={t}
+                  ym={selectedYM}
+                  onPress={() => setSelectedTransaction(t)}
+                  amountCategoryFontSize={12}
+                  amountCategoryColor={APP_COLORS.textMuted}
+                  flat
+                />
+              </Animated.View>
             ))}
           </View>
         )}
-      </View>
+      </Animated.View>
 
       {/* ── Modals ── */}
       <FinanceDetailModal
@@ -437,6 +483,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
+    marginTop: 40,
     paddingBottom: 16,
     paddingHorizontal: 0,
     paddingTop: 20,

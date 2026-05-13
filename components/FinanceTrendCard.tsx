@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   LayoutChangeEvent,
@@ -29,8 +28,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 import { AppModal as Modal } from './AppModal';
+import { ModalScreen } from './ModalScreen';
 import type { AppPayload, BudgetCategory, CurrencyCode, Transaction, UserId } from '../types';
-import { isMonthVisible } from '../utils/filters';
+import { getOccurrenceDatesInMonth, isMonthVisible } from '../utils/filters';
 import { fmt, formatYM, prevYM } from '../utils/format';
 import { MonthNavigator } from './MonthNavigator';
 
@@ -263,7 +263,7 @@ function TrendModal({
       !t.del &&
       (t.kind === 'expense' || t.kind === 'income') &&
       isMonthVisible(t, modalYM) &&
-      getEffectiveDateInMonth(t, modalYM) === dateStr,
+      getOccurrenceDatesInMonth(t, modalYM).includes(dateStr),
     );
     return {
       income: txs.filter((t) => t.kind === 'income').reduce((s, t) => s + t.amt, 0),
@@ -277,12 +277,16 @@ function TrendModal({
     : null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPressIn={onClose}>
-        <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-        <Pressable style={styles.modalShadow} onPressIn={(event) => event.stopPropagation()}>
-          <ScrollView style={[styles.modalCard, { maxHeight: windowHeight * 0.88 }]} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.modalHeader}>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title="Grafica de tendencia"
+        breadcrumbs={['Inicio', 'Tendencia', 'Detalle']}
+        activeBreadcrumb={2}
+        onBack={onClose}
+        contentContainerStyle={{ padding: 0 }}
+      >
+          <ScrollView style={styles.modalCard} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <View style={[styles.modalHeader, { display: 'none' }]}>
               <View style={styles.modalTitleWrap}>
                 <Text style={styles.modalTitle}>Gráfica de tendencia</Text>
               </View>
@@ -369,8 +373,7 @@ function TrendModal({
 
             </>
           </ScrollView>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
 }
@@ -712,7 +715,7 @@ function buildPreviewPoints(
         !t.del &&
         t.kind === kind &&
         isMonthVisible(t, selectedYM) &&
-        getEffectiveDateInMonth(t, selectedYM) === dateStr &&
+        getOccurrenceDatesInMonth(t, selectedYM).includes(dateStr) &&
         categoryMatches(t, selectedCategoryIds, budgetCategoryIds),
       )
       .reduce((sum, t) => sum + t.amt, 0);
@@ -742,7 +745,7 @@ function buildDailyPoints(
         !t.del &&
         t.kind === kind &&
         isMonthVisible(t, selectedYM) &&
-        getEffectiveDateInMonth(t, selectedYM) === dateStr &&
+        getOccurrenceDatesInMonth(t, selectedYM).includes(dateStr) &&
         categoryMatches(t, selectedCategoryIds, budgetCategoryIds),
       )
       .reduce((sum, t) => sum + t.amt, 0);
@@ -768,25 +771,21 @@ function buildWeeklyPoints(
         !t.del &&
         t.kind === kind &&
         isMonthVisible(t, selectedYM) &&
-        getTransactionWeek(t, selectedYM) === week &&
+        getTransactionWeeks(t, selectedYM).includes(week) &&
         categoryMatches(t, selectedCategoryIds, budgetCategoryIds)
       ))
       .reduce((sum, t) => sum + t.amt, 0),
   }));
 }
 
-function getEffectiveDateInMonth(t: Transaction, selectedYM: string): string {
-  if (t.type === 'once') return t.date;
-  return t.paidAt?.[selectedYM] ?? `${selectedYM}-${t.date.slice(8, 10)}`;
-}
-
-function getTransactionWeek(t: Transaction, selectedYM: string): number {
-  const paidDate = t.paidAt?.[selectedYM];
-  const day = paidDate ? Number(paidDate.slice(8, 10)) : Number(t.date.slice(8, 10));
-  if (day <= 7) return 1;
-  if (day <= 14) return 2;
-  if (day <= 21) return 3;
-  return 4;
+function getTransactionWeeks(t: Transaction, selectedYM: string): number[] {
+  return getOccurrenceDatesInMonth(t, selectedYM).map((date) => {
+    const day = Number(date.slice(8, 10));
+    if (day <= 7) return 1;
+    if (day <= 14) return 2;
+    if (day <= 21) return 3;
+    return 4;
+  });
 }
 
 function categoryMatches(
@@ -962,10 +961,10 @@ const styles = StyleSheet.create({
   previewCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    elevation: 4,
+    elevation: 3,
     padding: 14,
     shadowColor: '#7E7E7E',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.10,
     shadowRadius: 8,
   },

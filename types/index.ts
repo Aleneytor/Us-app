@@ -43,7 +43,7 @@ export interface Transaction {
   account: string;
   amt: number;
   date: string;                          // 'YYYY-MM-DD'
-  type: 'monthly' | 'once';
+  type: 'monthly' | 'biweekly' | 'weekly' | 'once';
   kind: 'expense' | 'income';
   tags: string[];                        // e.g. ['#comida', '#mercado']
   notes: string;
@@ -59,7 +59,6 @@ export interface BudgetCategory {
   icon: string;         // CATEGORIES key, e.g. 'restaurant'
   iconColor: string;    // ICON_COLORS id, e.g. 'purple'
   monthlyBudget: number;
-  monthlyIncomeEstimate?: number;  // optional: estimated monthly income for this category
   uid?: UserId;         // undefined = shared with partner; set = personal
   notes?: string;
 }
@@ -77,10 +76,12 @@ export interface SavingPlan {
   type?: 'joint' | 'personal';
   uid?: UserId;            // only when type === 'personal'
   icon?: string;            // CATEGORIES key, e.g. 'savings'
+  iconColor?: string;
   title: string;
   targetAmount: number;
-  months: number;          // integer - how many months to save
+  months?: number;          // integer - how many months to save (optional)
   link?: string;
+  notes?: string;
   date: string;            // 'YYYY-MM-DD' - date added
   history?: SavingPlanHistoryEntry[];
 }
@@ -126,11 +127,30 @@ export interface PlanCategory {
   totalAmount: number;
 }
 
+export interface PlanExpenseSplit {
+  memberId: string;     // PlanMember.id
+  parts?: number;       // weight used when splitMode === 'parts'
+  pct?: number;         // 0–100, used when splitMode === 'percentage'
+  amount: number;       // calculated share for this member
+}
+
 export interface PlanExpense {
   id: number;
-  categoryId: number;
-  memberId: string;     // PlanMember.id
+  categoryId?: number;  // optional — expense can exist without a category
+  memberId: string;     // PlanMember.id — who paid
   memberName: string;
+  title: string;        // display name of the expense
+  amount: number;
+  date: string;         // 'YYYY-MM-DD'
+  splitMode: 'equal' | 'parts' | 'percentage';
+  splits: PlanExpenseSplit[];
+  note?: string;
+}
+
+export interface PlanSettlement {
+  id: number;
+  fromMemberId: string; // who pays
+  toMemberId: string;   // who receives
   amount: number;
   date: string;         // 'YYYY-MM-DD'
   note?: string;
@@ -140,12 +160,14 @@ export interface Plan {
   id: number;
   title: string;
   icon: string;
+  iconColor?: string;
   description?: string;
   date: string;         // 'YYYY-MM-DD'
   members: PlanMember[];
   categories: PlanCategory[];
   expenses: PlanExpense[];
-  splitMode: 'equal' | 'custom';
+  settlements: PlanSettlement[];
+  splitMode: 'equal' | 'parts' | 'percentage';
 }
 
 // Colors for external plan members (cycles through these)
@@ -167,6 +189,9 @@ export interface AppPayload {
   budgetCategories: BudgetCategory[];
   plans: Plan[];
 }
+
+// Re-export for convenience
+export type PlanSplitMode = Plan['splitMode'];
 
 // Currency
 

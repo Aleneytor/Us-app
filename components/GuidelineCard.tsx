@@ -1,8 +1,9 @@
-import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -25,34 +26,64 @@ export interface GuidelineCardItem<State extends string> {
 interface GuidelineCardProps<State extends string> {
   items: readonly GuidelineCardItem<State>[];
   currency: CurrencyCode;
+  showPillToggle?: boolean;
   onStateChange?: (state: State) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
+  onPillToggle?: (expanded: boolean) => void;
+  topSlot?: React.ReactNode;
 }
 
 export function GuidelineCard<State extends string>({
   items,
   currency,
+  showPillToggle = true,
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
+  onPillToggle,
+  topSlot,
 }: GuidelineCardProps<State>) {
   const onSwipeBeginRef = useRef(onSwipeBegin);
   const onSwipeEndRef = useRef(onSwipeEnd);
+  const onPillToggleRef = useRef(onPillToggle);
   useEffect(() => { onSwipeBeginRef.current = onSwipeBegin; }, [onSwipeBegin]);
   useEffect(() => { onSwipeEndRef.current = onSwipeEnd; }, [onSwipeEnd]);
+  useEffect(() => { onPillToggleRef.current = onPillToggle; }, [onPillToggle]);
 
   const [stateIndex, setStateIndex] = useState(0);
+  const [pillExpanded, setPillExpanded] = useState(false);
   const stateIndexRef = useRef(0);
+
   const fade = useRef(new Animated.Value(1)).current;
   const slide = useRef(new Animated.Value(0)).current;
+  const toggleFade = useRef(new Animated.Value(1)).current;
+  const toggleSlide = useRef(new Animated.Value(0)).current;
+
   const indicatorWidths = useRef(
     items.map((_, i) => new Animated.Value(i === 0 ? 28 : 14)),
   ).current;
 
   const activeItem = items[stateIndex] ?? items[0];
-  const pillAmount = activeItem.pill ? splitAmount(activeItem.pill.value, currency) : null;
-  const pillDecSep = currency === 'USD' ? '.' : ',';
+  const displayValue = pillExpanded && activeItem.pill ? activeItem.pill.value : activeItem.value;
+
+  const togglePill = () => {
+    const next = !pillExpanded;
+    const exitY = next ? -10 : 10;
+
+    Animated.timing(toggleFade, { toValue: 0, duration: 80, useNativeDriver: true }).start(() => {
+      setPillExpanded(next);
+      onPillToggleRef.current?.(next);
+      toggleSlide.setValue(-exitY);
+      // Wait 2 frames so React commits the new displayValue before fading in
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(toggleFade, { toValue: 1, duration: 200, useNativeDriver: true }),
+          Animated.spring(toggleSlide, { toValue: 0, useNativeDriver: true, damping: 16, stiffness: 180 }),
+        ]).start();
+      }, 32);
+    });
+  };
 
   const goToIndex = (nextIndex: number, direction: 'left' | 'right') => {
     const nextItem = items[nextIndex];
@@ -60,6 +91,11 @@ export function GuidelineCard<State extends string>({
 
     const exitOffset = direction === 'left' ? -24 : 24;
     const enterOffset = direction === 'left' ? 24 : -24;
+
+    setPillExpanded(false);
+    onPillToggleRef.current?.(false);
+    toggleFade.setValue(1);
+    toggleSlide.setValue(0);
 
     Animated.parallel([
       Animated.timing(fade, { toValue: 0, duration: 90, useNativeDriver: true }),
@@ -121,36 +157,25 @@ export function GuidelineCard<State extends string>({
 
   if (!activeItem) return null;
 
+  const iconColor = pillExpanded ? activeItem.accent : '#C0C3CB';
+
   return (
-    <View style={styles.card} {...panResponder.panHandlers}>
-      <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: slide }] }]}>
+    <View style={[styles.card, topSlot ? styles.cardWithSlot : null]} {...panResponder.panHandlers}>
+      {topSlot}
+      <Animated.View style={[styles.inner, topSlot ? styles.innerWithSlot : null, { opacity: fade, transform: [{ translateX: slide }] }]}>
         <View style={styles.amountLine}>
-          <AmountText value={activeItem.value} currency={currency} />
+          <Animated.View style={[styles.amountWrap, { opacity: toggleFade, transform: [{ translateY: toggleSlide }] }]}>
+            <AmountText value={displayValue} currency={currency} />
+          </Animated.View>
+
+          {activeItem.pill && showPillToggle && (
+            <Pressable onPress={togglePill} hitSlop={12} style={styles.toggleBtn}>
+              <View style={[styles.toggleCircle, { borderColor: iconColor }]}>
+                <Ionicons name="swap-vertical-outline" size={14} color={iconColor} />
+              </View>
+            </Pressable>
+          )}
         </View>
-
-        <LinearGradient
-          colors={['#FFFFFF', '#EEF0F3', '#EEF0F3', '#FFFFFF']}
-          locations={[0, 0.3, 0.7, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.divider}
-        />
-
-        {activeItem.pill && pillAmount ? (
-          <View style={styles.pill}>
-            <View style={[styles.pillNumBox, { backgroundColor: activeItem.pill.backgroundColor }]}>
-              <Text style={[styles.pillWhole, { color: activeItem.pill.color }]}>
-                {pillAmount.sign}{pillAmount.whole}
-              </Text>
-              <Text style={[styles.pillSubtext, { color: activeItem.pill.color, opacity: 0.5 }]}>
-                {pillDecSep}{pillAmount.decimals} {pillAmount.symbol}
-              </Text>
-            </View>
-            <Text numberOfLines={3} style={styles.pillLabel}>
-              {activeItem.pill.label}
-            </Text>
-          </View>
-        ) : null}
       </Animated.View>
 
       {items.length > 1 && (
@@ -214,21 +239,36 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 16,
   },
+  amountWrap: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  toggleBtn: {
+    marginLeft: 10,
+  },
+  toggleCircle: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
   card: {
     marginHorizontal: 24,
-    minHeight: 150,
     overflow: 'visible',
-    paddingTop: 16,
+    paddingTop: 12,
+  },
+  cardWithSlot: {
+    marginHorizontal: 0,
+    paddingTop: 0,
+  },
+  innerWithSlot: {
+    marginTop: -90,
   },
   decimals: {
     fontFamily: 'DMSerifDisplay_400Regular',
     fontSize: 28,
-  },
-  divider: {
-    alignSelf: 'center',
-    height: 2,
-    marginBottom: 8,
-    width: '52%',
   },
   indicator: {
     borderRadius: 999,
@@ -239,39 +279,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
-    paddingBottom: 10,
-    paddingTop: 8,
+    paddingBottom: 4,
+    paddingTop: 6,
   },
   inner: {},
-  pill: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'center',
-    paddingBottom: 4,
-  },
-  pillLabel: {
-    color: '#888A92',
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 16,
-  },
-  pillNumBox: {
-    alignItems: 'baseline',
-    borderRadius: 5,
-    flexDirection: 'row',
-    gap: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-  pillSubtext: {
-    fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 13,
-  },
-  pillWhole: {
-    fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 28,
-  },
   symbol: {
     fontFamily: 'DMSerifDisplay_400Regular',
     fontSize: 22,

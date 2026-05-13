@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { GoalCard } from '../../components/GoalCard';
 import { AppModal as Modal } from '../../components/AppModal';
+import { ModalScreen } from '../../components/ModalScreen';
 import { SavingsCard } from '../../components/SavingsCard';
 import { APP_COLORS } from '../../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../../constants/typography';
@@ -25,6 +25,7 @@ import { formatDateShort, fmt } from '../../utils/format';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
 import { getPartnerId, getUserData } from '../../utils/users';
+import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
 
 type OwnerFilter = 'mine' | 'partner' | 'both';
@@ -66,6 +67,8 @@ export default function AhorrosScreen() {
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
   const [searchText, setSearchText] = useState('');
   const [dropdown, setDropdown] = useState<DropdownInfo | null>(null);
+
+  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation();
 
   const isSearching = searchText.trim().length > 0;
   const partner = getPartnerId(partnerForUser, currentUser);
@@ -147,16 +150,16 @@ export default function AhorrosScreen() {
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={dismissKeyboardAndBlur}
       >
-        <View style={styles.guidelineEdge}>
+        <Animated.View style={[styles.guidelineEdge, { opacity: heroAnim, transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
           <SavingsCard
             saved={totals.saved}
             target={totals.target}
             currency={currency}
           />
-        </View>
+        </Animated.View>
 
         {/* ── Barra de búsqueda ── */}
-        <View style={styles.searchWrap}>
+        <Animated.View style={[styles.searchWrap, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
           <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
           <TextInput
             value={searchText}
@@ -170,10 +173,10 @@ export default function AhorrosScreen() {
               <Ionicons name="close-circle" size={18} color={APP_COLORS.textMuted} />
             </Pressable>
           )}
-        </View>
+        </Animated.View>
 
         {/* ── Filtro de autor ── */}
-        <View style={styles.filtersBar}>
+        <Animated.View style={[styles.filtersBar, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
           <GoalFilterChip
             icon="people-outline"
             label="Ver"
@@ -186,23 +189,31 @@ export default function AhorrosScreen() {
             onChange={(value) => setOwnerFilter(value as OwnerFilter)}
             onOpen={setDropdown}
           />
-        </View>
+        </Animated.View>
 
         {/* ── Botón rápido ── */}
-        <Pressable
-          onPress={() => {
-            const firstGoal = payload.goals[0];
-            if (firstGoal) setContributeGoal(firstGoal);
-            else setCreateOpen(true);
-          }}
-          style={({ pressed }) => [styles.savingsActionBtn, pressed && styles.savingsActionBtnPressed]}
-        >
-          <Ionicons name="wallet-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.savingsActionBtnText}>Agregar Ahorro</Text>
-        </Pressable>
+        <Animated.View style={{ marginHorizontal: 20, opacity: headerAnim, transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+          <Pressable
+            onPress={() => {
+              const firstGoal = payload.goals[0];
+              if (firstGoal) setContributeGoal(firstGoal);
+              else setCreateOpen(true);
+            }}
+            style={({ pressed }) => [styles.savingsActionBtn, pressed && styles.savingsActionBtnPressed]}
+          >
+            <Ionicons name="wallet-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.savingsActionBtnText}>Agregar Ahorro</Text>
+          </Pressable>
+        </Animated.View>
 
-        {sections.map((section) => (
-          <View key={section.title} style={styles.section}>
+        {sections.map((section, sectionIndex) => (
+          <Animated.View
+            key={section.title}
+            style={[styles.section, {
+              opacity: itemAnims[sectionIndex],
+              transform: [{ translateY: itemAnims[sectionIndex].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            }]}
+          >
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionTitle}>{section.title}</Text>
@@ -231,7 +242,7 @@ export default function AhorrosScreen() {
                 ))}
               </View>
             )}
-          </View>
+          </Animated.View>
         ))}
       </ScrollView>
 
@@ -283,17 +294,14 @@ function GoalDetailModal({
   const progress = goalProgress(goal, contribs);
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <Pressable style={styles.modalBackdrop} onPressIn={onClose}>
-        <Pressable style={styles.modalShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{goal.name}</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={22} color={APP_COLORS.textPrimary} />
-            </Pressable>
-          </View>
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <ModalScreen
+        title={goal.name}
+        breadcrumbs={['Ahorros', 'Meta', 'Historial']}
+        activeBreadcrumb={2}
+        onBack={onClose}
+        scroll
+      >
 
           <View style={styles.detailSummary}>
             <DetailPill label="Ahorrado" value={fmt(progress.total, currency)} />
@@ -319,9 +327,7 @@ function GoalDetailModal({
               ))}
             </View>
           )}
-          </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
 }
@@ -347,21 +353,15 @@ function PlaceholderModal({
   onClose: () => void;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <Pressable style={styles.modalBackdrop} onPressIn={onClose}>
-        <Pressable style={styles.modalShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={22} color={APP_COLORS.textPrimary} />
-            </Pressable>
-          </View>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <ModalScreen
+        title={title}
+        breadcrumbs={['Ahorros', 'Proceso']}
+        activeBreadcrumb={1}
+        onBack={onClose}
+      >
           <Text style={styles.placeholderText}>{body}</Text>
-          </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
 }
@@ -481,7 +481,7 @@ function GoalDropdownOverlay({ info, onClose }: { info: DropdownInfo; onClose: (
 
 const styles = StyleSheet.create({
   cardStack: {
-    gap: 10,
+    gap: 8,
   },
   // ── Search ──
   searchWrap: {
@@ -492,6 +492,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
+    marginHorizontal: 20,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -506,6 +507,7 @@ const styles = StyleSheet.create({
   filtersBar: {
     flexDirection: 'row',
     gap: 8,
+    marginHorizontal: 20,
   },
   filterChipWrapper: {},
   filterChip: {
@@ -608,7 +610,7 @@ const styles = StyleSheet.create({
   },
   content: {
     gap: 18,
-    padding: 16,
+    paddingVertical: 16,
   },
   detailPill: {
     backgroundColor: '#F8FAFC',
@@ -733,11 +735,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDF2F6',
     flex: 1,
   },
-  guidelineEdge: {
-    marginHorizontal: -16,
-  },
+  guidelineEdge: {},
   section: {
     gap: 10,
+    marginHorizontal: 20,
   },
   sectionCount: {
     color: APP_COLORS.textSecondary,

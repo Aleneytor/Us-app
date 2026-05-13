@@ -1,24 +1,33 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import {
+  Animated,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Pressable,
 } from 'react-native';
 import { BudgetCategoryCard } from '../../components/BudgetCategoryCard';
-import { DonutChart } from '../../components/DonutChart';
+import { GuidelineCard } from '../../components/GuidelineCard';
+import type { GuidelineCardItem } from '../../components/GuidelineCard';
+import { SpendingGaugeCard } from '../../components/SpendingGaugeCard';
+import type { GaugeSlice } from '../../components/SpendingGaugeCard';
 import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { APP_COLORS, getIconColor } from '../../constants/colors';
 import { BudgetCategoryDetailModal } from '../../modals/BudgetCategoryDetailModal';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import type { BudgetCategory } from '../../types';
-import { calcBudgetCategorySpending } from '../../utils/calculations';
-import { fmt } from '../../utils/format';
+import { calcBudgetCategoryIncome, calcBudgetCategorySpending } from '../../utils/calculations';
+import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
+
+const CHART_MODE_META = {
+  gastos:   { prefix: 'Este es el total de ', accent: 'gastos',   suffix: ' de tus categorias', color: '#EC1147' },
+  ingresos: { prefix: 'Este es el total de ', accent: 'ingresos', suffix: ' de tus categorias', color: '#25C55B' },
+} as const;
 
 export default function CategoriasScreen() {
   const tabPadding = useTabPadding();
@@ -28,9 +37,13 @@ export default function CategoriasScreen() {
   const selectedYM = useAppStore((s) => s.selectedYM);
   const currency = useAppStore((s) => s.currency);
 
+  const [scrollEnabled, setScrollEnabled] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null);
+  const [chartMode, setChartMode] = useState<'gastos' | 'ingresos'>('gastos');
+
+  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation();
 
   const user = users[currentUser] ?? { name: currentUser };
 
@@ -59,18 +72,46 @@ export default function CategoriasScreen() {
     });
   }, [allBudgetCategories, payload, selectedYM]);
 
-  const chartSlices = useMemo(() => {
+  const gaugeSlices = useMemo((): GaugeSlice[] => {
     return sortedChartCategories.map((cat) => ({
       id: cat.id,
       label: cat.name,
-      value: calcBudgetCategorySpending(payload, cat.id, selectedYM),
-      budget: cat.monthlyBudget,
       color: getIconColor(cat.iconColor).color,
+      value: calcBudgetCategorySpending(payload, cat.id, selectedYM),
     }));
-  }, [payload, selectedYM, sortedChartCategories]);
-  const totalCategorySpent = useMemo(
-    () => chartSlices.reduce((sum, slice) => sum + slice.value, 0),
-    [chartSlices],
+  }, [sortedChartCategories, payload, selectedYM]);
+
+  const incomeGaugeSlices = useMemo((): GaugeSlice[] => {
+    return [...allBudgetCategories]
+      .sort((a, b) => {
+        const incomeA = calcBudgetCategoryIncome(payload, a.id, selectedYM);
+        const incomeB = calcBudgetCategoryIncome(payload, b.id, selectedYM);
+        return incomeB - incomeA || a.name.localeCompare(b.name);
+      })
+      .map((cat) => ({
+        id: cat.id,
+        label: cat.name,
+        color: getIconColor(cat.iconColor).color,
+        value: calcBudgetCategoryIncome(payload, cat.id, selectedYM),
+      }));
+  }, [allBudgetCategories, payload, selectedYM]);
+
+  const totalSpent = useMemo(
+    () => gaugeSlices.reduce((sum, s) => sum + s.value, 0),
+    [gaugeSlices],
+  );
+
+  const totalIncome = useMemo(
+    () => incomeGaugeSlices.reduce((sum, s) => sum + s.value, 0),
+    [incomeGaugeSlices],
+  );
+
+  const categoryItems = useMemo<GuidelineCardItem<'gastos' | 'ingresos'>[]>(
+    () => [
+      { key: 'gastos',   value: totalSpent,  accent: '#EC1147' },
+      { key: 'ingresos', value: totalIncome, accent: '#25C55B' },
+    ],
+    [totalSpent, totalIncome],
   );
 
   const handleRefresh = async () => {
@@ -87,13 +128,26 @@ export default function CategoriasScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
+        scrollEnabled={scrollEnabled}
       >
-        <View style={styles.heroHeader}>
+        <Animated.View
+          style={[
+            styles.heroHeader,
+            {
+              opacity: heroAnim,
+              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+            },
+          ]}
+        >
           <View style={styles.heroTop}>
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
               <Text style={styles.heroSubtitle}>
-                Estas son tus categorias y presupuesto general.
+                {CHART_MODE_META[chartMode].prefix}
+                <Text style={{ color: CHART_MODE_META[chartMode].color }}>
+                  {CHART_MODE_META[chartMode].accent}
+                </Text>
+                {CHART_MODE_META[chartMode].suffix}
               </Text>
             </View>
             <UserHeaderButton />
@@ -101,32 +155,32 @@ export default function CategoriasScreen() {
 
           {allBudgetCategories.length > 0 && (
             <View style={styles.balanceSummary}>
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.58}
-                style={styles.balanceSummaryAmount}
-              >
-                {fmt(totalCategorySpent, currency)}
-              </Text>
+              <GuidelineCard
+                items={categoryItems}
+                currency={currency}
+                onStateChange={(state) => setChartMode(state)}
+                onSwipeBegin={() => setScrollEnabled(false)}
+                onSwipeEnd={() => setScrollEnabled(true)}
+                topSlot={
+                  <SpendingGaugeCard
+                    slices={chartMode === 'gastos' ? gaugeSlices : incomeGaugeSlices}
+                    currency={currency}
+                  />
+                }
+              />
             </View>
           )}
-        </View>
+        </Animated.View>
 
-        {allBudgetCategories.length > 0 && (
-          <View style={styles.chartSection}>
-            <DonutChart
-              slices={chartSlices}
-              currency={currency}
-              onSlicePress={(slice) => {
-                const category = allBudgetCategories.find((cat) => cat.id === slice.id);
-                if (category) setSelectedCategory(category);
-              }}
-            />
-          </View>
-        )}
-
-        <View style={styles.sectionHeader}>
+        <Animated.View
+          style={[
+            styles.sectionHeader,
+            {
+              opacity: headerAnim,
+              transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+            },
+          ]}
+        >
           <Text style={styles.sectionTitle}>Todas las categorias</Text>
           <Pressable
             accessibilityLabel="Crear categoria"
@@ -135,10 +189,10 @@ export default function CategoriasScreen() {
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
           </Pressable>
-        </View>
+        </Animated.View>
 
         {budgetCategories.length === 0 ? (
-          <View style={styles.emptyState}>
+          <Animated.View style={[styles.emptyState, { opacity: headerAnim }]}>
             <Ionicons name="pie-chart-outline" size={34} color={APP_COLORS.textMuted} />
             <Text style={styles.emptyTitle}>Sin categorias</Text>
             <Text style={styles.emptyText}>
@@ -151,17 +205,24 @@ export default function CategoriasScreen() {
               <Ionicons name="add" size={16} color="#FFFFFF" />
               <Text style={styles.emptyButtonText}>Crear categoria</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         ) : (
           <View style={styles.list}>
-            {sortedBudgetCategories.map((category) => (
-              <BudgetCategoryCard
+            {sortedBudgetCategories.map((category, index) => (
+              <Animated.View
                 key={category.id}
-                category={category}
-                spent={calcBudgetCategorySpending(payload, category.id, selectedYM)}
-                currency={currency}
-                onPress={() => setSelectedCategory(category)}
-              />
+                style={{
+                  opacity: itemAnims[index],
+                  transform: [{ translateY: itemAnims[index].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+                }}
+              >
+                <BudgetCategoryCard
+                  category={category}
+                  spent={calcBudgetCategorySpending(payload, category.id, selectedYM)}
+                  currency={currency}
+                  onPress={() => setSelectedCategory(category)}
+                />
+              </Animated.View>
             ))}
           </View>
         )}
@@ -240,15 +301,22 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     elevation: 5,
-    paddingBottom: 28,
     paddingTop: 56,
     shadowColor: '#7E7E7E',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
   },
-  chartSection: {
-    paddingTop: 14,
+  heroInnerHighlight: {
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderWidth: 1,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   heroSubtitle: {
     color: '#303236',
@@ -268,17 +336,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
   },
   balanceSummary: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 18,
-  },
-  balanceSummaryAmount: {
-    color: '#2F3033',
-    fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 46,
-    lineHeight: 52,
-    minWidth: 0,
-    textAlign: 'center',
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   list: {
     gap: 8,

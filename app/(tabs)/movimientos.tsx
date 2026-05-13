@@ -22,11 +22,12 @@ import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { CATEGORIES } from '../../constants/categories';
 import { APP_COLORS } from '../../constants/colors';
 import type { CurrencyCode, Transaction } from '../../types';
-import { isMonthVisible } from '../../utils/filters';
+import { getTransactionAmountForMonth, isMonthVisible } from '../../utils/filters';
 import { MONTHS_ES, fmt, splitAmount } from '../../utils/format';
 import { MonthNavigator } from '../../components/MonthNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
+import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
 import { getPartnerId, getUserData } from '../../utils/users';
@@ -95,6 +96,7 @@ export default function MovimientosScreen() {
   const isSearching = searchText.trim().length > 0;
 
   const headerAnim = useRef(new Animated.Value(1)).current;
+  const { heroAnim, contentAnim } = useEntranceAnimation();
 
   const categoryOptions = useMemo<Array<Option<string>>>(() => {
     const keys = Array.from(
@@ -169,12 +171,12 @@ export default function MovimientosScreen() {
   const totals = useMemo(() => {
     const expenses = filtered
       .filter((t) => t.kind === 'expense')
-      .reduce((sum, t) => sum + t.amt, 0);
+      .reduce((sum, t) => sum + getTransactionAmountForMonth(t, selectedYM), 0);
     const income = filtered
       .filter((t) => t.kind === 'income')
-      .reduce((sum, t) => sum + t.amt, 0);
+      .reduce((sum, t) => sum + getTransactionAmountForMonth(t, selectedYM), 0);
     return { expenses, income, balance: income - expenses };
-  }, [filtered]);
+  }, [filtered, selectedYM]);
 
   const listAnimationKey = useMemo(
     () => [
@@ -256,20 +258,21 @@ export default function MovimientosScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListHeaderComponent={
           <>
-            <Animated.View
-              style={{
-                maxHeight: headerAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 300],
-                }),
-                opacity: headerAnim.interpolate({
-                  inputRange: [0, 0.45, 1],
-                  outputRange: [0, 0, 1],
-                }),
-                overflow: 'hidden',
-              }}
-            >
-              <View style={styles.heroHeader}>
+            <Animated.View style={{ opacity: heroAnim, transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }}>
+              <Animated.View
+                style={{
+                  maxHeight: headerAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 300],
+                  }),
+                  opacity: headerAnim.interpolate({
+                    inputRange: [0, 0.45, 1],
+                    outputRange: [0, 0, 1],
+                  }),
+                  overflow: 'hidden',
+                }}
+              >
+                <View style={styles.heroHeader}>
                 <View style={styles.heroTop}>
                   <View style={styles.heroTextWrap}>
                     <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
@@ -289,9 +292,10 @@ export default function MovimientosScreen() {
                   <HeroSummaryCell label="Balance" value={totals.balance} currency={currency} tone="balance" />
                 </View>
               </View>
+              </Animated.View>
             </Animated.View>
 
-            <View style={styles.controls}>
+            <Animated.View style={[styles.controls, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
               <MonthNavigator ym={selectedYM} onChange={setSelectedYM} />
 
               <View style={styles.searchWrap}>
@@ -348,7 +352,7 @@ export default function MovimientosScreen() {
                   onOpen={setDropdown}
                 />
               </View>
-            </View>
+            </Animated.View>
           </>
         }
         ListEmptyComponent={

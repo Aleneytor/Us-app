@@ -6,7 +6,7 @@ import { currentYM, todayStr } from '../utils/format';
 import { normalizeAppPayload } from '../utils/payload';
 import { cancelTransactionReminders, scheduleTransactionReminder } from '../services/notifications';
 import { USERS, ROOM_FOR_USER, PARTNER } from '../types';
-import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, BudgetCategory, UserData, Plan, PlanCategory, PlanExpense } from '../types';
+import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, BudgetCategory, UserData, Plan, PlanCategory, PlanExpense, PlanSettlement } from '../types';
 
 const STORAGE_USER_KEY     = 'nosotros_user';
 const STORAGE_PAYLOAD_KEY  = 'nosotros_payload';
@@ -63,7 +63,10 @@ interface AppActions {
   updatePlanCategory: (planId: number, cat: PlanCategory) => void;
   deletePlanCategory: (planId: number, catId: number) => void;
   addPlanExpense: (planId: number, expense: PlanExpense) => void;
+  updatePlanExpense: (planId: number, expense: PlanExpense) => void;
   deletePlanExpense: (planId: number, expenseId: number) => void;
+  addPlanSettlement: (planId: number, settlement: PlanSettlement) => void;
+  deletePlanSettlement: (planId: number, settlementId: number) => void;
 }
 
 // ─── Module-level (not in store — not serializable) ──────────────────────────
@@ -426,6 +429,21 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     _syncToCloud();
   },
 
+  updatePlanExpense: (planId, expense) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, expenses: p.expenses.map((e) => String(e.id) === String(expense.id) ? expense : e) }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
   deletePlanExpense: (planId, expenseId) => {
     set((s) => ({
       payload: {
@@ -433,6 +451,36 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         plans: (s.payload.plans ?? []).map((p) =>
           String(p.id) === String(planId)
             ? { ...p, expenses: p.expenses.filter((e) => String(e.id) !== String(expenseId)) }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  addPlanSettlement: (planId, settlement) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, settlements: [...(p.settlements ?? []), settlement] }
+            : p,
+        ),
+      },
+    }));
+    _persistCurrentPayload();
+    _syncToCloud();
+  },
+
+  deletePlanSettlement: (planId, settlementId) => {
+    set((s) => ({
+      payload: {
+        ...s.payload,
+        plans: (s.payload.plans ?? []).map((p) =>
+          String(p.id) === String(planId)
+            ? { ...p, settlements: (p.settlements ?? []).filter((st) => String(st.id) !== String(settlementId)) }
             : p,
         ),
       },

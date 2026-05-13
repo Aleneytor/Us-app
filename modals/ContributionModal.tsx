@@ -1,6 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -12,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { APP_COLORS } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { Goal } from '../types';
@@ -27,7 +26,6 @@ interface ContributionModalProps {
 }
 
 export function ContributionModal({ visible, goal, onClose }: ContributionModalProps) {
-  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const contribs = useAppStore((s) => s.payload.contribs);
   const addContribution = useAppStore((s) => s.addContribution);
@@ -65,22 +63,24 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
   if (!goal) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.keyboardView}>
-      <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-        <Pressable style={styles.screenShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.screen}>
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={styles.title}>Aportar</Text>
-              <Text style={styles.subtitle}>{goal.name}</Text>
-            </View>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title="Aportar"
+        subtitle={goal.name}
+        breadcrumbs={['Meta', 'Aporte', 'Guardar']}
+        activeBreadcrumb={amt.trim() ? 2 : 1}
+        onBack={onClose}
+        footer={(
+          <>
+            <Pressable onPress={() => runAfterKeyboardDismiss(onClose)} style={styles.secondaryButton}>
+              <Text style={styles.secondaryText}>Cancelar</Text>
             </Pressable>
-          </View>
-
+            <Pressable onPress={() => runAfterKeyboardDismiss(save)} style={styles.primaryButton}>
+              <Text style={styles.primaryText}>Guardar</Text>
+            </Pressable>
+          </>
+        )}
+      >
           <View style={styles.content}>
             {progress ? (
               <View style={styles.progressBox}>
@@ -101,19 +101,7 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
             <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
             <Field label="Nota" value={note} onChangeText={setNote} placeholder="Opcional" multiline />
           </View>
-
-          <View style={styles.footer}>
-            <Pressable onPress={() => runAfterKeyboardDismiss(onClose)} style={styles.secondaryButton}>
-              <Text style={styles.secondaryText}>Cancelar</Text>
-            </Pressable>
-            <Pressable onPress={() => runAfterKeyboardDismiss(save)} style={styles.primaryButton}>
-              <Text style={styles.primaryText}>Guardar</Text>
-            </Pressable>
-          </View>
-          </View>
-        </Pressable>
-      </Pressable>
-      </View>
+      </ModalScreen>
     </Modal>
   );
 }

@@ -1,6 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -12,8 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { ColorPicker } from '../components/ColorPicker';
 import { IconPicker } from '../components/IconPicker';
 import { AppModal as Modal } from '../components/AppModal';
+import { ModalScreen } from '../components/ModalScreen';
 import { SAVING_ICON_KEYS } from '../constants/categories';
 import { APP_COLORS } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
@@ -33,7 +33,6 @@ interface PlanModalProps {
 }
 
 export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
-  const insets = useSafeAreaInsets();
   const currentUser = useAppStore((s) => s.currentUser);
   const users = useAppStore((s) => s.users);
   const partnerForUser = useAppStore((s) => s.partnerForUser);
@@ -63,20 +62,24 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
 
   const editing = !!plan;
 
+  const [step, setStep] = useState(0);
   const [title, setTitle] = useState('');
-  const [icon, setIcon] = useState('map');
   const [description, setDescription] = useState('');
   const [members, setMembers] = useState<PlanMember[]>([meMember]);
-  const [splitMode, setSplitMode] = useState<'equal' | 'custom'>('equal');
+  const [splitMode, setSplitMode] = useState<'equal' | 'parts' | 'percentage'>('equal');
   const [splitPcts, setSplitPcts] = useState<Record<string, string>>({});
   const [externalName, setExternalName] = useState('');
   const [showAddExternal, setShowAddExternal] = useState(false);
+  const [icon, setIcon] = useState('map');
+  const [iconColor, setIconColor] = useState('purple');
 
   useEffect(() => {
     if (!visible) return;
+    setStep(0);
     setTitle(plan?.title ?? '');
-    setIcon(plan?.icon ?? 'map');
     setDescription(plan?.description ?? '');
+    setIcon(plan?.icon ?? 'map');
+    setIconColor(plan?.iconColor ?? 'purple');
     setSplitMode(plan?.splitMode ?? 'equal');
     if (plan) {
       setMembers(plan.members);
@@ -122,7 +125,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
   };
 
   const removeMember = (id: string) => {
-    if (id === currentUser) return; // can't remove self
+    if (id === currentUser) return;
     setMembers((prev) => prev.filter((m) => m.id !== id));
   };
 
@@ -130,36 +133,76 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
     return Object.values(splitPcts).reduce((sum, v) => sum + (Number.parseFloat(v) || 0), 0);
   }, [splitPcts]);
 
-  const save = () => {
+  const validateStep0 = () => {
     if (!title.trim()) {
       Alert.alert('Falta el nombre', 'Dale un nombre al plan.');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const validateStep1 = () => {
     if (members.length === 0) {
       Alert.alert('Sin participantes', 'Agrega al menos un participante.');
-      return;
+      return false;
     }
-    if (splitMode === 'custom') {
-      if (Math.abs(splitTotal - 100) > 0.5) {
-        Alert.alert('Porcentajes incorrectos', `Los porcentajes deben sumar 100%. Actualmente suman ${splitTotal.toFixed(0)}%.`);
-        return;
+    if (splitMode === 'percentage' && Math.abs(splitTotal - 100) > 0.5) {
+      Alert.alert('Porcentajes incorrectos', `Los porcentajes deben sumar 100%. Actualmente suman ${splitTotal.toFixed(0)}%.`);
+      return false;
+    }
+    return true;
+  };
+
+  const handlePrimary = () => {
+    runAfterKeyboardDismiss(() => {
+      if (step === 0) {
+        if (validateStep0()) setStep(1);
+      } else if (step === 1) {
+        if (validateStep1()) setStep(2);
+      } else {
+        save();
       }
+    });
+  };
+
+  const handleSecondary = () => {
+    dismissKeyboardAndBlur();
+    if (step > 0) {
+      setStep(step - 1);
+    } else {
+      onClose();
     }
+  };
+
+  const handleBack = () => {
+    dismissKeyboardAndBlur();
+    if (step > 0) {
+      setStep(step - 1);
+    } else {
+      onClose();
+    }
+  };
+
+  const save = () => {
+    if (!validateStep0()) { setStep(0); return; }
+    if (!validateStep1()) { setStep(1); return; }
 
     const finalMembers: PlanMember[] = members.map((m) => ({
       ...m,
-      splitPct: splitMode === 'custom' ? (Number.parseFloat(splitPcts[m.id] ?? '0') || 0) : undefined,
+      splitPct: splitMode === 'percentage' ? (Number.parseFloat(splitPcts[m.id] ?? '0') || 0) : undefined,
     }));
 
     const next: Plan = {
       id: plan?.id ?? Date.now(),
       title: title.trim(),
       icon,
+      iconColor,
       description: description.trim() || undefined,
       date: plan?.date ?? todayStr(),
       members: finalMembers,
       categories: plan?.categories ?? [],
       expenses: plan?.expenses ?? [],
+      settlements: plan?.settlements ?? [],
       splitMode,
     };
 
@@ -168,191 +211,196 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
     onClose();
   };
 
+  const primaryLabel = step === 2 ? 'Guardar' : 'Continuar';
+  const secondaryLabel = step === 0 ? 'Cancelar' : 'Atrás';
+
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.keyboardView}>
-        <Pressable style={[styles.backdrop, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]} onPressIn={onClose}>
-          <Pressable style={styles.cardShadow} onPressIn={(e) => e.stopPropagation()}>
-            <View style={styles.card}>
-              {/* Header */}
-              <View style={styles.header}>
-                <Text style={styles.headerTitle}>{editing ? 'Editar plan' : 'Nuevo plan'}</Text>
-                <Pressable onPress={onClose} style={styles.closeBtn}>
-                  <Ionicons name="close" size={22} color={APP_COLORS.textPrimary} />
-                </Pressable>
-              </View>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleBack}>
+      <ModalScreen
+        title={editing ? 'Editar plan' : 'Nuevo plan'}
+        breadcrumbs={['Plan', 'Participantes', 'Estilo']}
+        activeBreadcrumb={step}
+        canPressBreadcrumb={(index) => index < step}
+        onBreadcrumbPress={setStep}
+        onBack={handleBack}
+        contentContainerStyle={{ padding: 0 }}
+        footer={(
+          <>
+            <Pressable onPress={handleSecondary} style={styles.secondaryBtn}>
+              <Text style={styles.secondaryText}>{secondaryLabel}</Text>
+            </Pressable>
+            <Pressable onPress={handlePrimary} style={styles.primaryBtn}>
+              <Text style={styles.primaryText}>{primaryLabel}</Text>
+            </Pressable>
+          </>
+        )}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={dismissKeyboardAndBlur}
+          showsVerticalScrollIndicator={false}
+        >
+          {step === 0 && (
+            <View style={styles.block}>
+              <Field
+                label="Nombre del plan"
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Ej. Viaje a Amsterdam"
+                autoFocus
+              />
+              <Field
+                label="Descripción (opcional)"
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Ej. Fin de semana en mayo con amigos"
+                multiline
+              />
+            </View>
+          )}
 
-              <ScrollView
-                contentContainerStyle={styles.content}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                onScrollBeginDrag={dismissKeyboardAndBlur}
-              >
-                {/* Nombre */}
-                <Field
-                  label="Nombre del plan"
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="Ej. Viaje a Amsterdam"
-                  autoFocus
-                />
-
-                {/* Icono */}
-                <View style={styles.field}>
-                  <Text style={styles.label}>Ícono</Text>
-                  <IconPicker
-                    value={icon}
-                    colorId="purple"
-                    keys={SAVING_ICON_KEYS}
-                    horizontalInset={16}
-                    onChange={setIcon}
+          {step === 1 && (
+            <View style={styles.block}>
+              {/* Participantes */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Participantes</Text>
+                <View style={styles.membersWrap}>
+                  <MemberChip
+                    member={meMember}
+                    label="Tú"
+                    locked
+                    splitMode={splitMode}
+                    splitPct={splitPcts[meMember.id] ?? ''}
+                    onSplitChange={(v) => setSplitPcts((p) => ({ ...p, [meMember.id]: v }))}
                   />
-                </View>
 
-                {/* Descripción */}
-                <Field
-                  label="Descripción (opcional)"
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Ej. Fin de semana en mayo con amigos"
-                  multiline
-                />
-
-                {/* Participantes */}
-                <View style={styles.field}>
-                  <Text style={styles.label}>Participantes</Text>
-
-                  <View style={styles.membersWrap}>
-                    {/* Yo — siempre incluido */}
-                    <MemberChip
-                      member={meMember}
-                      label="Tú"
-                      locked
-                      splitMode={splitMode}
-                      splitPct={splitPcts[meMember.id] ?? ''}
-                      onSplitChange={(v) => setSplitPcts((p) => ({ ...p, [meMember.id]: v }))}
-                    />
-
-                    {/* Pareja */}
-                    {partnerId !== currentUser && (
-                      <Pressable
-                        onPress={togglePartner}
-                        style={({ pressed }) => [
-                          styles.memberChip,
-                          isPartnerIncluded && styles.memberChipActive,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <View style={[styles.memberAvatar, { backgroundColor: partnerMember.bg }]}>
-                          <Text style={[styles.memberInitials, { color: partnerMember.color }]}>
-                            {partnerMember.initials}
-                          </Text>
-                        </View>
-                        <Text style={[styles.memberName, isPartnerIncluded && styles.memberNameActive]}>
-                          {partnerMember.name}
+                  {partnerId !== currentUser && (
+                    <Pressable
+                      onPress={togglePartner}
+                      style={({ pressed }) => [
+                        styles.memberChip,
+                        isPartnerIncluded && styles.memberChipActive,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={[styles.memberAvatar, { backgroundColor: partnerMember.bg }]}>
+                        <Text style={[styles.memberInitials, { color: partnerMember.color }]}>
+                          {partnerMember.initials}
                         </Text>
-                        {isPartnerIncluded && splitMode === 'custom' && (
-                          <TextInput
-                            value={splitPcts[partnerMember.id] ?? ''}
-                            onChangeText={(v) => setSplitPcts((p) => ({ ...p, [partnerMember.id]: v }))}
-                            placeholder="0"
-                            keyboardType="decimal-pad"
-                            style={styles.splitInput}
-                            onPressIn={(e) => e.stopPropagation()}
-                          />
-                        )}
-                        {isPartnerIncluded && splitMode === 'custom' && (
-                          <Text style={styles.splitPct}>%</Text>
-                        )}
-                        {!isPartnerIncluded && (
-                          <Ionicons name="add" size={14} color={APP_COLORS.textMuted} />
-                        )}
-                      </Pressable>
-                    )}
-
-                    {/* Externos */}
-                    {members.filter((m) => !m.uid).map((m) => (
-                      <MemberChip
-                        key={m.id}
-                        member={m}
-                        splitMode={splitMode}
-                        splitPct={splitPcts[m.id] ?? ''}
-                        onSplitChange={(v) => setSplitPcts((p) => ({ ...p, [m.id]: v }))}
-                        onRemove={() => removeMember(m.id)}
-                      />
-                    ))}
-
-                    {/* Agregar externo */}
-                    {showAddExternal ? (
-                      <View style={styles.externalForm}>
-                        <TextInput
-                          value={externalName}
-                          onChangeText={setExternalName}
-                          placeholder="Nombre de la persona"
-                          placeholderTextColor={APP_COLORS.textMuted}
-                          style={styles.externalInput}
-                          autoFocus
-                          onSubmitEditing={addExternal}
-                          returnKeyType="done"
-                        />
-                        <Pressable onPress={addExternal} style={styles.externalAddBtn}>
-                          <Text style={styles.externalAddText}>Agregar</Text>
-                        </Pressable>
-                        <Pressable onPress={() => { setShowAddExternal(false); setExternalName(''); }}>
-                          <Ionicons name="close" size={18} color={APP_COLORS.textMuted} />
-                        </Pressable>
                       </View>
-                    ) : (
-                      <Pressable
-                        onPress={() => setShowAddExternal(true)}
-                        style={({ pressed }) => [styles.addExternalBtn, pressed && styles.pressed]}
-                      >
-                        <Ionicons name="person-add-outline" size={15} color={PLAN_ACCENT} />
-                        <Text style={styles.addExternalText}>Agregar persona</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
+                      <Text style={[styles.memberName, isPartnerIncluded && styles.memberNameActive]}>
+                        {partnerMember.name}
+                      </Text>
+                      {isPartnerIncluded && splitMode === 'percentage' && (
+                        <TextInput
+                          value={splitPcts[partnerMember.id] ?? ''}
+                          onChangeText={(v) => setSplitPcts((p) => ({ ...p, [partnerMember.id]: v }))}
+                          placeholder="0"
+                          keyboardType="decimal-pad"
+                          style={styles.splitInput}
+                          onPressIn={(e) => e.stopPropagation()}
+                        />
+                      )}
+                      {isPartnerIncluded && splitMode === 'percentage' && (
+                        <Text style={styles.splitPct}>%</Text>
+                      )}
+                      {!isPartnerIncluded && (
+                        <Ionicons name="add" size={14} color={APP_COLORS.textMuted} />
+                      )}
+                    </Pressable>
+                  )}
 
-                {/* Modo de división */}
-                <View style={styles.field}>
-                  <Text style={styles.label}>División de gastos</Text>
-                  <View style={styles.segmented}>
-                    <SegmentBtn
-                      label="Partes iguales"
-                      icon="people-outline"
-                      active={splitMode === 'equal'}
-                      onPress={() => setSplitMode('equal')}
+                  {members.filter((m) => !m.uid).map((m) => (
+                    <MemberChip
+                      key={m.id}
+                      member={m}
+                      splitMode={splitMode}
+                      splitPct={splitPcts[m.id] ?? ''}
+                      onSplitChange={(v) => setSplitPcts((p) => ({ ...p, [m.id]: v }))}
+                      onRemove={() => removeMember(m.id)}
                     />
-                    <SegmentBtn
-                      label="Porcentajes"
-                      icon="pie-chart-outline"
-                      active={splitMode === 'custom'}
-                      onPress={() => setSplitMode('custom')}
-                    />
-                  </View>
-                  {splitMode === 'custom' && (
-                    <Text style={[styles.splitHint, Math.abs(splitTotal - 100) > 0.5 && styles.splitHintError]}>
-                      Total: {splitTotal.toFixed(0)}% {Math.abs(splitTotal - 100) <= 0.5 ? '✓' : '(debe ser 100%)'}
-                    </Text>
+                  ))}
+
+                  {showAddExternal ? (
+                    <View style={styles.externalForm}>
+                      <TextInput
+                        value={externalName}
+                        onChangeText={setExternalName}
+                        placeholder="Nombre de la persona"
+                        placeholderTextColor={APP_COLORS.textMuted}
+                        style={styles.externalInput}
+                        autoFocus
+                        onSubmitEditing={addExternal}
+                        returnKeyType="done"
+                      />
+                      <Pressable onPress={addExternal} style={styles.externalAddBtn}>
+                        <Text style={styles.externalAddText}>Agregar</Text>
+                      </Pressable>
+                      <Pressable onPress={() => { setShowAddExternal(false); setExternalName(''); }}>
+                        <Ionicons name="close" size={18} color={APP_COLORS.textMuted} />
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => setShowAddExternal(true)}
+                      style={({ pressed }) => [styles.addExternalBtn, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="person-add-outline" size={15} color={PLAN_ACCENT} />
+                      <Text style={styles.addExternalText}>Agregar persona</Text>
+                    </Pressable>
                   )}
                 </View>
-              </ScrollView>
+              </View>
 
-              {/* Footer */}
-              <View style={styles.footer}>
-                <Pressable onPress={() => runAfterKeyboardDismiss(onClose)} style={styles.secondaryBtn}>
-                  <Text style={styles.secondaryText}>Cancelar</Text>
-                </Pressable>
-                <Pressable onPress={() => runAfterKeyboardDismiss(save)} style={styles.primaryBtn}>
-                  <Text style={styles.primaryText}>Guardar</Text>
-                </Pressable>
+              {/* División de gastos */}
+              <View style={styles.field}>
+                <Text style={styles.label}>División de gastos</Text>
+                <View style={styles.choiceRow}>
+                  <ChoiceButton
+                    label="Partes iguales"
+                    icon="people-outline"
+                    active={splitMode === 'equal'}
+                    onPress={() => setSplitMode('equal')}
+                  />
+                  <ChoiceButton
+                    label="Porcentajes"
+                    icon="pie-chart-outline"
+                    active={splitMode === 'percentage'}
+                    onPress={() => setSplitMode('percentage')}
+                  />
+                </View>
+                {splitMode === 'percentage' && (
+                  <Text style={[styles.splitHint, Math.abs(splitTotal - 100) > 0.5 && styles.splitHintError]}>
+                    Total: {splitTotal.toFixed(0)}% {Math.abs(splitTotal - 100) <= 0.5 ? '✓' : '(debe ser 100%)'}
+                  </Text>
+                )}
               </View>
             </View>
-          </Pressable>
-        </Pressable>
-      </View>
+          )}
+
+          {step === 2 && (
+            <View style={styles.block}>
+              <View style={styles.field}>
+                <Text style={styles.label}>Ícono</Text>
+                <IconPicker
+                  value={icon}
+                  colorId={iconColor}
+                  keys={SAVING_ICON_KEYS}
+                  horizontalInset={16}
+                  onChange={setIcon}
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.label}>Color</Text>
+                <ColorPicker value={iconColor} onChange={setIconColor} />
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      </ModalScreen>
     </Modal>
   );
 }
@@ -371,7 +419,7 @@ function MemberChip({
   member: PlanMember;
   label?: string;
   locked?: boolean;
-  splitMode: 'equal' | 'custom';
+  splitMode: 'equal' | 'parts' | 'percentage';
   splitPct: string;
   onSplitChange: (v: string) => void;
   onRemove?: () => void;
@@ -382,7 +430,7 @@ function MemberChip({
         <Text style={[styles.memberInitials, { color: member.color }]}>{member.initials}</Text>
       </View>
       <Text style={[styles.memberName, styles.memberNameActive]}>{label ?? member.name}</Text>
-      {splitMode === 'custom' && (
+      {splitMode === 'percentage' && (
         <>
           <TextInput
             value={splitPct}
@@ -403,9 +451,9 @@ function MemberChip({
   );
 }
 
-// ─── SegmentBtn ───────────────────────────────────────────────────────────────
+// ─── ChoiceButton ─────────────────────────────────────────────────────────────
 
-function SegmentBtn({
+function ChoiceButton({
   label,
   icon,
   active,
@@ -419,10 +467,14 @@ function SegmentBtn({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.segmentBtn, active && styles.segmentBtnActive, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.choiceBtn,
+        active && styles.choiceBtnActive,
+        pressed && styles.pressed,
+      ]}
     >
-      <Ionicons name={icon} size={15} color={active ? PLAN_ACCENT : APP_COLORS.textSecondary} />
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : APP_COLORS.textSecondary} />
+      <Text style={[styles.choiceBtnText, active && styles.choiceBtnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -443,62 +495,19 @@ function Field({ label, ...props }: ComponentProps<typeof TextInput> & { label: 
 }
 
 const styles = StyleSheet.create({
-  keyboardView: { flex: 1 },
-  backdrop: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  cardShadow: {
-    borderRadius: 22,
-    elevation: 14,
-    maxWidth: 560,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.24,
-    shadowRadius: 30,
-    width: '100%',
-  },
-  card: {
-    backgroundColor: APP_COLORS.background,
-    borderRadius: 22,
-    maxHeight: '96%',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  header: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  headerTitle: {
-    color: APP_COLORS.textPrimary,
-    flex: 1,
-    fontSize: 21,
-    fontWeight: MODAL_TITLE_FONT_WEIGHT,
-  },
-  closeBtn: {
-    alignItems: 'center',
-    borderRadius: 12,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
   content: {
     gap: 16,
     padding: 16,
     paddingBottom: 32,
   },
+  block: {
+    gap: 16,
+  },
   field: { gap: 7 },
   label: {
     color: APP_COLORS.textSecondary,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '600',
   },
   input: {
     backgroundColor: APP_COLORS.surface,
@@ -618,38 +627,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  // ── Segment ──
-  segmented: {
-    backgroundColor: '#F8FAFC',
+  // ── Choice buttons (split mode) ──
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  choiceBtn: {
+    alignItems: 'center',
+    backgroundColor: APP_COLORS.surface,
     borderColor: APP_COLORS.border,
     borderRadius: 12,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
-    padding: 4,
-  },
-  segmentBtn: {
-    alignItems: 'center',
-    borderRadius: 9,
     flex: 1,
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
-    minHeight: 38,
+    minHeight: 42,
+    paddingHorizontal: 12,
   },
-  segmentBtnActive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: APP_COLORS.border,
-    borderWidth: 1,
+  choiceBtnActive: {
+    backgroundColor: PLAN_ACCENT,
+    borderColor: PLAN_ACCENT,
   },
-  segmentText: {
-    color: APP_COLORS.textSecondary,
+  choiceBtnText: {
+    color: APP_COLORS.textPrimary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '400',
   },
-  segmentTextActive: {
-    color: PLAN_ACCENT,
-    fontWeight: '700',
+  choiceBtnTextActive: {
+    color: '#FFFFFF',
   },
   splitHint: {
     color: APP_COLORS.textSecondary,
@@ -661,14 +667,6 @@ const styles = StyleSheet.create({
     color: APP_COLORS.expense,
   },
   // ── Footer ──
-  footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    padding: 16,
-  },
   primaryBtn: {
     alignItems: 'center',
     backgroundColor: PLAN_ACCENT,

@@ -20,9 +20,9 @@ export function ProximoMovimientoCard({
   onMenuPress,
 }: ProximoMovimientoCardProps) {
   const category = CATEGORIES[transaction.cat] ?? CATEGORIES.other;
-  const isMonthly = transaction.type === 'monthly';
-  const bgColor = isMonthly ? '#EC1147' : '#94A3B8';
-  const freq = isMonthly ? '/mes' : '/unico';
+  const isRecurring = transaction.type !== 'once';
+  const bgColor = isRecurring ? '#EC1147' : '#94A3B8';
+  const freq = getFrequencySuffix(transaction.type);
   const verb = transaction.kind === 'income' ? 'recibir' : 'pagar';
   const daysLabel =
     daysLeft === 0 ? 'Hoy' :
@@ -65,6 +65,13 @@ export function ProximoMovimientoCard({
       </Text>
     </Pressable>
   );
+}
+
+function getFrequencySuffix(type: Transaction['type']): string {
+  if (type === 'monthly') return '/mes';
+  if (type === 'weekly') return '/sem';
+  if (type === 'biweekly') return '/bisem';
+  return '/unico';
 }
 
 const styles = StyleSheet.create({

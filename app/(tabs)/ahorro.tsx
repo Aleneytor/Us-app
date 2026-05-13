@@ -26,13 +26,16 @@ import { SavingPlanModal } from '../../modals/SavingPlanModal';
 import type { CurrencyCode, Plan, SavingPlan } from '../../types';
 import { savingPlanProgress, savingPlanSavedAmount } from '../../utils/calculations';
 import { fmt } from '../../utils/format';
+import { computeMemberBalances, planTotalBudget, planTotalSpent, resolveDebts } from '../../utils/planCalculations';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
 import { getPartnerId, getUserData } from '../../utils/users';
 import { useTabPadding } from '../../hooks/useTabPadding';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type OwnerFilter = 'mine' | 'partner' | 'both';
 type ScreenMode = 'ahorros' | 'planes';
+type PlanFilter = 'todos' | 'activos' | 'saldados';
 
 const FILTER_OPTIONS: { label: string; value: OwnerFilter }[] = [
   { label: 'Ambos', value: 'both' },
@@ -44,6 +47,7 @@ const SAVINGS_ACCENT = '#7C3AED';
 
 export default function SavingsPreviewScreen() {
   const tabPadding = useTabPadding();
+  const insets = useSafeAreaInsets();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
@@ -68,9 +72,30 @@ export default function SavingsPreviewScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
   const [searchText, setSearchText] = useState('');
+  const [planFilter, setPlanFilter] = useState<PlanFilter>('todos');
+
+  const [filterDropdown, setFilterDropdown] = useState<{ rightEdge: number; y: number; width: number } | null>(null);
+  const filterBtnRef = useRef<View>(null);
+  const [planSearchText, setPlanSearchText] = useState('');
+  const [planFilterDropdown, setPlanFilterDropdown] = useState<{ rightEdge: number; y: number; width: number } | null>(null);
+  const planFilterBtnRef = useRef<View>(null);
 
   const partner = getPartnerId(partnerForUser, currentUser);
   const isSearching = searchText.trim().length > 0;
+
+  const openFilterDropdown = () => {
+    filterBtnRef.current?.measure((_, __, w, h, pageX, pageY) => {
+      setFilterDropdown({ rightEdge: pageX + w, y: pageY + h + 6, width: 140 });
+    });
+  };
+
+  const openPlanFilterDropdown = () => {
+    planFilterBtnRef.current?.measure((_, __, w, h, pageX, pageY) => {
+      setPlanFilterDropdown({ rightEdge: pageX + w, y: pageY + h + 6, width: 140 });
+    });
+  };
+
+  const isPlanSearching = planSearchText.trim().length > 0;
 
   useEffect(() => {
     modeRef.current = mode;
@@ -104,6 +129,17 @@ export default function SavingsPreviewScreen() {
     () => plans.reduce((s, p) => s + p.expenses.reduce((ps, e) => ps + e.amount, 0), 0),
     [plans],
   );
+
+  const filteredPlans = useMemo<Plan[]>(() => {
+    const query = planSearchText.trim().toLowerCase();
+    let result = plans;
+    if (query) result = result.filter((p) => p.title.toLowerCase().includes(query));
+    if (planFilter === 'todos') return result;
+    return result.filter((p) => {
+      const settled = p.expenses.length > 0 && resolveDebts(computeMemberBalances(p)).length === 0;
+      return planFilter === 'saldados' ? settled : !settled;
+    });
+  }, [plans, planFilter, planSearchText]);
 
   const selectedPlan = useMemo(
     () => payload.savings.find((plan) => String(plan.id) === String(selectedPlanId)) ?? null,
@@ -160,7 +196,7 @@ export default function SavingsPreviewScreen() {
   };
 
   const AhorrosHeader = (
-    <>
+    <View style={styles.searchRow}>
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
         <TextInput
@@ -176,27 +212,65 @@ export default function SavingsPreviewScreen() {
           </Pressable>
         )}
       </View>
-      <View style={styles.filtersRow}>
-        {FILTER_OPTIONS.map((opt) => {
-          const active = ownerFilter === opt.value;
-          return (
-            <Pressable
-              key={opt.value}
-              onPress={() => setOwnerFilter(opt.value)}
-              style={({ pressed }) => [
-                styles.filterPill,
-                active && styles.filterPillActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View ref={filterBtnRef}>
+        <Pressable
+          onPress={openFilterDropdown}
+          style={({ pressed }) => [
+            styles.filterIconBtn,
+            ownerFilter !== 'both' && styles.filterIconBtnActive,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons
+            name="options-outline"
+            size={20}
+            color={ownerFilter !== 'both' ? '#7C3AED' : APP_COLORS.textSecondary}
+          />
+        </Pressable>
       </View>
-    </>
+    </View>
+  );
+
+  const PLAN_FILTER_LABELS: Record<PlanFilter, string> = {
+    todos: 'Todos',
+    activos: 'Activos',
+    saldados: 'Saldados',
+  };
+
+  const PlanesHeader = (
+    <View style={styles.searchRow}>
+      <View style={styles.searchWrap}>
+        <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
+        <TextInput
+          value={planSearchText}
+          onChangeText={setPlanSearchText}
+          placeholder="Buscar plan"
+          placeholderTextColor={APP_COLORS.textMuted}
+          style={styles.searchInput}
+        />
+        {isPlanSearching && (
+          <Pressable onPress={() => setPlanSearchText('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={18} color={APP_COLORS.textMuted} />
+          </Pressable>
+        )}
+      </View>
+      <View ref={planFilterBtnRef}>
+        <Pressable
+          onPress={openPlanFilterDropdown}
+          style={({ pressed }) => [
+            styles.filterIconBtn,
+            planFilter !== 'todos' && styles.filterIconBtnActive,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons
+            name="options-outline"
+            size={20}
+            color={planFilter !== 'todos' ? '#7C3AED' : APP_COLORS.textSecondary}
+          />
+        </Pressable>
+      </View>
+    </View>
   );
 
   const PlanesFooter = (
@@ -217,8 +291,8 @@ export default function SavingsPreviewScreen() {
   };
 
   const listData = useMemo<Array<SavingPlan | Plan>>(
-    () => (mode === 'ahorros' ? filteredSavings : plans),
-    [filteredSavings, mode, plans],
+    () => (mode === 'ahorros' ? filteredSavings : filteredPlans),
+    [filteredSavings, filteredPlans, mode],
   );
 
   return (
@@ -240,13 +314,15 @@ export default function SavingsPreviewScreen() {
             style={{ width }}
           >
             {/* Page 0: Ahorros */}
-            <View style={[styles.heroPage, { width }]}>
+            <View style={[styles.heroPage, { width, paddingTop: insets.top + 14 }]}>
               <View style={styles.heroTop}>
                 <View style={styles.heroTextWrap}>
                   <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
                   <Text style={styles.heroSubtitle}>
-                    {'Este es tu '}
-                    <Text style={styles.heroHighlight}>ahorro total hoy</Text>
+                    {'Estos son tus '}
+                    <Text style={styles.heroHighlight}>planes de ahorro</Text>
+                    {' y tus '}
+                    <Text style={styles.heroHighlight}>ahorros hasta hoy</Text>
                   </Text>
                 </View>
                 <UserHeaderButton />
@@ -256,29 +332,24 @@ export default function SavingsPreviewScreen() {
                 target={savings.target}
                 currency={currency}
                 showObjectiveSlide={false}
+                showPillToggle={false}
               />
             </View>
 
             {/* Page 1: Planes */}
-            <View style={[styles.heroPage, { width }]}>
+            <View style={[styles.heroPage, { width, paddingTop: insets.top + 14 }]}>
               <View style={styles.heroTop}>
                 <View style={styles.heroTextWrap}>
                   <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
                   <Text style={styles.heroSubtitle}>
                     {'Estos son tus '}
                     <Text style={styles.heroHighlight}>planes</Text>
+                    {' y cuanto has '}
+                    <Text style={styles.heroHighlight}>invertido</Text>
+                    {' en ellos'}
                   </Text>
                 </View>
                 <UserHeaderButton />
-              </View>
-              <View style={styles.planesHeroCard}>
-                <Text style={styles.planesInvestedLabel}>Invertido en planes</Text>
-                <Text style={styles.planesInvestedAmount}>{fmt(totalInvested, currency)}</Text>
-                <Text style={styles.planesInvestedSub}>
-                  {plans.length === 0
-                    ? 'Aún no tienes planes'
-                    : `${plans.length} ${plans.length === 1 ? 'plan activo' : 'planes activos'}`}
-                </Text>
               </View>
             </View>
           </ScrollView>
@@ -298,7 +369,7 @@ export default function SavingsPreviewScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           bounces={false}
           overScrollMode="never"
-          ListHeaderComponent={mode === 'ahorros' ? AhorrosHeader : null}
+          ListHeaderComponent={mode === 'ahorros' ? AhorrosHeader : PlanesHeader}
           ListFooterComponent={mode === 'planes' ? PlanesFooter : null}
           ListEmptyComponent={
             mode === 'ahorros' ? (
@@ -328,8 +399,6 @@ export default function SavingsPreviewScreen() {
                 <PlanTileRow
                   plan={plan}
                   currency={currency}
-                  isFirst={index === 0}
-                  isLast={index === plans.length - 1}
                   onPress={() => setDetailPlanId(plan.id)}
                 />
               );
@@ -349,6 +418,30 @@ export default function SavingsPreviewScreen() {
           }}
         />
       </Animated.View>
+
+      {filterDropdown && (
+        <OwnerFilterDropdown
+          pos={filterDropdown}
+          value={ownerFilter}
+          options={FILTER_OPTIONS}
+          onChange={(v) => setOwnerFilter(v as OwnerFilter)}
+          onClose={() => setFilterDropdown(null)}
+        />
+      )}
+
+      {planFilterDropdown && (
+        <OwnerFilterDropdown
+          pos={planFilterDropdown}
+          value={planFilter}
+          options={[
+            { label: 'Todos', value: 'todos' },
+            { label: 'Activos', value: 'activos' },
+            { label: 'Saldados', value: 'saldados' },
+          ]}
+          onChange={(v) => setPlanFilter(v as PlanFilter)}
+          onClose={() => setPlanFilterDropdown(null)}
+        />
+      )}
 
       {/* ── Modals ahorros ── */}
       <SavingPlanDetailModal
@@ -390,44 +483,124 @@ export default function SavingsPreviewScreen() {
   );
 }
 
+// ─── OwnerFilterDropdown ──────────────────────────────────────────────────────
+
+function OwnerFilterDropdown({
+  pos,
+  value,
+  options,
+  onChange,
+  onClose,
+}: {
+  pos: { rightEdge: number; y: number; width: number };
+  value: string;
+  options: Array<{ label: string; value: string }>;
+  onChange: (v: string) => void;
+  onClose: () => void;
+}) {
+  const { width: screenWidth } = useWindowDimensions();
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 22,
+      stiffness: 320,
+      mass: 0.7,
+    }).start();
+  }, [anim]);
+
+  const animateClose = (then?: () => void) => {
+    Animated.timing(anim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => {
+      then?.();
+      onClose();
+    });
+  };
+
+  return (
+    <Pressable style={StyleSheet.absoluteFill} onPress={() => animateClose()}>
+      <Animated.View
+        style={[
+          styles.filterDropCard,
+          {
+            right: screenWidth - pos.rightEdge,
+            top: pos.y,
+            width: pos.width,
+            opacity: anim,
+            transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+          },
+        ]}
+      >
+        <View style={styles.filterDropInner}>
+          {options.map((opt, i) => {
+            const active = opt.value === value;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => animateClose(() => onChange(opt.value))}
+                style={({ pressed }) => [
+                  styles.filterDropOption,
+                  i > 0 && styles.filterDropOptionBorder,
+                  active && styles.filterDropOptionActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.filterDropOptionText, active && styles.filterDropOptionTextActive]}>
+                  {opt.label}
+                </Text>
+                {active && <Ionicons name="checkmark" size={15} color="#7C3AED" />}
+              </Pressable>
+            );
+          })}
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 // ─── PlanTileRow ──────────────────────────────────────────────────────────────
 
 function PlanTileRow({
   plan,
   currency,
-  isFirst,
-  isLast,
   onPress,
 }: {
   plan: Plan;
   currency: CurrencyCode;
-  isFirst: boolean;
-  isLast: boolean;
   onPress: () => void;
 }) {
   const iconInfo = CATEGORIES[plan.icon] ?? CATEGORIES.map;
   const iconColor = getIconColor('purple');
-  const totalTarget = plan.categories.reduce((s, c) => s + c.totalAmount, 0);
-  const totalPaid = plan.expenses.reduce((s, e) => s + e.amount, 0);
-  const pct = totalTarget > 0 ? Math.min(100, Math.round((totalPaid / totalTarget) * 100)) : 0;
+  const totalSpent = planTotalSpent(plan);
+  const totalBudget = planTotalBudget(plan);
+  const pct = totalBudget > 0 ? Math.min(100, Math.round((totalSpent / totalBudget) * 100)) : 0;
+  const settled = plan.expenses.length > 0 && resolveDebts(computeMemberBalances(plan)).length === 0;
 
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.tileRow,
-        isFirst && styles.tileFirst,
-        isLast && styles.tileLast,
-        !isLast && styles.tileBorder,
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.planCard, pressed && styles.pressed]}
     >
       <View style={[styles.tileIcon, { backgroundColor: iconColor.bg }]}>
         <Ionicons name={iconInfo.icon} size={22} color={iconColor.color} />
       </View>
       <View style={styles.tileBody}>
-        <View style={styles.tileTitleRow}>
-          <Text numberOfLines={1} style={styles.tileTitle}>{plan.title}</Text>
+        <View style={styles.planCardTitleRow}>
+          <Text numberOfLines={1} style={styles.planCardTitle}>{plan.title}</Text>
+          <View style={[styles.planStatusBadge, settled ? styles.planStatusSettled : styles.planStatusActive]}>
+            <Text style={[styles.planStatusText, settled ? styles.planStatusSettledText : styles.planStatusActiveText]}>
+              {settled ? 'Saldado' : 'Activo'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.planCardMetaRow}>
+          <Text style={styles.planCardSpent}>{fmt(totalSpent, currency)}</Text>
+          <Text style={styles.planCardSep}>·</Text>
+          <Text style={styles.planCardExpenseCount}>
+            {plan.expenses.length} {plan.expenses.length === 1 ? 'gasto' : 'gastos'}
+          </Text>
+          <View style={{ flex: 1 }} />
           <View style={styles.planMemberAvatars}>
             {plan.members.slice(0, 4).map((m) => (
               <View key={m.id} style={[styles.planMiniAvatar, { backgroundColor: m.bg }]}>
@@ -436,13 +609,14 @@ function PlanTileRow({
             ))}
           </View>
         </View>
-        <View style={styles.tileProgressRow}>
-          <Text style={styles.tileSavedSmall}>{fmt(totalPaid, currency)}</Text>
-          <View style={styles.tileBarTrack}>
-            <View style={[styles.tileBarFill, { width: `${pct}%` as `${number}%` }]} />
+        {totalBudget > 0 && (
+          <View style={styles.tileProgressRow}>
+            <View style={styles.tileBarTrack}>
+              <View style={[styles.tileBarFill, { width: `${pct}%` as `${number}%` }]} />
+            </View>
+            <Text style={styles.tileRemainingSmall}>{pct}%</Text>
           </View>
-          <Text style={styles.tileRemainingSmall}>{pct}%</Text>
-        </View>
+        )}
       </View>
     </Pressable>
   );
@@ -537,14 +711,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   heroPage: {
-    paddingBottom: 8,
-    paddingTop: 56,
+    paddingBottom: 6,
+    paddingTop: 18,
   },
   heroGreeting: {
     color: '#303236',
     fontFamily: 'Inter_700Bold',
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 22,
+    lineHeight: 28,
   },
   heroHighlight: {
     color: '#7C3AED',
@@ -552,9 +726,9 @@ const styles = StyleSheet.create({
   },
   heroSubtitle: {
     color: '#303236',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '400',
-    lineHeight: 24,
+    lineHeight: 21,
   },
   heroTextWrap: {
     flex: 1,
@@ -599,15 +773,22 @@ const styles = StyleSheet.create({
   },
 
   // ── Search ──
+  searchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 18,
+    marginTop: 22,
+    paddingHorizontal: 24,
+  },
   searchWrap: {
     alignItems: 'center',
     borderBottomColor: APP_COLORS.border,
     borderBottomWidth: 1,
+    flex: 1,
     flexDirection: 'row',
     gap: 8,
     height: 44,
-    marginTop: 22,
-    paddingHorizontal: 16,
   },
   searchInput: {
     color: APP_COLORS.textPrimary,
@@ -616,44 +797,56 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     padding: 0,
   },
-
-  // ── Filter pills ──
-  filtersRow: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    marginTop: 14,
-    marginBottom: 18,
-  },
-  filterPill: {
+  filterIconBtn: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
     borderColor: APP_COLORS.border,
+    borderRadius: 22,
     borderWidth: 1,
-    borderRadius: 20,
-    elevation: 2,
+    height: 40,
     justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    shadowColor: '#7E7E7E',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    width: 40,
   },
-  filterPillActive: {
-    backgroundColor: '#7C3AED',
+  filterIconBtnActive: {
     borderColor: '#7C3AED',
-    elevation: 4,
-    shadowColor: '#7C3AED',
-    shadowOpacity: 0.32,
   },
-  filterPillText: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
+
+  // ── Filter dropdown ──
+  filterDropCard: {
+    borderRadius: 14,
+    elevation: 5,
+    position: 'absolute',
+    shadowColor: '#7E7E7E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
   },
-  filterPillTextActive: {
-    color: '#FFFFFF',
+  filterDropInner: {
+    backgroundColor: APP_COLORS.surface,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  filterDropOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  filterDropOptionBorder: {
+    borderTopColor: APP_COLORS.border,
+    borderTopWidth: 1,
+  },
+  filterDropOptionActive: {
+    backgroundColor: '#F5F3FF',
+  },
+  filterDropOptionText: {
+    color: APP_COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  filterDropOptionTextActive: {
+    color: '#7C3AED',
+    fontWeight: '700',
   },
 
   // ── "Nuevo plan" footer button ──
@@ -775,6 +968,107 @@ const styles = StyleSheet.create({
   planMiniInitials: {
     fontSize: 8,
     fontWeight: '800',
+  },
+
+  // ── Plan filter pills ──
+  planesFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  planFilterPill: {
+    alignItems: 'center',
+    borderColor: APP_COLORS.border,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  planFilterPillActive: {
+    backgroundColor: '#EDE9FE',
+    borderColor: '#7C3AED',
+  },
+  planFilterPillText: {
+    color: APP_COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  planFilterPillTextActive: {
+    color: '#7C3AED',
+    fontWeight: '700',
+  },
+
+  // ── Plan card ──
+  planCard: {
+    alignItems: 'flex-start',
+    backgroundColor: APP_COLORS.surface,
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 10,
+    marginHorizontal: 16,
+    padding: 16,
+    elevation: 2,
+    shadowColor: '#7E7E7E',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+  },
+  planCardTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  planCardTitle: {
+    color: APP_COLORS.textPrimary,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  planStatusBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  planStatusActive: {
+    backgroundColor: '#EDE9FE',
+  },
+  planStatusSettled: {
+    backgroundColor: '#DCFCE7',
+  },
+  planStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  planStatusActiveText: {
+    color: '#7C3AED',
+  },
+  planStatusSettledText: {
+    color: '#16A34A',
+  },
+  planCardMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    marginBottom: 8,
+  },
+  planCardSpent: {
+    color: APP_COLORS.textPrimary,
+    fontFamily: 'DMSerifDisplay_400Regular',
+    fontSize: 16,
+  },
+  planCardSep: {
+    color: APP_COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  planCardExpenseCount: {
+    color: APP_COLORS.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
   },
 
   // ── Empty ──

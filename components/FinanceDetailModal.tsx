@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -17,9 +17,10 @@ import {
 import { APP_COLORS } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import { AppModal as Modal } from './AppModal';
+import { ModalScreen } from './ModalScreen';
 import { TransactionTile } from './TransactionTile';
 import type { AppPayload, CurrencyCode, UserId } from '../types';
-import { isMonthVisible } from '../utils/filters';
+import { getTransactionAmountForMonth, isMonthVisible } from '../utils/filters';
 import { fmt } from '../utils/format';
 import { MonthNavigator } from './MonthNavigator';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
@@ -104,8 +105,8 @@ export function FinanceDetailModal({
   }, [kind, modalYM, payload, uid]);
 
   const registeredTotal = useMemo(() => {
-    return monthlyTransactions.reduce((sum, transaction) => sum + transaction.amt, 0);
-  }, [monthlyTransactions]);
+    return monthlyTransactions.reduce((sum, transaction) => sum + getTransactionAmountForMonth(transaction, modalYM), 0);
+  }, [modalYM, monthlyTransactions]);
 
   const transactions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -117,12 +118,29 @@ export function FinanceDetailModal({
   }, [monthlyTransactions, search]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPressIn={onClose}>
-        <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} />
-        <Pressable style={styles.cardShadow} onPressIn={(event) => event.stopPropagation()}>
-          <View style={styles.card}>
-          <View style={styles.header}>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <ModalScreen
+        title={kind === 'income' ? 'Ingresos' : 'Gastos'}
+        subtitle={formatDetailSubtitle(noun)}
+        onBack={onClose}
+        contentContainerStyle={styles.financeScreenContent}
+        footer={(
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); runAfterKeyboardDismiss(onAdd); }}
+            style={({ pressed }) => [
+              styles.addButton,
+              { backgroundColor: accent },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons name="add" size={18} color="#FFFFFF" />
+            <Text style={styles.addButtonText}>
+              {kind === 'income' ? 'Añadir Ingreso' : 'Añadir Gasto'}
+            </Text>
+          </Pressable>
+        )}
+      >
+          <View style={[styles.header, { display: 'none' }]}>
             <Text style={styles.title}>
               Estos son los{'\n'}detalles de tus <Text style={{ color: accent }}>{noun}</Text>
             </Text>
@@ -186,6 +204,7 @@ export function FinanceDetailModal({
             onPress={() => runAfterKeyboardDismiss(onAdd)}
             style={({ pressed }) => [
               styles.addButton,
+              { display: 'none' },
               { backgroundColor: accent },
               pressed && styles.pressed,
             ]}
@@ -195,23 +214,24 @@ export function FinanceDetailModal({
               {kind === 'income' ? 'Añadir Ingreso' : 'Añadir Gasto'}
             </Text>
           </Pressable>
-          </View>
-        </Pressable>
-      </Pressable>
+      </ModalScreen>
     </Modal>
   );
+}
+
+function formatDetailSubtitle(noun: string) {
+  return `Detalles de tus ${noun}`;
 }
 
 const styles = StyleSheet.create({
   addButton: {
     alignItems: 'center',
     borderRadius: 14,
-    flexShrink: 0,
+    flex: 1,
     flexDirection: 'row',
     gap: 7,
     height: 50,
     justifyContent: 'center',
-    marginTop: 14,
   },
   addButtonText: {
     color: '#FFFFFF',
@@ -259,6 +279,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingVertical: 28,
     textAlign: 'center',
+  },
+  financeScreenContent: {
+    flex: 1,
+    gap: 14,
   },
   header: {
     alignItems: 'flex-start',

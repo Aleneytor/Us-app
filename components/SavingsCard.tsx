@@ -9,6 +9,7 @@ interface SavingsCardProps {
   target: number;
   currency: CurrencyCode;
   showObjectiveSlide?: boolean;
+  showPillToggle?: boolean;
   onStateChange?: (state: SavingsCardState) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
@@ -32,6 +33,7 @@ export function SavingsCard({
   target,
   currency,
   showObjectiveSlide = true,
+  showPillToggle = true,
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
@@ -59,6 +61,7 @@ export function SavingsCard({
     <GuidelineCard
       items={items}
       currency={currency}
+      showPillToggle={showPillToggle}
       onStateChange={onStateChange}
       onSwipeBegin={onSwipeBegin}
       onSwipeEnd={onSwipeEnd}

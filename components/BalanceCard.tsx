@@ -12,6 +12,7 @@ interface BalanceCardProps {
   gastosProyectados: number;
   currency: CurrencyCode;
   selectedYM: string;
+  variant?: 'default' | 'gradient';
   onStateChange: (state: CardState) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
@@ -28,13 +29,13 @@ const STATE_META: Record<CardState, {
 }> = {
   saldo: {
     accent: '#25C55B',
-    pillBg: '#DCFCE7',
+    pillBg: 'rgba(22, 163, 74, 0.18)',
     pillColor: '#25C55B',
     pillLabel: (monthName) => `Saldo previsto al\nfinal de ${monthName}`,
   },
   gastos: {
     accent: '#EC1147',
-    pillBg: '#FFE4E6',
+    pillBg: 'rgba(236, 17, 71, 0.18)',
     pillColor: '#EC1147',
     pillLabel: (monthName) => `Gastos previstos\nde ${monthName}`,
   },
@@ -47,6 +48,7 @@ export function BalanceCard({
   gastosProyectados,
   currency,
   selectedYM,
+  variant = 'default',
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
@@ -78,6 +80,11 @@ export function BalanceCard({
     <GuidelineCard
       items={items}
       currency={currency}
+      amountColor={variant === 'gradient' ? '#FFFFFF' : undefined}
+      amountMutedOpacity={variant === 'gradient' ? 0.62 : undefined}
+      toggleColor={variant === 'gradient' ? '#FFFFFF' : undefined}
+      indicatorActiveColor={variant === 'gradient' ? '#FFFFFF' : undefined}
+      indicatorInactiveColor={variant === 'gradient' ? 'rgba(255,255,255,0.42)' : undefined}
       onStateChange={onStateChange}
       onSwipeBegin={onSwipeBegin}
       onSwipeEnd={onSwipeEnd}

@@ -10,6 +10,7 @@ interface SavingsCardProps {
   currency: CurrencyCode;
   showObjectiveSlide?: boolean;
   showPillToggle?: boolean;
+  variant?: 'default' | 'gradient';
   onStateChange?: (state: SavingsCardState) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
@@ -34,6 +35,7 @@ export function SavingsCard({
   currency,
   showObjectiveSlide = true,
   showPillToggle = true,
+  variant = 'default',
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
@@ -51,7 +53,7 @@ export function SavingsCard({
     accent: SAVINGS_ACCENT,
     pill: {
       value: values[state].secondary,
-      backgroundColor: '#EDE9FE',
+      backgroundColor: 'rgba(124, 58, 237, 0.18)',
       color: SAVINGS_ACCENT,
       label: ITEMS_META[state].pillLabel,
     },
@@ -62,6 +64,11 @@ export function SavingsCard({
       items={items}
       currency={currency}
       showPillToggle={showPillToggle}
+      amountColor={variant === 'gradient' ? '#FFFFFF' : undefined}
+      amountMutedOpacity={variant === 'gradient' ? 0.62 : undefined}
+      toggleColor={variant === 'gradient' ? '#FFFFFF' : undefined}
+      indicatorActiveColor={variant === 'gradient' ? '#FFFFFF' : undefined}
+      indicatorInactiveColor={variant === 'gradient' ? 'rgba(255,255,255,0.42)' : undefined}
       onStateChange={onStateChange}
       onSwipeBegin={onSwipeBegin}
       onSwipeEnd={onSwipeEnd}

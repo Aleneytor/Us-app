@@ -3,8 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>nosotros</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <!-- PWA: iOS Safari standalone mode (oculta barra del navegador) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Nosotros" />
+    <!-- PWA: Android / Chrome -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Nosotros" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- viewport-fit=cover para soporte de notch -->
+    <title>Nosotros</title>
     <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">
       /* These styles make the body full-height */
@@ -23,7 +32,9 @@
         flex: 1;
       }
     </style>
-  </head>
+  <meta name="theme-color" content="#23C55E">
+<meta name="description" content="Tu app de finanzas compartidas">
+</head>
 
   <body>
     <!-- Use static rendering with Expo Router to support running without JavaScript. -->
@@ -32,6 +43,6 @@
     </noscript>
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
-  <script src="/_expo/static/js/web/entry-c3153ff379cdf6b5616f1712505b082a.js" defer></script>
+  <script src="/_expo/static/js/web/entry-a65ef2a929115f10c0b296d3eee891b7.js" defer></script>
 </body>
 </html>

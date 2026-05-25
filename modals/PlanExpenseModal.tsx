@@ -12,16 +12,17 @@ import {
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
 import { CATEGORIES } from '../constants/categories';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
 import type { Plan, PlanExpense, PlanMember, PlanSplitMode } from '../types';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { computeSplits } from '../utils/planCalculations';
 import { useAppStore } from '../store/useAppStore';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
+import { useTheme } from '../contexts/ThemeContext';
 
 const ACCENT = '#7C3AED';
-const ACCENT_BG = '#EDE9FE';
+const ACCENT_BG = 'rgba(124, 58, 237, 0.18)';
 
 interface PlanExpenseModalProps {
   visible: boolean;
@@ -35,19 +36,21 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
   const currency = useAppStore((s) => s.currency);
   const addPlanExpense = useAppStore((s) => s.addPlanExpense);
   const updatePlanExpense = useAppStore((s) => s.updatePlanExpense);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const editing = !!expense;
 
-  // ── Form state ────────────────────────────────────────────────────────────
+  // -- Form state ------------------------------------------------------------
   const [title, setTitle] = useState('');
   const [amtText, setAmtText] = useState('');
   const [payerId, setPayerId] = useState(currentUser);
   const [date, setDate] = useState(todayStr());
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [splitMode, setSplitMode] = useState<PlanSplitMode>('equal');
-  // memberId → parts count (mode 'parts')
+  // memberId ? parts count (mode 'parts')
   const [partsMap, setPartsMap] = useState<Record<string, number>>({});
-  // memberId → pct string (mode 'percentage')
+  // memberId ? pct string (mode 'percentage')
   const [pctMap, setPctMap] = useState<Record<string, string>>({});
   // memberIds excluded from split (mode 'equal')
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -116,7 +119,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, expense?.id, plan.id, currentUser]);
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  // -- Derived values --------------------------------------------------------
   const amount = parseAmt(amtText);
 
   const includedMembers = useMemo<PlanMember[]>(() => {
@@ -151,7 +154,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
 
   const payer = plan.members.find((m) => m.id === payerId) ?? plan.members[0];
 
-  // ── Validation & save ─────────────────────────────────────────────────────
+  // -- Validation & save -----------------------------------------------------
   const validate = (): boolean => {
     if (!title.trim()) {
       Alert.alert('Falta el título', 'Dale un nombre al gasto.');
@@ -203,7 +206,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
 
   const handleSave = () => runAfterKeyboardDismiss(save);
 
-  // ── Parts helpers ─────────────────────────────────────────────────────────
+  // -- Parts helpers ---------------------------------------------------------
   const setParts = (memberId: string, delta: number) => {
     setPartsMap((prev) => ({
       ...prev,
@@ -223,7 +226,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
     });
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // -- Render ----------------------------------------------------------------
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <ModalScreen
@@ -248,21 +251,21 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
           onScrollBeginDrag={dismissKeyboardAndBlur}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Título ── */}
+          {/* -- Título -- */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Título</Text>
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="Ej. Cena en el centro"
-              placeholderTextColor={APP_COLORS.textMuted}
+              placeholderTextColor={theme.textMuted}
               style={styles.input}
               autoFocus={!editing}
               returnKeyType="next"
             />
           </View>
 
-          {/* ── Cantidad ── */}
+          {/* -- Cantidad -- */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Cantidad</Text>
             <View style={styles.amountRow}>
@@ -270,7 +273,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
                 value={amtText}
                 onChangeText={setAmtText}
                 placeholder="0,00"
-                placeholderTextColor={APP_COLORS.textMuted}
+                placeholderTextColor={theme.textMuted}
                 keyboardType="decimal-pad"
                 style={[styles.input, styles.amountInput]}
               />
@@ -280,7 +283,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
             </View>
           </View>
 
-          {/* ── Pagado por + Cuándo ── */}
+          {/* -- Pagado por + Cuándo -- */}
           <View style={styles.rowFields}>
             <View style={[styles.field, styles.fieldFlex]}>
               <Text style={styles.fieldLabel}>Pagado por</Text>
@@ -311,14 +314,14 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
                 value={date}
                 onChangeText={setDate}
                 placeholder="AAAA-MM-DD"
-                placeholderTextColor={APP_COLORS.textMuted}
+                placeholderTextColor={theme.textMuted}
                 style={[styles.input, styles.dateInput]}
                 keyboardType="numeric"
               />
             </View>
           </View>
 
-          {/* ── Categoría (solo si el plan tiene categorías) ── */}
+          {/* -- Categoría (solo si el plan tiene categorías) -- */}
           {plan.categories.length > 0 && (
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Categoría (opcional)</Text>
@@ -343,7 +346,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
                       <Ionicons
                         name={catInfo.icon}
                         size={14}
-                        color={active ? ACCENT : APP_COLORS.textSecondary}
+                        color={active ? ACCENT : theme.textSecondary}
                       />
                       <Text style={[styles.catPillText, active && styles.catPillTextActive]}>
                         {cat.name}
@@ -355,7 +358,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
             </View>
           )}
 
-          {/* ── División ── */}
+          {/* -- División -- */}
           <View style={styles.field}>
             <View style={styles.splitHeader}>
               <Text style={styles.fieldLabel}>Dividir</Text>
@@ -474,14 +477,14 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
             )}
           </View>
 
-          {/* ── Nota ── */}
+          {/* -- Nota -- */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Nota (opcional)</Text>
             <TextInput
               value={note}
               onChangeText={setNote}
               placeholder="Añade un detalle..."
-              placeholderTextColor={APP_COLORS.textMuted}
+              placeholderTextColor={theme.textMuted}
               style={[styles.input, styles.noteInput]}
               multiline
               onFocus={noteScroll.onFocus}
@@ -494,7 +497,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   scroller: {
     flex: 1,
   },
@@ -504,7 +507,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
 
-  // ── Fields ──
+  // -- Fields --
   field: {
     gap: 8,
     paddingVertical: 10,
@@ -513,23 +516,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fieldLabel: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '500',
     minHeight: 46,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   rowFields: {
     flexDirection: 'row',
@@ -543,7 +547,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // ── Amount ──
+  // -- Amount --
   amountRow: {
     flexDirection: 'row',
     gap: 8,
@@ -551,14 +555,15 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 24,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    letterSpacing: -1.2,
     textAlign: 'center',
   },
   currencyBadge: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     height: 46,
@@ -566,19 +571,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   currencyText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },
 
-  // ── Member pills (payer) ──
+  // -- Member pills (payer) --
   pillScroll: {
     flexGrow: 0,
   },
   memberPill: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
@@ -603,7 +608,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   memberPillName: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -611,11 +616,11 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
 
-  // ── Category pills ──
+  // -- Category pills --
   catPill: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
@@ -629,7 +634,7 @@ const styles = StyleSheet.create({
     borderColor: ACCENT,
   },
   catPillText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -637,7 +642,7 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
 
-  // ── Split section ──
+  // -- Split section --
   splitHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -645,7 +650,7 @@ const styles = StyleSheet.create({
   },
   splitModeRow: {
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: t.softSurface,
     borderRadius: 10,
     flexDirection: 'row',
     gap: 2,
@@ -657,15 +662,15 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   modeBtnActive: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     elevation: 2,
-    shadowColor: '#7E7E7E',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.10,
     shadowRadius: 3,
   },
   modeBtnText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -673,15 +678,15 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
   splitList: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 14,
     borderWidth: 1,
     overflow: 'hidden',
   },
   splitRow: {
     alignItems: 'center',
-    borderTopColor: APP_COLORS.border,
+    borderTopColor: t.border,
     borderTopWidth: 1,
     flexDirection: 'row',
     gap: 10,
@@ -695,7 +700,7 @@ const styles = StyleSheet.create({
   // equal mode
   splitCheck: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 6,
     borderWidth: 1.5,
     height: 20,
@@ -720,13 +725,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   splitName: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
   },
   splitNameMuted: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
   },
   splitAmount: {
     color: ACCENT,
@@ -765,11 +770,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   pctInput: {
-    backgroundColor: '#F8FAFC',
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.background,
+    borderColor: t.border,
     borderRadius: 8,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '700',
     minWidth: 46,
@@ -778,7 +783,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   pctSymbol: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -792,17 +797,17 @@ const styles = StyleSheet.create({
     color: '#059669',
   },
   pctTotalError: {
-    color: APP_COLORS.expense,
+    color: t.expense,
   },
 
-  // ── Note ──
+  // -- Note --
   noteInput: {
     minHeight: 80,
     textAlignVertical: 'top',
     paddingTop: 12,
   },
 
-  // ── Footer ──
+  // -- Footer --
   saveBtn: {
     alignItems: 'center',
     backgroundColor: ACCENT,

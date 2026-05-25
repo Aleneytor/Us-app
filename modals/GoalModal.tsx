@@ -15,12 +15,13 @@ import { EmojiPicker } from '../components/EmojiPicker';
 import { IconPicker } from '../components/IconPicker';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
 import { GOAL_EMOJIS } from '../constants/emojis';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { Goal } from '../types';
 import { parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 
 interface GoalModalProps {
@@ -33,6 +34,8 @@ export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
   const currentUser = useAppStore((s) => s.currentUser);
   const addGoal = useAppStore((s) => s.addGoal);
   const updateGoal = useAppStore((s) => s.updateGoal);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [type, setType] = useState<'joint' | 'personal'>('joint');
   const [name, setName] = useState('');
@@ -126,26 +129,18 @@ export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
   );
 }
 
-function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
-  return (
-    <View style={styles.header}>
-      <Text style={styles.title}>{title}</Text>
-      <Pressable onPress={onClose} style={styles.closeButton}>
-        <Ionicons name="close" size={23} color={APP_COLORS.textPrimary} />
-      </Pressable>
-    </View>
-  );
-}
-
 function Field({
   label,
   ...props
 }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={[styles.input, props.multiline && styles.textarea]}
         {...props}
       />
@@ -154,6 +149,9 @@ function Field({
 }
 
 function Choice({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -169,6 +167,9 @@ function Choice({ label, active, onPress }: { label: string; active: boolean; on
 }
 
 function Footer({ onCancel, onSave }: { onCancel: () => void; onSave: () => void }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <>
       <Pressable onPress={() => runAfterKeyboardDismiss(onCancel)} style={styles.secondaryButton}>
@@ -181,7 +182,7 @@ function Footer({ onCancel, onSave }: { onCancel: () => void; onSave: () => void
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   backdrop: {
     alignItems: 'center',
     flex: 1,
@@ -190,8 +191,8 @@ const styles = StyleSheet.create({
   },
   choice: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
@@ -199,15 +200,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   choiceActive: {
-    backgroundColor: APP_COLORS.blue,
-    borderColor: APP_COLORS.blue,
+    backgroundColor: t.blue,
+    borderColor: t.blue,
   },
   choiceRow: {
     flexDirection: 'row',
     gap: 8,
   },
   choiceText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '900',
   },
@@ -230,8 +231,8 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderTopColor: t.border,
     borderTopWidth: 1,
     flexDirection: 'row',
     gap: 10,
@@ -239,30 +240,31 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderBottomColor: t.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   keyboardView: {
     flex: 1,
   },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
@@ -272,7 +274,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.blue,
+    backgroundColor: t.blue,
     borderRadius: 13,
     flex: 1,
     height: 48,
@@ -284,7 +286,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   screen: {
-    backgroundColor: APP_COLORS.background,
+    backgroundColor: t.background,
     borderRadius: 22,
     maxHeight: '96%',
     overflow: 'hidden',
@@ -302,7 +304,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -310,7 +312,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '900',
   },
@@ -319,7 +321,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   title: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     flex: 1,
     fontSize: 21,
     fontWeight: MODAL_TITLE_FONT_WEIGHT,

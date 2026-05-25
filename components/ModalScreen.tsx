@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { APP_COLORS } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { AppTheme } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 
 interface ModalScreenProps {
@@ -12,6 +14,7 @@ interface ModalScreenProps {
   activeBreadcrumb?: number;
   onBreadcrumbPress?: (index: number) => void;
   canPressBreadcrumb?: (index: number) => boolean;
+  accentColor?: string;
   onBack: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -27,6 +30,7 @@ export function ModalScreen({
   activeBreadcrumb,
   onBreadcrumbPress,
   canPressBreadcrumb,
+  accentColor = '#7C3AED',
   onBack,
   children,
   footer,
@@ -35,6 +39,8 @@ export function ModalScreen({
   contentContainerStyle,
 }: ModalScreenProps) {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const activeIndex = activeBreadcrumb ?? Math.max(0, breadcrumbs.length - 1);
 
   const body = scroll ? (
@@ -57,7 +63,7 @@ export function ModalScreen({
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable onPress={onBack} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-          <Ionicons name="arrow-back" size={22} color={APP_COLORS.textPrimary} />
+          <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
         </Pressable>
         <View style={styles.headerText}>
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
@@ -72,8 +78,8 @@ export function ModalScreen({
             const done = index < activeIndex;
             const active = index === activeIndex;
             const canPress = !!onBreadcrumbPress && (canPressBreadcrumb ? canPressBreadcrumb(index) : true);
-            const crumbStyle = [styles.crumb, active && styles.crumbActive, done && styles.crumbDone];
-            const crumbTextStyle = [styles.crumbText, active && styles.crumbTextActive, done && styles.crumbDoneText];
+            const crumbStyle = [styles.crumb, active && { backgroundColor: accentColor + '2E' }, done && { backgroundColor: accentColor }];
+            const crumbTextStyle = [styles.crumbText, active && { color: accentColor }, done && styles.crumbDoneText];
             return (
               <View key={`${item}-${index}`} style={styles.crumbWrap}>
                 {canPress ? (
@@ -89,7 +95,7 @@ export function ModalScreen({
                   </View>
                 )}
                 {index < breadcrumbs.length - 1 ? (
-                  <Ionicons name="chevron-forward" size={12} color={APP_COLORS.textMuted} />
+                  <Ionicons name="chevron-forward" size={12} color={theme.textMuted} />
                 ) : null}
               </View>
             );
@@ -108,21 +114,16 @@ export function ModalScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   backButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
     borderRadius: 14,
-    borderWidth: 1,
     height: 42,
     justifyContent: 'center',
     width: 42,
   },
   breadcrumbBar: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
-    borderBottomWidth: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
@@ -130,25 +131,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   crumb: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: t.softSurface,
     borderRadius: 999,
     maxWidth: 132,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  crumbActive: {
-    backgroundColor: '#EDE9FE',
-  },
-  crumbDone: {
-    backgroundColor: '#7C3AED',
-  },
   crumbText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 11,
     fontWeight: '700',
-  },
-  crumbTextActive: {
-    color: '#7C3AED',
   },
   crumbDoneText: {
     color: '#FFFFFF',
@@ -165,9 +157,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
-    borderTopWidth: 1,
     flexDirection: 'row',
     gap: 10,
     paddingHorizontal: 16,
@@ -175,9 +164,6 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
-    borderBottomWidth: 1,
     flexDirection: 'row',
     gap: 12,
     paddingHorizontal: 16,
@@ -198,20 +184,20 @@ const styles = StyleSheet.create({
     opacity: 0.68,
   },
   screen: {
-    backgroundColor: APP_COLORS.background,
+    backgroundColor: t.background,
     flex: 1,
   },
   scroll: {
     flex: 1,
   },
   subtitle: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
   },
   title: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 21,
     fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },

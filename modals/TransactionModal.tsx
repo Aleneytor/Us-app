@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -12,8 +13,9 @@ import {
 } from 'react-native';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { getIconColor, type AppTheme } from '../constants/colors';
 import { CATEGORIES } from '../constants/categories';
+import { SURFACE_SHADOW } from '../constants/shadows';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import { CURRENCIES } from '../types';
 import type { BudgetCategory, CurrencyCode, Transaction } from '../types';
@@ -21,6 +23,7 @@ import { fmt, parseAmt, todayStr } from '../utils/format';
 import { calcBudgetCategorySpending } from '../utils/calculations';
 import { getTransactionAmountForMonth } from '../utils/filters';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { BudgetCategoryModal } from './BudgetCategoryModal';
 import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
@@ -29,14 +32,16 @@ interface TransactionModalProps {
   visible: boolean;
   transaction?: Transaction | null;
   initialKind?: 'expense' | 'income';
+  kindPreset?: boolean;
   initialBudgetCatId?: number;
+  budgetCategoryLocked?: boolean;
   onClose: () => void;
 }
 
 const CURRENCY_NAMES: Record<CurrencyCode, string> = {
   EUR: 'euros',
-  USD: 'dolares',
-  BS: 'bolivares',
+  USD: 'dólares',
+  BS: 'bolívares',
   COP: 'pesos',
 };
 
@@ -56,14 +61,25 @@ const MONTH_NAMES = [
 ];
 
 const WEEK_DAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const TRANSACTION_ACCENT = '#7C3AED';
 
-export function TransactionModal({ visible, transaction, initialKind = 'expense', initialBudgetCatId, onClose }: TransactionModalProps) {
+export function TransactionModal({
+  visible,
+  transaction,
+  initialKind = 'expense',
+  kindPreset = false,
+  initialBudgetCatId,
+  budgetCategoryLocked = false,
+  onClose,
+}: TransactionModalProps) {
   const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const payload = useAppStore((s) => s.payload);
   const selectedYM = useAppStore((s) => s.selectedYM);
   const addTransaction = useAppStore((s) => s.addTransaction);
   const updateTransaction = useAppStore((s) => s.updateTransaction);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const budgetCategories = useMemo(() => {
     const all = payload.budgetCategories ?? [];
@@ -101,13 +117,25 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
 
   const amountNumber = useMemo(() => parseAmt(amt), [amt]);
   const calendarDays = useMemo(() => getCalendarDays(calendarYM), [calendarYM]);
+  const selectedBudgetCategory = useMemo(() => {
+    const all = payload.budgetCategories ?? [];
+    return all.find((bc) => bc.id === budgetCatId) ?? null;
+  }, [budgetCatId, payload.budgetCategories]);
+  const finalStepLabel = budgetCategoryLocked ? 'Confirmar' : 'Categoría';
+  const breadcrumbs = kindPreset
+    ? ['Título', 'Fecha', finalStepLabel]
+    : ['Tipo', 'Monto', finalStepLabel];
 
   const goNext = () => {
     if (step === 0 && !desc.trim()) {
-      Alert.alert('Falta titulo', 'Ponle un titulo al movimiento.');
+      Alert.alert('Falta título', 'Ponle un título al movimiento.');
       return;
     }
-    if (step === 1 && (!Number.isFinite(amountNumber) || amountNumber <= 0)) {
+    if (kindPreset && step === 0 && (!Number.isFinite(amountNumber) || amountNumber <= 0)) {
+      Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
+      return;
+    }
+    if (!kindPreset && step === 1 && (!Number.isFinite(amountNumber) || amountNumber <= 0)) {
       Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
       return;
     }
@@ -148,7 +176,7 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
 
   const save = () => {
     if (!desc.trim() || !Number.isFinite(amountNumber) || amountNumber <= 0) {
-      Alert.alert('Datos incompletos', 'Revisa el titulo y el monto.');
+      Alert.alert('Datos incompletos', 'Revisa el título y el monto.');
       return;
     }
     if (!date.trim()) {
@@ -175,7 +203,6 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
       date: date.trim(),
       type,
       kind,
-      tags: [],
       notes: notes.trim(),
       del: transaction?.del,
       paid: transaction?.paid,
@@ -185,7 +212,7 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
 
     let willExceedBudget = false;
     if (selectedBudgetCat && selectedBudgetCat.monthlyBudget > 0 && kind === 'expense') {
-      const currentSpending = calcBudgetCategorySpending(payload, selectedBudgetCat.id, selectedYM);
+      const currentSpending = calcBudgetCategorySpending(payload, selectedBudgetCat.id, currentUser, selectedYM);
       const oldAmt = editing && transaction ? getTransactionAmountForMonth(transaction, selectedYM) : 0;
       const previewTransaction = { ...transaction, amt: amountNumber, date: date.trim(), type, kind } as Transaction;
       const newTotal = currentSpending - oldAmt + getTransactionAmountForMonth(previewTransaction, selectedYM);
@@ -215,12 +242,13 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <ModalScreen
-        title={editing ? 'Editar movimiento' : 'Nuevo movimiento'}
-        breadcrumbs={['Tipo', 'Monto', 'Categoria']}
+        title={editing ? 'Editar movimiento' : kindPreset ? (kind === 'income' ? 'Nuevo ingreso' : 'Nuevo gasto') : 'Nuevo movimiento'}
+        breadcrumbs={breadcrumbs}
         activeBreadcrumb={step}
         canPressBreadcrumb={(index) => index < step}
         onBreadcrumbPress={goToPreviousStep}
         onBack={onClose}
+        accentColor={kind === 'income' ? '#16A34A' : '#EC1147'}
         contentContainerStyle={{ padding: 0 }}
         footer={(
           <>
@@ -230,7 +258,7 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
               style={[styles.secondaryButton, step === 0 && styles.secondaryButtonDisabled]}
             >
               <Text style={[styles.secondaryText, step === 0 && styles.secondaryTextDisabled]}>
-                Atras
+                Atrás
               </Text>
             </Pressable>
             <Pressable onPress={() => runAfterKeyboardDismiss(step === 2 ? save : goNext)} style={styles.primaryButton}>
@@ -250,29 +278,43 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
             keyboardDismissMode="on-drag"
             onScrollBeginDrag={dismissKeyboardAndBlur}
           >
-            {step === 0 ? (
+            {step === 0 && !kindPreset ? (
               <View style={styles.block}>
                 <Text style={styles.label}>Tipo</Text>
                 <View style={styles.choiceRow}>
                   <Choice label="Gasto" active={kind === 'expense'} tone="expense" onPress={() => setKind('expense')} />
                   <Choice label="Ingreso" active={kind === 'income'} tone="income" onPress={() => setKind('income')} />
                 </View>
-                <Field label="Titulo del movimiento" value={desc} onChangeText={setDesc} placeholder="Ej. Supermercado" />
+                <Field label="Título del movimiento" value={desc} onChangeText={setDesc} placeholder="Ej. Supermercado" />
               </View>
             ) : null}
 
-            {step === 1 ? (
+            {step === 0 && kindPreset ? (
               <View style={styles.block}>
+                <Field label="Título del movimiento" value={desc} onChangeText={setDesc} placeholder={kind === 'income' ? 'Ej. Salario' : 'Ej. Supermercado'} autoFocus />
                 <AmountField
                   value={amt}
                   onChangeText={setAmt}
                   currencyLabel={CURRENCY_NAMES[currency] ?? CURRENCIES[currency].code}
                 />
+              </View>
+            ) : null}
+
+            {step === 1 ? (
+              <View style={styles.block}>
+                {!kindPreset ? (
+                  <AmountField
+                    value={amt}
+                    onChangeText={setAmt}
+                    currencyLabel={CURRENCY_NAMES[currency] ?? CURRENCIES[currency].code}
+                  />
+                ) : null}
                 <DatePickerField
                   value={date}
                   calendarYM={calendarYM}
                   calendarOpen={calendarOpen}
                   days={calendarDays}
+                  description={kind === 'income' ? 'Selecciona la fecha en la que recibes este ingreso.' : 'Selecciona la fecha en la que hiciste este gasto.'}
                   onToggle={() => {
                     dismissKeyboardAndBlur();
                     setCalendarOpen((value) => !value);
@@ -321,53 +363,75 @@ export function TransactionModal({ visible, transaction, initialKind = 'expense'
 
             {step === 2 ? (
               <View style={styles.block}>
-                <Text style={styles.label}>Categoría de presupuesto</Text>
-                {budgetCategories.length === 0 ? (
-                  <View style={styles.noCategoriesBox}>
-                    <Ionicons name="pie-chart-outline" size={22} color={APP_COLORS.textMuted} />
-                    <Text style={styles.noCategoriesText}>
-                      Aún no tienes categorías de presupuesto.{'\n'}Créalas desde el inicio.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.budgetCatList}>
-                    {budgetCategories.map((bc) => (
-                      <BudgetCatOption
-                        key={bc.id}
-                        label={bc.name}
-                        icon={bc.icon}
-                        colorId={bc.iconColor}
-                        active={budgetCatId === bc.id}
-                        spent={calcBudgetCategorySpending(payload, bc.id, selectedYM)}
-                        budget={bc.monthlyBudget}
+                {budgetCategoryLocked ? (
+                  <>
+                    <Text style={styles.label}>Categoría confirmada</Text>
+                    {selectedBudgetCategory ? (
+                      <ConfirmedBudgetCategory
+                        category={selectedBudgetCategory}
+                        spent={calcBudgetCategorySpending(payload, selectedBudgetCategory.id, currentUser, selectedYM)}
                         currency={currency}
-                        onPress={() => setBudgetCatId(bc.id)}
                       />
-                    ))}
-                    <BudgetCatOption
-                      label="Sin categoría"
-                      icon="close-circle-outline"
-                      colorId="slate"
-                      active={budgetCatId === null}
-                      onPress={() => setBudgetCatId(null)}
-                    />
-                  </View>
+                    ) : (
+                      <View style={styles.noCategoriesBox}>
+                        <Ionicons name="pie-chart-outline" size={22} color={theme.textMuted} />
+                        <Text style={styles.noCategoriesText}>
+                          Esta categoría ya no está disponible.
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.label}>Categoría de presupuesto</Text>
+                    {budgetCategories.length === 0 ? (
+                      <View style={styles.noCategoriesBox}>
+                        <Ionicons name="pie-chart-outline" size={22} color={theme.textMuted} />
+                        <Text style={styles.noCategoriesText}>
+                          Aún no tienes categorías de presupuesto.{'\n'}Créalas desde el inicio.
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.budgetCatList}>
+                        {budgetCategories.map((bc) => (
+                          <BudgetCatOption
+                            key={bc.id}
+                            label={bc.name}
+                            icon={bc.icon}
+                            colorId={bc.iconColor}
+                            active={budgetCatId === bc.id}
+                            spent={calcBudgetCategorySpending(payload, bc.id, currentUser, selectedYM)}
+                            budget={bc.monthlyBudget}
+                            currency={currency}
+                            onPress={() => setBudgetCatId(bc.id)}
+                           />
+                        ))}
+                        <BudgetCatOption
+                          label="Sin categoría"
+                          icon="close-circle-outline"
+                          colorId="slate"
+                          active={budgetCatId === null}
+                          onPress={() => setBudgetCatId(null)}
+                        />
+                      </View>
+                    )}
+                    <Pressable
+                      onPress={() => {
+                        dismissKeyboardAndBlur();
+                        setCreateBudgetCategoryOpen(true);
+                      }}
+                      style={({ pressed }) => [styles.createCategoryButton, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="add" size={17} color={theme.textSecondary} />
+                      <Text style={styles.createCategoryText}>Crear categoría</Text>
+                    </Pressable>
+                  </>
                 )}
-                <Pressable
-                  onPress={() => {
-                    dismissKeyboardAndBlur();
-                    setCreateBudgetCategoryOpen(true);
-                  }}
-                  style={({ pressed }) => [styles.createCategoryButton, pressed && styles.pressed]}
-                >
-                  <Ionicons name="add" size={17} color={APP_COLORS.textSecondary} />
-                  <Text style={styles.createCategoryText}>Crear categoria</Text>
-                </Pressable>
                 <Field
                   label="Notas"
                   value={notes}
                   onChangeText={setNotes}
-                  placeholder="Opcional"
+                  placeholder={budgetCategoryLocked ? 'Agrega una nota si quieres' : 'Opcional'}
                   multiline
                   onFocus={notesScroll.onFocus}
                   onBlur={notesScroll.onBlur}
@@ -389,11 +453,14 @@ function Field({
   label,
   ...props
 }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={[styles.input, props.multiline && styles.textarea]}
         {...props}
       />
@@ -410,6 +477,9 @@ function AmountField({
   onChangeText: (value: string) => void;
   currencyLabel: string;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.amountField}>
       <TextInput
@@ -419,7 +489,7 @@ function AmountField({
         returnKeyType="done"
         onSubmitEditing={dismissKeyboardAndBlur}
         placeholder="0"
-        placeholderTextColor="#CBD5E1"
+        placeholderTextColor={theme.textMuted}
         selectTextOnFocus
         style={styles.amountInput}
       />
@@ -433,6 +503,7 @@ function DatePickerField({
   calendarYM,
   calendarOpen,
   days,
+  description,
   onToggle,
   onPrevMonth,
   onNextMonth,
@@ -442,30 +513,34 @@ function DatePickerField({
   calendarYM: string;
   calendarOpen: boolean;
   days: Array<{ date: string; day: number; inMonth: boolean }>;
+  description: string;
   onToggle: () => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onSelectDate: (date: string) => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [year, month] = calendarYM.split('-').map(Number);
 
   return (
     <View style={styles.field}>
       <Text style={styles.label}>Fecha</Text>
+      <Text style={styles.fieldDescription}>{description}</Text>
       <Pressable onPress={onToggle} style={({ pressed }) => [styles.dateInput, pressed && styles.pressed]}>
         <Text style={styles.dateText}>{formatDateForDisplay(value)}</Text>
-        <Ionicons name="calendar-outline" size={20} color={APP_COLORS.textPrimary} />
+        <Ionicons name="calendar-outline" size={20} color={theme.textPrimary} />
       </Pressable>
 
       {calendarOpen ? (
         <View style={styles.calendar}>
           <View style={styles.calendarHeader}>
             <Pressable onPress={onPrevMonth} style={styles.calendarNavButton}>
-              <Ionicons name="chevron-back" size={18} color={APP_COLORS.textSecondary} />
+              <Ionicons name="chevron-back" size={18} color={theme.textSecondary} />
             </Pressable>
             <Text style={styles.calendarTitle}>{MONTH_NAMES[month - 1]} {year}</Text>
             <Pressable onPress={onNextMonth} style={styles.calendarNavButton}>
-              <Ionicons name="chevron-forward" size={18} color={APP_COLORS.textSecondary} />
+              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
             </Pressable>
           </View>
 
@@ -507,6 +582,43 @@ function DatePickerField({
   );
 }
 
+function ConfirmedBudgetCategory({
+  category,
+  spent,
+  currency,
+}: {
+  category: BudgetCategory;
+  spent: number;
+  currency: CurrencyCode;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const colorSet = getIconColor(category.iconColor);
+  const iconInfo = CATEGORIES[category.icon];
+  const hasBudget = category.monthlyBudget > 0;
+
+  return (
+    <View style={[styles.confirmedCategoryBox, { borderColor: colorSet.color }]}>
+      <View style={[styles.confirmedCategoryIcon, { backgroundColor: colorSet.bg }]}>
+        <Ionicons
+          name={iconInfo?.icon ?? 'ellipsis-horizontal-outline'}
+          size={18}
+          color={colorSet.color}
+        />
+      </View>
+      <View style={styles.confirmedCategoryContent}>
+        <Text style={styles.confirmedCategoryName}>{category.name}</Text>
+        <Text style={styles.confirmedCategoryMeta}>
+          {hasBudget
+            ? `${fmt(spent, currency)} / ${fmt(category.monthlyBudget, currency)} este mes`
+            : 'Sin presupuesto mensual'}
+        </Text>
+      </View>
+      <Ionicons name="checkmark-circle" size={19} color={colorSet.color} />
+    </View>
+  );
+}
+
 function BudgetCatOption({
   label,
   icon,
@@ -526,6 +638,8 @@ function BudgetCatOption({
   currency?: CurrencyCode;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const colorSet = getIconColor(colorId);
   const iconInfo = CATEGORIES[icon];
   const hasSpending = spent !== undefined && budget !== undefined && currency !== undefined;
@@ -538,16 +652,15 @@ function BudgetCatOption({
       onPress={onPress}
       style={({ pressed }) => [
         styles.budgetCatOption,
-        active && styles.budgetCatOptionActive,
         active && { borderColor: colorSet.color },
         pressed && styles.pressed,
       ]}
     >
-      <View style={[styles.budgetCatIcon, { backgroundColor: active ? colorSet.bg : '#F1F5F9' }]}>
+      <View style={[styles.budgetCatIcon, { backgroundColor: active ? colorSet.bg : theme.softSurface }]}>
         <Ionicons
           name={iconInfo?.icon ?? 'ellipsis-horizontal-outline'}
           size={16}
-          color={active ? colorSet.color : APP_COLORS.textMuted}
+          color={active ? colorSet.color : theme.textMuted}
         />
       </View>
       <View style={styles.budgetCatContent}>
@@ -589,10 +702,18 @@ function Choice({
   activeColor?: string;
   onPress: () => void;
 }) {
-  const color = activeColor ?? (tone === 'income' ? APP_COLORS.income : tone === 'expense' ? APP_COLORS.expense : APP_COLORS.blue);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const color = activeColor ?? (tone === 'income' ? theme.income : tone === 'expense' ? theme.expense : theme.blue);
+
+  const handlePress = () => {
+    void Haptics.selectionAsync();
+    onPress();
+  };
+
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.choice,
         active && { backgroundColor: color, borderColor: color },
@@ -631,17 +752,17 @@ function formatDateForDisplay(dateValue: string): string {
   return `${day}/${month}/${year}`;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   amountCurrency: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '400',
     marginTop: 2,
   },
   amountField: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     minHeight: 132,
@@ -650,7 +771,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
   amountInput: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontFamily: 'DMSerifDisplay_400Regular',
     fontSize: 48,
     lineHeight: 56,
@@ -667,7 +788,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   budgetCatBarTrack: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: t.border,
     borderRadius: 3,
     height: 4,
     overflow: 'hidden',
@@ -685,7 +806,7 @@ const styles = StyleSheet.create({
     width: 28,
   },
   budgetCatLabel: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '400',
   },
@@ -696,13 +817,13 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   budgetCatOf: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontWeight: '400',
   },
   budgetCatOption: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
@@ -710,22 +831,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  budgetCatOptionActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#FAFAFE',
-  },
   budgetCatOver: {
     color: '#DC2626',
   },
   budgetCatSpent: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },
   noCategoriesBox: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     gap: 8,
@@ -733,16 +850,15 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   noCategoriesText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     textAlign: 'center',
   },
   calendar: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
     borderRadius: 14,
-    borderWidth: 1,
     padding: 12,
+    ...SURFACE_SHADOW,
   },
   calendarDay: {
     alignItems: 'center',
@@ -752,13 +868,13 @@ const styles = StyleSheet.create({
     width: '14.28%',
   },
   calendarDayActive: {
-    backgroundColor: APP_COLORS.blue,
+    backgroundColor: t.blue,
   },
   calendarDayMuted: {
-    color: '#CBD5E1',
+    color: t.textMuted,
   },
   calendarDayText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '400',
   },
@@ -783,14 +899,14 @@ const styles = StyleSheet.create({
     width: 32,
   },
   calendarTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
   choice: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
@@ -806,7 +922,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   choiceText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '400',
   },
@@ -815,7 +931,9 @@ const styles = StyleSheet.create({
   },
   createCategoryButton: {
     alignItems: 'center',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: t.softSurface,
+    borderColor: t.border,
+    borderWidth: 1,
     borderRadius: 12,
     flexDirection: 'row',
     gap: 8,
@@ -824,12 +942,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   createCategoryText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },
+  confirmedCategoryBox: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  confirmedCategoryContent: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
+  },
+  confirmedCategoryIcon: {
+    alignItems: 'center',
+    borderRadius: 18,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  confirmedCategoryMeta: {
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  confirmedCategoryName: {
+    color: t.textPrimary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
   card: {
-    backgroundColor: APP_COLORS.background,
+    backgroundColor: t.background,
     borderRadius: 22,
     maxHeight: '96%',
     overflow: 'hidden',
@@ -858,22 +1009,27 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
     borderRadius: 12,
-    borderWidth: 1,
     flexDirection: 'row',
     height: 48,
     justifyContent: 'space-between',
     paddingHorizontal: 14,
+    ...SURFACE_SHADOW,
   },
   dateText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 16,
     fontWeight: '400',
   },
   field: {
     gap: 8,
+  },
+  fieldDescription: {
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: -4,
   },
   frequencyGrid: {
     gap: 8,
@@ -883,8 +1039,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderTopColor: t.border,
     borderTopWidth: 1,
     flexDirection: 'row',
     gap: 10,
@@ -892,27 +1048,28 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderBottomColor: t.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -924,7 +1081,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#7C3AED',
+    backgroundColor: TRANSACTION_ACCENT,
     borderRadius: 13,
     flex: 1,
     height: 48,
@@ -946,7 +1103,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -957,53 +1114,27 @@ const styles = StyleSheet.create({
     opacity: 0.38,
   },
   secondaryText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textSecondary,
     fontSize: 15,
     fontWeight: '400',
   },
   secondaryTextDisabled: {
-    color: APP_COLORS.textMuted,
-  },
-  stepDot: {
-    backgroundColor: '#CBD5E1',
-    borderRadius: 999,
-    flex: 1,
-    height: 5,
-  },
-  stepDotActive: {
-    backgroundColor: APP_COLORS.blue,
-  },
-  steps: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingBottom: 4,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  subtitle: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 3,
+    color: t.textMuted,
   },
   textarea: {
-    minHeight: 86,
+    minHeight: 80,
+    paddingVertical: 12,
     textAlignVertical: 'top',
   },
-  title: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 21,
-    fontWeight: MODAL_TITLE_FONT_WEIGHT,
-  },
   weekDay: {
-    color: APP_COLORS.textMuted,
-    fontSize: 11,
-    fontWeight: '400',
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
     textAlign: 'center',
     width: '14.28%',
   },
   weekRow: {
     flexDirection: 'row',
-    marginBottom: 4,
+    marginVertical: 8,
   },
 });

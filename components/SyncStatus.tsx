@@ -9,8 +9,8 @@ const STATUS_MAP = {
 
 export function SyncStatus() {
   const syncStatus = useAppStore((s) => s.syncStatus);
-  const { label, color } = STATUS_MAP[syncStatus];
-  return <Text style={[styles.text, { color }]}>{label}</Text>;
+  const status = STATUS_MAP[syncStatus] ?? STATUS_MAP.connecting;
+  return <Text style={[styles.text, { color: status.color }]}>{status.label}</Text>;
 }
 
 const styles = StyleSheet.create({

@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORIES } from '../constants/categories';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { getIconColor, type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import type { Contribution, Goal } from '../types';
 import { goalProgress } from '../utils/calculations';
 import { formatDateShort, fmt } from '../utils/format';
@@ -27,10 +29,12 @@ export function GoalCard({
   readOnly = false,
 }: GoalCardProps) {
   const currency = useAppStore((s) => s.currency);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const category = CATEGORIES[goal.cat] ?? CATEGORIES.other;
   const iconColor = getIconColor(goal.iconColor);
   const progress = goalProgress(goal, contribs);
-  const pct = Math.round(progress.pct);
+  const pct = Math.min(100, Math.round(progress.pct));
 
   return (
     <Pressable
@@ -38,45 +42,46 @@ export function GoalCard({
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <View style={styles.header}>
-        <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
-          {goal.em ? (
-            <Text style={styles.emoji}>{goal.em}</Text>
+      <View style={[styles.iconWrap, { backgroundColor: iconColor.color }]}>
+        {goal.em ? (
+          <Text style={styles.emoji}>{goal.em}</Text>
+        ) : (
+          <Ionicons name={category.icon} size={20} color="#FFFFFF" />
+        )}
+      </View>
+
+      <View style={styles.info}>
+        <View style={styles.nameRow}>
+          <View style={styles.nameGroup}>
+            <Text numberOfLines={1} style={styles.name}>{goal.name}</Text>
+            <Text style={styles.meta}>
+              {goal.type === 'joint' ? 'Conjunto' : 'Personal'} · {formatDateShort(goal.date)}
+            </Text>
+          </View>
+          <Text style={styles.targetText} numberOfLines={1}>{fmt(goal.target, currency)}</Text>
+        </View>
+
+        <View style={styles.barTrack}>
+          <View style={[styles.barFill, { width: `${pct}%` as `${number}%`, backgroundColor: iconColor.color }]} />
+        </View>
+
+        <View style={styles.amountRow}>
+          <Text style={[styles.savedText, { color: iconColor.color }]} numberOfLines={1}>
+            {fmt(progress.total, currency)}
+          </Text>
+          {readOnly ? (
+            <Text style={styles.readOnly}>Solo lectura</Text>
           ) : (
-            <Ionicons name={category.icon} size={20} color={iconColor.color} />
+            <Text style={styles.remaining} numberOfLines={1}>
+              {fmt(progress.remaining, currency)} restantes
+            </Text>
           )}
         </View>
 
-        <View style={styles.titleBlock}>
-          <Text numberOfLines={1} style={styles.title}>{goal.name}</Text>
-          <Text style={styles.meta}>
-            {goal.type === 'joint' ? 'Conjunto' : 'Personal'} · {formatDateShort(goal.date)}
-          </Text>
-        </View>
-
-        <Text style={styles.saved}>{fmt(progress.total, currency)}</Text>
-      </View>
-
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressFill,
-            { backgroundColor: iconColor.color, width: `${pct}%` },
-          ]}
-        />
-      </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.progressText}>
-          {pct}% · faltan {fmt(progress.remaining, currency)}
-        </Text>
-
-        {readOnly ? (
-          <Text style={styles.readOnly}>Solo lectura</Text>
-        ) : (
+        {!readOnly && (
           <View style={styles.actions}>
             <Pressable onPress={onDelete} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-              <Ionicons name="trash-outline" size={18} color={APP_COLORS.expense} />
+              <Ionicons name="trash-outline" size={18} color={theme.red} />
             </Pressable>
             <Pressable onPress={onContribute} style={({ pressed }) => [styles.contribute, pressed && styles.pressed]}>
               <Ionicons name="add" size={17} color="#FFFFFF" />
@@ -89,27 +94,50 @@ export function GoalCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   actions: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
+    justifyContent: 'flex-end',
+    marginTop: 6,
+  },
+  amountRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginTop: 5,
+  },
+  barFill: {
+    borderRadius: 3,
+    height: '100%',
+  },
+  barTrack: {
+    backgroundColor: theme.mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 3,
+    height: 6,
+    marginTop: 7,
+    overflow: 'hidden',
+    width: '100%',
   },
   card: {
-    backgroundColor: APP_COLORS.surface,
+    alignItems: 'flex-start',
+    backgroundColor: theme.surface,
     borderRadius: 16,
     elevation: 3,
-    gap: 10,
+    flexDirection: 'row',
+    gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    shadowColor: '#7E7E7E',
+    shadowColor: theme.shadowColor,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
+    shadowOpacity: theme.mode === 'light' ? 0.08 : 0.10,
     shadowRadius: 8,
   },
   contribute: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.blue,
+    backgroundColor: theme.blue,
     borderRadius: 10,
     flexDirection: 'row',
     gap: 4,
@@ -124,20 +152,9 @@ const styles = StyleSheet.create({
   emoji: {
     fontSize: 18,
   },
-  footer: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-  },
   iconButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: theme.border,
     borderRadius: 10,
     borderWidth: 1,
     height: 34,
@@ -152,51 +169,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 40,
   },
+  info: {
+    flex: 1,
+    minWidth: 0,
+  },
   meta: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
+    color: theme.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  name: {
+    color: theme.textPrimary,
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  nameGroup: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 6,
   },
   pressed: {
     opacity: 0.72,
   },
-  progressFill: {
-    borderRadius: 999,
-    height: '100%',
-    maxWidth: '100%',
-  },
-  progressText: {
-    color: APP_COLORS.textSecondary,
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  progressTrack: {
-    backgroundColor: '#E2E8F0',
-    borderRadius: 999,
-    height: 9,
-    overflow: 'hidden',
-  },
   readOnly: {
-    color: APP_COLORS.textMuted,
-    fontSize: 12,
+    color: theme.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  remaining: {
+    color: theme.textMuted,
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  savedText: {
+    flexShrink: 1,
+    fontSize: 11,
     fontWeight: '700',
   },
-  saved: {
-    color: APP_COLORS.textPrimary,
+  targetText: {
+    color: theme.textSecondary,
     flexShrink: 0,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  title: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  titleBlock: {
-    flex: 1,
-    gap: 4,
-    minWidth: 0,
+    fontSize: 10,
+    fontWeight: '500',
   },
 });

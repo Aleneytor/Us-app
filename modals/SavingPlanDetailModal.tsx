@@ -15,7 +15,7 @@ import {
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
 import { CATEGORIES } from '../constants/categories';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { type AppTheme, getIconColor } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { SavingPlan } from '../types';
 import { savingPlanProgress } from '../utils/calculations';
@@ -24,9 +24,10 @@ import { useAppStore } from '../store/useAppStore';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { getUserData } from '../utils/users';
 import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
+import { useTheme } from '../contexts/ThemeContext';
 
 const SAVINGS_ACCENT = '#7C3AED';
-const SAVINGS_ACCENT_BG = '#EDE9FE';
+const SAVINGS_ACCENT_BG = 'rgba(124, 58, 237, 0.18)';
 
 interface SavingPlanDetailModalProps {
   plan: SavingPlan | null;
@@ -48,6 +49,8 @@ export function SavingPlanDetailModal({
   const updateSavingPlan = useAppStore((s) => s.updateSavingPlan);
   const deleteSavingPlan = useAppStore((s) => s.deleteSavingPlan);
   const users = useAppStore((s) => s.users);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [entryAmount, setEntryAmount] = useState('');
   const [entryDate, setEntryDate] = useState(todayStr());
@@ -98,7 +101,7 @@ export function SavingPlanDetailModal({
   const handleDelete = () => {
     Alert.alert(
       'Eliminar ahorro',
-      `¿Eliminar "${plan.title}"? Esta accion no se puede deshacer.`,
+      `¿Eliminar "${plan.title}"? Esta acción no se puede deshacer.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -148,33 +151,33 @@ export function SavingPlanDetailModal({
               onPress={() => {}}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
             >
-              <Ionicons name="chatbubble-outline" size={20} color={APP_COLORS.textSecondary} />
+              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
             </Pressable>
             <Pressable
               onPress={() => { onClose(); setTimeout(() => onEdit?.(), 120); }}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
             >
-              <Ionicons name="pencil-outline" size={20} color={APP_COLORS.textSecondary} />
+              <Ionicons name="pencil-outline" size={20} color={theme.textSecondary} />
             </Pressable>
             <Pressable
               onPress={handleDelete}
               style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
             >
-              <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
+              <Ionicons name="trash-outline" size={20} color={theme.expense} />
             </Pressable>
           </>
         ) : undefined}
       >
 
-          {/* ── Header ── */}
+          {/* -- Header -- */}
           <View style={[styles.header, { display: 'none' }]}>
             <Text style={styles.headerTitle}>Detalles</Text>
             <Pressable onPress={onClose} style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}>
-              <Ionicons name="close" size={20} color={APP_COLORS.textSecondary} />
+              <Ionicons name="close" size={20} color={theme.textSecondary} />
             </Pressable>
           </View>
 
-          {/* ── Meta row: owner + type badge ── */}
+          {/* -- Meta row: owner + type badge -- */}
           <View style={styles.metaRow}>
             {user && (
               <>
@@ -189,7 +192,7 @@ export function SavingPlanDetailModal({
               <Ionicons
                 name={plan.type === 'joint' ? 'people' : 'person'}
                 size={11}
-                color={plan.type === 'joint' ? SAVINGS_ACCENT : APP_COLORS.textSecondary}
+                color={plan.type === 'joint' ? SAVINGS_ACCENT : theme.textSecondary}
               />
               <Text style={[styles.typeLabelText, plan.type === 'joint' && styles.typeLabelTextJoint]}>
                 {plan.type === 'joint' ? 'EN CONJUNTO' : 'SOLO YO'}
@@ -197,16 +200,16 @@ export function SavingPlanDetailModal({
             </View>
           </View>
 
-          {/* ── Main hero row: icon + title + amount ── */}
+          {/* -- Main hero row: icon + title + amount -- */}
           <View style={styles.mainRow}>
             <View style={styles.mainLeft}>
-              <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
-                <Ionicons name={iconInfo.icon} size={24} color={iconColor.color} />
+              <View style={[styles.iconWrap, { backgroundColor: iconColor.color }]}>
+                <Ionicons name={iconInfo.icon} size={24} color="#FFFFFF" />
               </View>
               <View style={styles.mainInfo}>
                 <Text style={styles.planTitle}>{plan.title}</Text>
                 <View style={styles.dateRow}>
-                  <Ionicons name="calendar-outline" size={12} color={APP_COLORS.textMuted} />
+                  <Ionicons name="calendar-outline" size={12} color={theme.textMuted} />
                   <Text style={styles.dateText}>{formatDateShort(plan.date)}</Text>
                 </View>
               </View>
@@ -217,7 +220,7 @@ export function SavingPlanDetailModal({
             </View>
           </View>
 
-          {/* ── Progress bar ── */}
+          {/* -- Progress bar -- */}
           <View style={styles.progressSection}>
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${progressPct}%` as `${number}%` }]} />
@@ -228,7 +231,7 @@ export function SavingPlanDetailModal({
             </View>
           </View>
 
-          {/* ── Link compressed ── */}
+          {/* -- Link compressed -- */}
           {plan.link ? (
             <View style={styles.linkRow}>
               <Ionicons name="link-outline" size={15} color={SAVINGS_ACCENT} />
@@ -253,21 +256,21 @@ export function SavingPlanDetailModal({
             keyboardDismissMode="on-drag"
             onScrollBeginDrag={dismissKeyboardAndBlur}
           >
-            {/* ── History ── */}
+            {/* -- History -- */}
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Historial</Text>
             </View>
             {history.length === 0 ? (
               <View style={styles.emptyHistory}>
-                <Ionicons name="cash-outline" size={17} color={APP_COLORS.textMuted} />
-                <Text style={styles.emptyText}>Todavia no hay montos agregados.</Text>
+                <Ionicons name="cash-outline" size={17} color={theme.textMuted} />
+                <Text style={styles.emptyText}>Todavía no hay montos agregados.</Text>
               </View>
             ) : (
               <View style={styles.historyList}>
                 {history.map((entry) => (
                   <View key={String(entry.id)} style={styles.historyRow}>
                     <View style={styles.historyIcon}>
-                      <Ionicons name="cash-outline" size={18} color={APP_COLORS.income} />
+                      <Ionicons name="cash-outline" size={18} color={theme.income} />
                     </View>
                     <View style={styles.historyText}>
                       <Text style={styles.historyAmount}>{fmt(entry.amount, currency)}</Text>
@@ -281,7 +284,7 @@ export function SavingPlanDetailModal({
               </View>
             )}
 
-            {/* ── Add entry ── */}
+            {/* -- Add entry -- */}
             {!readOnly && (
               <>
                 <Text style={styles.sectionTitle}>Agregar al ahorro</Text>
@@ -314,25 +317,25 @@ export function SavingPlanDetailModal({
             )}
           </ScrollView>
 
-          {/* ── Action buttons ── */}
+          {/* -- Action buttons -- */}
           <View style={[styles.actions, { display: 'none' }]}>
             <Pressable
               onPress={() => {}}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
             >
-              <Ionicons name="chatbubble-outline" size={20} color={APP_COLORS.textSecondary} />
+              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
             </Pressable>
             <Pressable
               onPress={() => { onClose(); setTimeout(() => onEdit?.(), 120); }}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
             >
-              <Ionicons name="pencil-outline" size={20} color={APP_COLORS.textSecondary} />
+              <Ionicons name="pencil-outline" size={20} color={theme.textSecondary} />
             </Pressable>
             <Pressable
               onPress={handleDelete}
               style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
             >
-              <Ionicons name="trash-outline" size={20} color={APP_COLORS.expense} />
+              <Ionicons name="trash-outline" size={20} color={theme.expense} />
             </Pressable>
           </View>
 
@@ -345,11 +348,14 @@ function Field({
   label,
   ...props
 }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={styles.input}
         {...props}
       />
@@ -357,7 +363,7 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   backdrop: {
     alignItems: 'center',
     flex: 1,
@@ -365,7 +371,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   card: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     borderRadius: 22,
     maxHeight: '88%',
     overflow: 'hidden',
@@ -381,7 +387,7 @@ const styles = StyleSheet.create({
     shadowRadius: 30,
     width: '100%',
   },
-  // ── Header ──
+  // -- Header --
   header: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -391,7 +397,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   headerTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 18,
     fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },
@@ -402,7 +408,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 34,
   },
-  // ── Meta row ──
+  // -- Meta row --
   metaRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -422,12 +428,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   userName: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   labelDivider: {
-    backgroundColor: APP_COLORS.border,
+    backgroundColor: t.border,
     borderRadius: 1,
     height: 12,
     width: 1,
@@ -446,11 +452,11 @@ const styles = StyleSheet.create({
     borderColor: '#C4B5FD',
   },
   typeLabelPersonal: {
-    backgroundColor: '#F8FAFC',
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.background,
+    borderColor: t.border,
   },
   typeLabelText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -458,7 +464,7 @@ const styles = StyleSheet.create({
   typeLabelTextJoint: {
     color: SAVINGS_ACCENT,
   },
-  // ── Main hero row ──
+  // -- Main hero row --
   mainRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -486,7 +492,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   planTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -496,7 +502,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dateText: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -507,22 +513,22 @@ const styles = StyleSheet.create({
   },
   amountSaved: {
     color: SAVINGS_ACCENT,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_700Bold',
     fontSize: 28,
   },
   amountTarget: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
-  // ── Progress ──
+  // -- Progress --
   progressSection: {
     gap: 6,
     paddingHorizontal: 20,
     paddingBottom: 14,
   },
   progressTrack: {
-    backgroundColor: '#EEF0F3',
+    backgroundColor: t.border,
     borderRadius: 4,
     height: 7,
     overflow: 'hidden',
@@ -537,7 +543,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   progressLabelLeft: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -546,7 +552,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  // ── Link ──
+  // -- Link --
   linkRow: {
     alignItems: 'center',
     backgroundColor: SAVINGS_ACCENT_BG,
@@ -571,7 +577,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 30,
   },
-  // ── Scroll content ──
+  // -- Scroll content --
   scrollContent: {
     gap: 12,
     paddingHorizontal: 20,
@@ -582,30 +588,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   sectionTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   emptyHistory: {
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: t.background,
     borderRadius: 12,
     flexDirection: 'row',
     gap: 8,
     padding: 12,
   },
   emptyText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     lineHeight: 19,
   },
   historyList: {
-    borderTopColor: APP_COLORS.border,
+    borderTopColor: t.border,
     borderTopWidth: 1,
   },
   historyRow: {
     alignItems: 'center',
-    borderBottomColor: APP_COLORS.border,
+    borderBottomColor: t.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     gap: 10,
@@ -613,7 +619,7 @@ const styles = StyleSheet.create({
   },
   historyIcon: {
     alignItems: 'center',
-    backgroundColor: '#DCFCE7',
+    backgroundColor: 'rgba(22, 163, 74, 0.18)',
     borderRadius: 10,
     height: 36,
     justifyContent: 'center',
@@ -624,24 +630,24 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   historyAmount: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   historyMeta: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
   historyNote: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 2,
   },
-  // ── Add entry ──
+  // -- Add entry --
   entryBox: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: t.background,
     borderRadius: 14,
     gap: 12,
     padding: 12,
@@ -650,22 +656,23 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 10,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '600',
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   addButton: {
     alignItems: 'center',
@@ -681,7 +688,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  // ── Actions ──
+  // -- Actions --
   actions: {
     flexDirection: 'row',
     gap: 10,
@@ -689,7 +696,7 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: t.softSurface,
     borderRadius: 12,
     flex: 1,
     justifyContent: 'center',

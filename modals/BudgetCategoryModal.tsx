@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import type { ComponentProps } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -15,8 +16,9 @@ import { ColorPicker } from '../components/ColorPicker';
 import { IconPicker } from '../components/IconPicker';
 import { ModalScreen } from '../components/ModalScreen';
 import { BUDGET_CATEGORY_ICON_KEYS, BUDGET_CATEGORY_PRESETS, CATEGORIES } from '../constants/categories';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { getIconColor, type AppTheme } from '../constants/colors';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import type { BudgetCategory } from '../types';
 import { parseAmt } from '../utils/format';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
@@ -33,6 +35,8 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
   const currentUser = useAppStore((s) => s.currentUser);
   const addBudgetCategory = useAppStore((s) => s.addBudgetCategory);
   const updateBudgetCategory = useAppStore((s) => s.updateBudgetCategory);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [step, setStep] = useState<0 | 1>(0);
   const [name, setName] = useState('');
@@ -64,7 +68,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
 
   const validateDetails = () => {
     if (!name.trim()) {
-      Alert.alert('Falta nombre', 'Ponle un nombre a la categoria.');
+      Alert.alert('Falta nombre', 'Ponle un nombre a la categoría.');
       return false;
     }
     if (budget.trim() && (!Number.isFinite(budgetNum) || budgetNum < 0)) {
@@ -75,6 +79,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
   };
 
   const togglePreset = (name: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedPresets((current) =>
       current.includes(name) ? current.filter((item) => item !== name) : [...current, name],
     );
@@ -160,7 +165,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleBack}>
       <ModalScreen
-          title={editing ? 'Editar categoria' : 'Nueva categoria'}
+          title={editing ? 'Editar categoría' : 'Nueva categoría'}
           breadcrumbs={editing ? ['Detalles'] : ['Elegir', 'Detalles']}
           activeBreadcrumb={editing ? 0 : step}
           canPressBreadcrumb={(index) => !editing && index < step}
@@ -172,7 +177,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
           footer={(
             <>
               <Pressable onPress={handleSecondaryPress} style={styles.secondaryButton}>
-                <Text style={styles.secondaryText}>{!editing && step === 1 ? 'Atras' : 'Cancelar'}</Text>
+                <Text style={styles.secondaryText}>{!editing && step === 1 ? 'Atrás' : 'Cancelar'}</Text>
               </Pressable>
               <Pressable onPress={handlePrimaryPress} style={styles.primaryButton}>
                 <Text style={styles.primaryText}>
@@ -199,9 +204,9 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
           {!editing && step === 0 ? (
             <View style={styles.block}>
               <View style={styles.field}>
-                <Text style={styles.label}>Categorias prediseñadas</Text>
+                <Text style={styles.label}>Categorías prediseñadas</Text>
                 <Text style={styles.helperText}>
-                  Selecciona todas las que quieras agregar ahora. Podras ponerles presupuesto despues.
+                  Selecciona todas las que quieras agregar ahora. Podrás ponerles presupuesto después.
                 </Text>
                 <View style={styles.presetGrid}>
                   {BUDGET_CATEGORY_PRESETS.map((preset) => (
@@ -222,7 +227,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
                   }}
                   style={({ pressed }) => [styles.customCategoryButton, pressed && styles.pressed]}
                 >
-                  <Ionicons name="add" size={17} color={APP_COLORS.textSecondary} />
+                  <Ionicons name="add" size={17} color={theme.textSecondary} />
                   <Text style={styles.customCategoryText}>Crear Categoria</Text>
                 </Pressable>
               </View>
@@ -230,7 +235,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
           ) : (
             <View style={styles.block}>
               <LabeledInput
-                label="Titulo de la categoria"
+                label="Título de la categoría"
                 value={name}
                 onChangeText={setName}
                 placeholder="Ej. Comida"
@@ -243,7 +248,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
                   onChangeText={setBudget}
                   keyboardType="decimal-pad"
                   placeholder="0"
-                  placeholderTextColor="#CBD5E1"
+                  placeholderTextColor={theme.textMuted}
                   selectTextOnFocus
                   style={styles.amountInput}
                 />
@@ -309,6 +314,8 @@ function PresetButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const category = CATEGORIES[icon] ?? CATEGORIES.other;
   const color = getIconColor(iconColor);
 
@@ -317,12 +324,12 @@ function PresetButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.presetButton,
-        active && { borderColor: color.color, backgroundColor: color.bg },
+        active && { borderColor: color.color },
         pressed && styles.pressed,
       ]}
     >
-      <View style={[styles.presetIcon, { backgroundColor: color.bg }]}>
-        <Ionicons name={category.icon} size={20} color={color.color} />
+      <View style={[styles.presetIcon, { backgroundColor: color.color }]}>
+        <Ionicons name={category.icon} size={20} color="#FFFFFF" />
       </View>
       <Text style={styles.presetText} numberOfLines={1}>{name}</Text>
       {active ? (
@@ -339,11 +346,14 @@ function LabeledInput({
   multiline,
   ...props
 }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={[styles.input, multiline && styles.textarea]}
         multiline={multiline}
         {...props}
@@ -363,6 +373,9 @@ function ChoiceButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -372,21 +385,22 @@ function ChoiceButton({
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : APP_COLORS.textSecondary} />
+      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : theme.textSecondary} />
       <Text style={[styles.choiceBtnText, active && styles.choiceBtnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   amountInput: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    color: t.textPrimary,
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 36,
+    letterSpacing: -1.8,
     minHeight: 72,
     padding: 12,
     textAlign: 'center',
@@ -396,8 +410,8 @@ const styles = StyleSheet.create({
   },
   choiceBtn: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
@@ -412,7 +426,7 @@ const styles = StyleSheet.create({
     borderColor: '#7C3AED',
   },
   choiceBtnText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '400',
   },
@@ -429,7 +443,7 @@ const styles = StyleSheet.create({
   },
   customCategoryButton: {
     alignItems: 'center',
-    backgroundColor: '#E2E8F0',
+    backgroundColor: t.border,
     borderRadius: 12,
     flexDirection: 'row',
     gap: 8,
@@ -438,7 +452,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   customCategoryText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -446,25 +460,25 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   helperText: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
     minHeight: 46,
-    padding: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -473,8 +487,8 @@ const styles = StyleSheet.create({
   },
   presetButton: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flexBasis: '31%',
@@ -509,7 +523,7 @@ const styles = StyleSheet.create({
     width: 36,
   },
   presetText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 12,
     fontWeight: '700',
     maxWidth: '100%',
@@ -533,7 +547,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -541,7 +555,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
   },

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   LayoutChangeEvent,
   Platform,
   Pressable,
@@ -22,7 +23,9 @@ import {
   Svg,
   Text as SvgText,
 } from 'react-native-svg';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { getIconColor, type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { SURFACE_SHADOW } from '../constants/shadows';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -31,7 +34,7 @@ import { AppModal as Modal } from './AppModal';
 import { ModalScreen } from './ModalScreen';
 import type { AppPayload, BudgetCategory, CurrencyCode, Transaction, UserId } from '../types';
 import { getOccurrenceDatesInMonth, isMonthVisible } from '../utils/filters';
-import { fmt, formatYM, prevYM } from '../utils/format';
+import { MONTHS_ES, fmt, formatYM, prevYM } from '../utils/format';
 import { MonthNavigator } from './MonthNavigator';
 
 type FinanceTrendKind = 'expense' | 'income';
@@ -71,6 +74,8 @@ export function FinanceTrendCard({
   onOpenDetail,
 }: FinanceTrendCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const budgetCategoryIds = useMemo(
     () => categories.map((c) => String(c.id)),
@@ -92,8 +97,6 @@ export function FinanceTrendCard({
     return fullDays;
   }, [selectedYM]);
 
-  const prevMonthYMPreview = useMemo(() => prevYM(selectedYM), [selectedYM]);
-
   const expensePoints = useMemo(
     () => buildPreviewPoints(payload.expenses, uid, selectedYM, 'expense', allCategoryIds, budgetCategoryIds, previewLastDay),
     [payload.expenses, uid, selectedYM, allCategoryIds, budgetCategoryIds, previewLastDay],
@@ -103,29 +106,13 @@ export function FinanceTrendCard({
     [payload.expenses, uid, selectedYM, allCategoryIds, budgetCategoryIds, previewLastDay],
   );
 
-  const expenseCurrentTotal = useMemo(() => expensePoints.reduce((s, p) => s + p.value, 0), [expensePoints]);
-  const incomeCurrentTotal = useMemo(() => incomePoints.reduce((s, p) => s + p.value, 0), [incomePoints]);
-  const prevExpenseTotal = useMemo(
-    () => buildPreviewPoints(payload.expenses, uid, prevMonthYMPreview, 'expense', allCategoryIds, budgetCategoryIds, previewLastDay)
-      .reduce((s, p) => s + p.value, 0),
-    [payload.expenses, uid, prevMonthYMPreview, allCategoryIds, budgetCategoryIds, previewLastDay],
-  );
-  const prevIncomeTotal = useMemo(
-    () => buildPreviewPoints(payload.expenses, uid, prevMonthYMPreview, 'income', allCategoryIds, budgetCategoryIds, previewLastDay)
-      .reduce((s, p) => s + p.value, 0),
-    [payload.expenses, uid, prevMonthYMPreview, allCategoryIds, budgetCategoryIds, previewLastDay],
-  );
-
   const series = useMemo<ChartSeries[]>(
     () => [
-      { kind: 'income', label: 'Ingresos', color: APP_COLORS.income, points: incomePoints },
-      { kind: 'expense', label: 'Gastos', color: APP_COLORS.expense, points: expensePoints },
+      { kind: 'income', label: 'Ingresos', color: theme.income, points: incomePoints },
+      { kind: 'expense', label: 'Gastos', color: theme.expense, points: expensePoints },
     ],
-    [expensePoints, incomePoints],
+    [expensePoints, incomePoints, theme],
   );
-
-  const expenseComparison = getComparison(expenseCurrentTotal, prevExpenseTotal, 'expense');
-  const incomeComparison = getComparison(incomeCurrentTotal, prevIncomeTotal, 'income');
 
   return (
     <>
@@ -134,19 +121,6 @@ export function FinanceTrendCard({
           onPress={() => setModalOpen(true)}
           style={({ pressed }) => pressed && styles.pressed}
         >
-          <View style={styles.previewMetrics}>
-            <PreviewMetricRow
-              label="Ingresos"
-              color={APP_COLORS.income}
-              comparison={incomeComparison}
-            />
-            <PreviewMetricRow
-              label="Gastos"
-              color={APP_COLORS.expense}
-              comparison={expenseComparison}
-            />
-          </View>
-
           <View style={styles.previewChart}>
             <LineChart series={series} height={92} compact />
           </View>
@@ -186,11 +160,15 @@ function TrendModal({
   categories: BudgetCategory[];
   onOpenDetail?: (kind: 'income' | 'expense') => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const { height: windowHeight } = useWindowDimensions();
   const [modalYM, setModalYM] = useState(selectedYM);
+  const [monthPickerY, setMonthPickerY] = useState<number | null>(null);
   const [scrubDay, setScrubDay] = useState<number | null>(null);
   const [scrubberWidth, setScrubberWidth] = useState(0);
   const scrubberWidthRef = useRef(0);
+  const scrubDayRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -208,7 +186,7 @@ function TrendModal({
     );
     return [
       ...categories.map((c) => ({ id: String(c.id), label: c.name })),
-      ...(hasUncategorized ? [{ id: UNCATEGORIZED_ID, label: 'Sin categoria' }] : []),
+      ...(hasUncategorized ? [{ id: UNCATEGORIZED_ID, label: 'Sin categoría' }] : []),
     ];
   }, [categories, payload.expenses, uid]);
 
@@ -224,78 +202,79 @@ function TrendModal({
     [payload.expenses, uid, modalYM, allCategoryIds, budgetCategoryIds],
   );
 
-  const expenseTotal = useMemo(() => expensePoints.reduce((s, p) => s + p.value, 0), [expensePoints]);
-  const incomeTotal = useMemo(() => incomePoints.reduce((s, p) => s + p.value, 0), [incomePoints]);
+  const expenseTotal = useMemo(() => expensePoints[expensePoints.length - 1]?.value ?? 0, [expensePoints]);
+  const incomeTotal = useMemo(() => incomePoints[incomePoints.length - 1]?.value ?? 0, [incomePoints]);
 
   const prevMonthYM = useMemo(() => prevYM(modalYM), [modalYM]);
-  const prevExpenseTotal = useMemo(
-    () => buildDailyPoints(payload.expenses, uid, prevMonthYM, 'expense', allCategoryIds, budgetCategoryIds)
-      .reduce((s, p) => s + p.value, 0),
-    [payload.expenses, uid, prevMonthYM, allCategoryIds, budgetCategoryIds],
-  );
-  const prevIncomeTotal = useMemo(
-    () => buildDailyPoints(payload.expenses, uid, prevMonthYM, 'income', allCategoryIds, budgetCategoryIds)
-      .reduce((s, p) => s + p.value, 0),
-    [payload.expenses, uid, prevMonthYM, allCategoryIds, budgetCategoryIds],
-  );
+  const prevExpenseTotal = useMemo(() => {
+    const pts = buildDailyPoints(payload.expenses, uid, prevMonthYM, 'expense', allCategoryIds, budgetCategoryIds);
+    return pts[pts.length - 1]?.value ?? 0;
+  }, [payload.expenses, uid, prevMonthYM, allCategoryIds, budgetCategoryIds]);
+  const prevIncomeTotal = useMemo(() => {
+    const pts = buildDailyPoints(payload.expenses, uid, prevMonthYM, 'income', allCategoryIds, budgetCategoryIds);
+    return pts[pts.length - 1]?.value ?? 0;
+  }, [payload.expenses, uid, prevMonthYM, allCategoryIds, budgetCategoryIds]);
 
-  const expenseComparison = getComparison(expenseTotal, prevExpenseTotal, 'expense');
-  const incomeComparison = getComparison(incomeTotal, prevIncomeTotal, 'income');
+  const expenseComparison = getComparison(expenseTotal, prevExpenseTotal, 'expense', theme);
+  const incomeComparison = getComparison(incomeTotal, prevIncomeTotal, 'income', theme);
 
   const series = useMemo<ChartSeries[]>(
     () => [
-      { kind: 'income', label: 'Ingresos', color: APP_COLORS.income, points: incomePoints },
-      { kind: 'expense', label: 'Gastos', color: APP_COLORS.expense, points: expensePoints },
+      { kind: 'income', label: 'Ingresos', color: theme.income, points: incomePoints },
+      { kind: 'expense', label: 'Gastos', color: theme.expense, points: expensePoints },
     ],
-    [expensePoints, incomePoints],
+    [expensePoints, incomePoints, theme],
   );
 
   const daysInMonth = useMemo(() => {
     const [y, m] = modalYM.split('-').map(Number);
-    return new Date(y, m, 0).getDate();
+    const fullDays = new Date(y, m, 0).getDate();
+    const now = new Date();
+    const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return modalYM === curYM ? now.getDate() : fullDays;
   }, [modalYM]);
+
+  const txsByDate = useMemo(() => {
+    const map: Record<string, { income: number; expense: number }> = {};
+    payload.expenses
+      .filter((t) => t.uid === uid && !t.del && (t.kind === 'expense' || t.kind === 'income') && isMonthVisible(t, modalYM))
+      .forEach((t) => {
+        getOccurrenceDatesInMonth(t, modalYM).forEach((dateStr) => {
+          if (!map[dateStr]) map[dateStr] = { income: 0, expense: 0 };
+          if (t.kind === 'income') map[dateStr].income += t.amt;
+          else map[dateStr].expense += t.amt;
+        });
+      });
+    return map;
+  }, [modalYM, payload.expenses, uid]);
 
   const scrubDayData = useMemo(() => {
     if (scrubDay === null) return null;
     const dateStr = `${modalYM}-${String(scrubDay).padStart(2, '0')}`;
-    const txs = payload.expenses.filter((t) =>
-      t.uid === uid &&
-      !t.del &&
-      (t.kind === 'expense' || t.kind === 'income') &&
-      isMonthVisible(t, modalYM) &&
-      getOccurrenceDatesInMonth(t, modalYM).includes(dateStr),
-    );
+    const data = txsByDate[dateStr];
     return {
-      income: txs.filter((t) => t.kind === 'income').reduce((s, t) => s + t.amt, 0),
-      expense: txs.filter((t) => t.kind === 'expense').reduce((s, t) => s + t.amt, 0),
-      hasData: txs.length > 0,
+      income: data?.income ?? 0,
+      expense: data?.expense ?? 0,
+      hasData: !!data,
     };
-  }, [scrubDay, modalYM, payload.expenses, uid]);
+  }, [scrubDay, modalYM, txsByDate]);
 
-  const thumbLeft = scrubDay !== null && scrubberWidth > 0
-    ? ((scrubDay - 1) / Math.max(1, daysInMonth - 1)) * scrubberWidth - 6
+  const thumbLeft = scrubberWidth > 0
+    ? scrubDay !== null
+      ? ((scrubDay - 1) / Math.max(1, daysInMonth - 1)) * scrubberWidth - 9
+      : scrubberWidth / 2 - 9
     : null;
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
       <ModalScreen
         title="Grafica de tendencia"
-        breadcrumbs={['Inicio', 'Tendencia', 'Detalle']}
-        activeBreadcrumb={2}
         onBack={onClose}
         contentContainerStyle={{ padding: 0 }}
       >
-          <ScrollView style={styles.modalCard} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <View style={[styles.modalHeader, { display: 'none' }]}>
-              <View style={styles.modalTitleWrap}>
-                <Text style={styles.modalTitle}>Gráfica de tendencia</Text>
-              </View>
-              <Pressable onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-                <Ionicons name="close" size={20} color={APP_COLORS.textPrimary} />
-              </Pressable>
-            </View>
-
-            <MonthNavigator ym={modalYM} onChange={setModalYM} />
+          <ScrollView style={styles.modalCard} contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} scrollEnabled={scrubDay === null}>
+            <MonthNavigator ym={modalYM} onChange={(ym) => { setModalYM(ym); setScrubDay(null); }} onOpen={setMonthPickerY} />
 
             <SummaryPanel
               incomeCurrent={incomeTotal}
@@ -324,24 +303,24 @@ function TrendModal({
                           {scrubDay} {getMonthShortLabel(modalYM)}
                         </Text>
                         {scrubDayData.income > 0 && (
-                          <Text style={[styles.scrubberAmount, { color: APP_COLORS.income }]}>
-                            ↑ {fmt(scrubDayData.income, currency)}
+                          <Text style={[styles.scrubberAmount, { color: theme.income }]}>
+                            + {fmt(scrubDayData.income, currency)}
                           </Text>
                         )}
                         {scrubDayData.expense > 0 && (
-                          <Text style={[styles.scrubberAmount, { color: APP_COLORS.expense }]}>
-                            ↓ {fmt(scrubDayData.expense, currency)}
+                          <Text style={[styles.scrubberAmount, { color: theme.expense }]}>
+                            - {fmt(scrubDayData.expense, currency)}
                           </Text>
                         )}
                       </View>
                     ) : (
-                      <Text style={styles.scrubberEmpty}>Sin movimientos</Text>
+                      <Text style={styles.scrubberEmpty}>No hay movimientos este día</Text>
                     )
                   ) : (
                     <View style={styles.scrubberHintRow}>
-                      <Ionicons name="arrow-back" size={12} color={APP_COLORS.textMuted} />
+                      <Ionicons name="arrow-back" size={12} color={theme.textMuted} />
                       <Text style={styles.scrubberHint}>Desliza para ver por día</Text>
-                      <Ionicons name="arrow-forward" size={12} color={APP_COLORS.textMuted} />
+                      <Ionicons name="arrow-forward" size={12} color={theme.textMuted} />
                     </View>
                   )}
                 </View>
@@ -357,23 +336,38 @@ function TrendModal({
                   onResponderTerminationRequest={() => false}
                   onResponderGrant={(e) => {
                     const x = Math.max(0, Math.min(scrubberWidthRef.current, e.nativeEvent.locationX));
-                    setScrubDay(Math.max(1, Math.min(daysInMonth, Math.round((x / scrubberWidthRef.current) * (daysInMonth - 1)) + 1)));
+                    const day = Math.max(1, Math.min(daysInMonth, Math.round((x / scrubberWidthRef.current) * (daysInMonth - 1)) + 1));
+                    scrubDayRef.current = day;
+                    setScrubDay(day);
                   }}
                   onResponderMove={(e) => {
                     const x = Math.max(0, Math.min(scrubberWidthRef.current, e.nativeEvent.locationX));
-                    setScrubDay(Math.max(1, Math.min(daysInMonth, Math.round((x / scrubberWidthRef.current) * (daysInMonth - 1)) + 1)));
+                    const day = Math.max(1, Math.min(daysInMonth, Math.round((x / scrubberWidthRef.current) * (daysInMonth - 1)) + 1));
+                    if (day !== scrubDayRef.current) {
+                      scrubDayRef.current = day;
+                      setScrubDay(day);
+                    }
                   }}
-                  onResponderRelease={() => setScrubDay(null)}
+                  onResponderRelease={() => { scrubDayRef.current = null; setScrubDay(null); }}
                 >
                   <View style={styles.scrubberLine} />
                   {thumbLeft !== null && (
-                    <View style={[styles.scrubberThumb, { left: thumbLeft }]} />
+                    <View style={[styles.scrubberThumb, { left: thumbLeft }, scrubDay === null && styles.scrubberThumbResting]} />
                   )}
                 </View>
 
             </>
           </ScrollView>
       </ModalScreen>
+      {monthPickerY !== null && (
+        <MonthPickerDropdown
+          anchorY={monthPickerY}
+          ym={modalYM}
+          onChange={(ym) => { setModalYM(ym); setMonthPickerY(null); setScrubDay(null); }}
+          onClose={() => setMonthPickerY(null)}
+        />
+      )}
+      </View>
     </Modal>
   );
 }
@@ -397,6 +391,8 @@ function SummaryPanel({
   onPressIncome?: () => void;
   onPressExpense?: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={styles.summaryPanel}>
       <Pressable
@@ -404,15 +400,15 @@ function SummaryPanel({
         style={({ pressed }) => [styles.summaryCard, pressed && styles.pressed]}
       >
         <View style={styles.summaryCardHeader}>
-          <View style={[styles.summaryDot, { backgroundColor: APP_COLORS.income }]} />
+          <View style={[styles.summaryDot, { backgroundColor: theme.income }]} />
           <Text style={styles.summaryCardLabel}>Ingresos</Text>
         </View>
-        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.summaryCardAmount, { color: APP_COLORS.income }]}>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.summaryCardAmount, { color: theme.income }]}>
           {fmt(incomeCurrent, currency)}
         </Text>
         <View style={styles.summaryChangeRow}>
-          <Ionicons name={incomeComparison.icon} size={12} color={APP_COLORS.textMuted} />
-          <Text style={[styles.summaryChangeText, { color: APP_COLORS.textMuted }]}>
+          <Ionicons name={incomeComparison.icon} size={12} color={theme.textMuted} />
+          <Text style={[styles.summaryChangeText, { color: theme.textMuted }]}>
             {incomeComparison.label}
           </Text>
         </View>
@@ -423,15 +419,15 @@ function SummaryPanel({
         style={({ pressed }) => [styles.summaryCard, pressed && styles.pressed]}
       >
         <View style={styles.summaryCardHeader}>
-          <View style={[styles.summaryDot, { backgroundColor: APP_COLORS.expense }]} />
+          <View style={[styles.summaryDot, { backgroundColor: theme.expense }]} />
           <Text style={styles.summaryCardLabel}>Gastos</Text>
         </View>
-        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.summaryCardAmount, { color: APP_COLORS.expense }]}>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.summaryCardAmount, { color: theme.expense }]}>
           {fmt(expenseCurrent, currency)}
         </Text>
         <View style={styles.summaryChangeRow}>
-          <Ionicons name={expenseComparison.icon} size={12} color={APP_COLORS.textMuted} />
-          <Text style={[styles.summaryChangeText, { color: APP_COLORS.textMuted }]}>
+          <Ionicons name={expenseComparison.icon} size={12} color={theme.textMuted} />
+          <Text style={[styles.summaryChangeText, { color: theme.textMuted }]}>
             {expenseComparison.label}
           </Text>
         </View>
@@ -449,6 +445,8 @@ function PreviewMetricRow({
   color: string;
   comparison: ReturnType<typeof getComparison>;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={styles.previewMetricRow}>
       <View style={[styles.previewDot, { backgroundColor: color }]} />
@@ -478,12 +476,14 @@ function LineChart({
   compact?: boolean;
   highlightIndex?: number | null;
 }) {
+  const theme = useTheme();
   const [viewWidth, setViewWidth] = useState(0);
 
-  const PAD_H = compact ? 2 : 6;
+  const PAD_LEFT = compact ? 2 : 52;
+  const PAD_RIGHT = compact ? 2 : 6;
   const PAD_TOP = compact ? 6 : 12;
   const PAD_BOTTOM = compact ? 6 : 22;
-  const chartW = Math.max(1, viewWidth - PAD_H * 2);
+  const chartW = Math.max(1, viewWidth - PAD_LEFT - PAD_RIGHT);
   const chartH = Math.max(1, height - PAD_TOP - PAD_BOTTOM);
   const yBottom = PAD_TOP + chartH;
 
@@ -497,7 +497,7 @@ function LineChart({
     const coords = s.points.map((p, i) => {
       const rawY = PAD_TOP + chartH - (p.value / yMax) * chartH;
       return {
-        x: PAD_H + (n <= 1 ? chartW / 2 : (i / (n - 1)) * chartW),
+        x: PAD_LEFT + (n <= 1 ? chartW / 2 : (i / (n - 1)) * chartW),
         y: Math.max(PAD_TOP, Math.min(yBottom, rawY)),
         value: p.value,
         label: p.label,
@@ -521,7 +521,7 @@ function LineChart({
   const n = series[0]?.points.length ?? 0;
   const sparseXDays = [1, 5, 10, 15, 20, 25, 30];
   const highlightX = highlightIndex != null && n > 1
-    ? PAD_H + (highlightIndex / (n - 1)) * chartW
+    ? PAD_LEFT + (highlightIndex / (n - 1)) * chartW
     : null;
 
   return (
@@ -543,7 +543,7 @@ function LineChart({
           {gridLevels.map((level) => {
             const y = PAD_TOP + chartH - (level / yMax) * chartH;
             return (
-              <SvgLine key={level} x1={0} y1={y} x2={viewWidth} y2={y} stroke="#E8EDF3" strokeWidth={1} />
+              <SvgLine key={level} x1={0} y1={y} x2={viewWidth} y2={y} stroke={theme.mode === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)'} strokeWidth={1} />
             );
           })}
 
@@ -552,8 +552,8 @@ function LineChart({
             const label = level === 0 ? '0 €' : `${Math.round(level)} €`;
             return (
               <React.Fragment key={level}>
-                <Rect x={2} y={y - 8} width={label.length * 5.6 + 6} height={13} rx={3} fill="rgba(255,255,255,0.82)" />
-                <SvgText x={5} y={y + 3} fontSize={9} fill={APP_COLORS.textMuted} textAnchor="start" fontWeight="700">
+                <Rect x={2} y={y - 8} width={label.length * 5.6 + 6} height={13} rx={3} fill={theme.mode === 'light' ? 'rgba(229,231,235,0.9)' : 'rgba(33,37,40,0.88)'} />
+                <SvgText x={5} y={y + 3} fontSize={9} fill={theme.textMuted} textAnchor="start" fontWeight="700">
                   {label}
                 </SvgText>
               </React.Fragment>
@@ -581,9 +581,9 @@ function LineChart({
           {!compact && sparseXDays.map((day) => {
             const idx = day - 1;
             if (idx >= n) return null;
-            const x = PAD_H + (n <= 1 ? chartW / 2 : (idx / (n - 1)) * chartW);
+            const x = PAD_LEFT + (n <= 1 ? chartW / 2 : (idx / (n - 1)) * chartW);
             return (
-              <SvgText key={day} x={x} y={height - 4} fontSize={9} fill={APP_COLORS.textMuted} textAnchor="middle" fontWeight="700">
+              <SvgText key={day} x={x} y={height - 4} fontSize={9} fill={theme.textMuted} textAnchor="middle" fontWeight="700">
                 {String(day)}
               </SvgText>
             );
@@ -611,6 +611,8 @@ function CategoryBreakdownChart({
   selectedIds: CategoryFilterId[];
   budgetCategoryIds: CategoryFilterId[];
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const prevMonthYM = prevYM(modalYM);
 
   const data = useMemo(() => {
@@ -646,7 +648,7 @@ function CategoryBreakdownChart({
       colorMap[String(c.id)] = getIconColor(c.iconColor).color;
     });
     nameMap[UNCATEGORIZED_ID] = 'Sin categoría';
-    colorMap[UNCATEGORIZED_ID] = APP_COLORS.textMuted;
+    colorMap[UNCATEGORIZED_ID] = theme.textMuted;
 
     return selectedIds
       .map((cid) => {
@@ -655,16 +657,16 @@ function CategoryBreakdownChart({
         return {
           id: cid,
           name: nameMap[cid] ?? cid,
-          color: colorMap[cid] ?? APP_COLORS.textMuted,
+          color: colorMap[cid] ?? theme.textMuted,
           curr,
           prev,
           pct: totalCurr > 0 ? (curr / totalCurr) * 100 : 0,
-          comparison: getComparison(curr, prev, 'expense'),
+          comparison: getComparison(curr, prev, 'expense', theme),
         };
       })
       .filter((c) => c.curr > 0)
       .sort((a, b) => b.curr - a.curr);
-  }, [payload.expenses, uid, modalYM, prevMonthYM, selectedIds, budgetCategoryIds, categories]);
+  }, [payload.expenses, uid, modalYM, prevMonthYM, selectedIds, budgetCategoryIds, categories, theme]);
 
   if (data.length === 0) {
     return <Text style={[styles.emptyText, { marginTop: 12 }]}>Sin gastos en las categorías seleccionadas.</Text>;
@@ -734,9 +736,12 @@ function buildDailyPoints(
 ): ChartPoint[] {
   const [y, m] = selectedYM.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
+  const now = new Date();
+  const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const lastDay = selectedYM === currentYM ? now.getDate() : daysInMonth;
 
   let running = 0;
-  return Array.from({ length: daysInMonth }, (_, i) => {
+  return Array.from({ length: lastDay }, (_, i) => {
     const day = i + 1;
     const dateStr = `${selectedYM}-${String(day).padStart(2, '0')}`;
     const daily = transactions
@@ -800,12 +805,99 @@ function categoryMatches(
   return selectedCategoryIds.includes(transactionCategoryId);
 }
 
+function MonthPickerDropdown({
+  anchorY,
+  ym,
+  onChange,
+  onClose,
+}: {
+  anchorY: number;
+  ym: string;
+  onChange: (ym: string) => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const anim = useRef(new Animated.Value(0)).current;
+  const year = Number(ym.slice(0, 4));
+  const month = Number(ym.slice(5, 7));
+  const [pickerYear, setPickerYear] = useState(year);
+
+  useEffect(() => {
+    Animated.spring(anim, { toValue: 1, useNativeDriver: true, damping: 22, stiffness: 300, mass: 0.8 }).start();
+  }, [anim]);
+
+  const close = (then?: () => void) => {
+    Animated.timing(anim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
+      then?.();
+      onClose();
+    });
+  };
+
+  return (
+    <Pressable style={[StyleSheet.absoluteFill, { zIndex: 100 }]} onPress={() => close()}>
+      <Animated.View
+        style={[
+          styles.monthDropdownCard,
+          {
+            top: anchorY + 8,
+            opacity: anim,
+            transform: [
+              { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+              { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) },
+            ],
+          },
+        ]}
+      >
+        <Pressable onPress={() => {}} style={styles.monthDropdownInner}>
+          <View style={styles.monthDropdownYearRow}>
+            <Pressable
+              onPress={() => setPickerYear((y) => y - 1)}
+              style={({ pressed }) => [styles.monthNavBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-back" size={20} color={theme.textSecondary} />
+            </Pressable>
+            <Text style={styles.pickerYearText}>{pickerYear}</Text>
+            <Pressable
+              onPress={() => setPickerYear((y) => y + 1)}
+              style={({ pressed }) => [styles.monthNavBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+            </Pressable>
+          </View>
+          <View style={styles.pickerGrid}>
+            {MONTHS_ES.map((name, idx) => {
+              const m = idx + 1;
+              const isActive = pickerYear === year && m === month;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => close(() => onChange(`${pickerYear}-${String(m).padStart(2, '0')}`))}
+                  style={({ pressed }) => [
+                    styles.pickerCell,
+                    isActive && styles.pickerCellActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={[styles.pickerCellText, isActive && styles.pickerCellTextActive]}>
+                    {name.slice(0, 3)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 function getMonthShortLabel(ym: string): string {
   const month = Number(ym.slice(5, 7));
   return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][month - 1] ?? ym;
 }
 
-function getComparison(current: number, previous: number, kind: FinanceTrendKind) {
+function getComparison(current: number, previous: number, kind: FinanceTrendKind, theme: AppTheme) {
   const difference = current - previous;
   const percentage = previous > 0
     ? Math.abs((difference / previous) * 100)
@@ -814,8 +906,8 @@ function getComparison(current: number, previous: number, kind: FinanceTrendKind
       : 0;
   const increased = difference >= 0;
   const goodForUser = kind === 'income' ? increased : !increased;
-  const color = goodForUser ? APP_COLORS.income : APP_COLORS.expense;
-  const bg = goodForUser ? '#DCFCE7' : '#FFE4E6';
+  const color = goodForUser ? theme.income : theme.expense;
+  const bg = goodForUser ? 'rgba(22, 163, 74, 0.18)' : 'rgba(236, 17, 71, 0.18)';
   const label = `${increased ? '+' : '-'}${percentage.toFixed(0)}%`;
 
   return {
@@ -826,7 +918,7 @@ function getComparison(current: number, previous: number, kind: FinanceTrendKind
   };
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   backdrop: {
     alignItems: 'center',
     backgroundColor: 'transparent',
@@ -835,7 +927,7 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   breakdownAmount: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 11,
     fontWeight: '700',
     marginTop: 2,
@@ -846,7 +938,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   breakdownBarTrack: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: theme.mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)',
     borderRadius: 999,
     height: 6,
     marginVertical: 4,
@@ -857,68 +949,48 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   breakdownChipText: {
     fontSize: 10,
     fontWeight: '800',
   },
   breakdownList: {
-    gap: 14,
-    marginTop: 12,
+    gap: 12,
+    marginTop: 6,
   },
   breakdownName: {
-    color: APP_COLORS.textPrimary,
+    color: theme.textPrimary,
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   breakdownPct: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 12,
+    color: theme.textMuted,
+    fontSize: 11,
     fontWeight: '800',
+    textAlign: 'right',
   },
-  breakdownRow: {},
+  breakdownRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   breakdownTopRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 6,
-  },
-  categoryRow: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.background,
-    borderRadius: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  categoryRowText: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  closeButton: {
-    alignItems: 'center',
-    borderColor: APP_COLORS.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
+    gap: 8,
+    width: '100%',
   },
   emptyText: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 13,
-    fontWeight: '700',
-    paddingVertical: 16,
+    fontWeight: '600',
     textAlign: 'center',
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
+    backgroundColor: theme.background,
   },
   modalContent: {
     padding: 22,
@@ -930,7 +1002,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalKicker: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 12,
     fontWeight: '800',
     marginBottom: 3,
@@ -939,14 +1011,14 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     elevation: 14,
     maxWidth: 560,
-    shadowColor: '#0F172A',
+    shadowColor: theme.textPrimary,
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.24,
     shadowRadius: 30,
     width: '100%',
   },
   modalTitle: {
-    color: APP_COLORS.textPrimary,
+    color: theme.textPrimary,
     fontSize: 22,
     fontWeight: '400',
     lineHeight: 28,
@@ -959,13 +1031,13 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   previewCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 18,
     elevation: 3,
     padding: 14,
-    shadowColor: '#7E7E7E',
+    shadowColor: theme.shadowColor,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
+    shadowOpacity: theme.mode === 'light' ? 0.08 : 0.10,
     shadowRadius: 8,
   },
   previewChart: {
@@ -995,7 +1067,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   previewMetricLabel: {
-    color: APP_COLORS.textSecondary,
+    color: theme.textSecondary,
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
@@ -1010,12 +1082,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   previewMonth: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   previewTitle: {
-    color: '#0F172A',
+    color: theme.textPrimary,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -1024,7 +1096,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   scrubberDate: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
@@ -1041,13 +1113,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scrubberEmpty: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
   },
   scrubberHint: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1058,7 +1130,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scrubberLine: {
-    backgroundColor: APP_COLORS.border,
+    backgroundColor: theme.border,
     borderRadius: 999,
     height: 3,
     left: 0,
@@ -1067,14 +1139,17 @@ const styles = StyleSheet.create({
     top: 8,
   },
   scrubberThumb: {
-    backgroundColor: APP_COLORS.textPrimary,
-    borderColor: '#FFFFFF',
+    backgroundColor: '#4B5563',
+    borderColor: theme.border,
     borderRadius: 999,
     borderWidth: 2,
     height: 18,
     position: 'absolute',
     top: 1,
     width: 18,
+  },
+  scrubberThumbResting: {
+    opacity: 0.45,
   },
   scrubberTrackWrap: {
     height: 20,
@@ -1083,18 +1158,18 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   summaryCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 16,
     elevation: 4,
     flex: 1,
     padding: 14,
-    shadowColor: '#0F172A',
+    shadowColor: theme.shadowColor,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: theme.mode === 'light' ? 0.08 : 0.10,
     shadowRadius: 10,
   },
   summaryCardAmount: {
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_700Bold',
     fontSize: 26,
     lineHeight: 32,
     marginBottom: 6,
@@ -1106,7 +1181,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   summaryCardLabel: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
@@ -1130,5 +1205,61 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 16,
     marginTop: 14,
+  },
+  monthDropdownCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    left: 16,
+    position: 'absolute',
+    right: 16,
+    ...SURFACE_SHADOW,
+  },
+  monthDropdownInner: {
+    padding: 20,
+  },
+  monthDropdownYearRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  monthNavBtn: {
+    alignItems: 'center',
+    backgroundColor: theme.surface,
+    borderRadius: 12,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+    ...SURFACE_SHADOW,
+  },
+  pickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  pickerCell: {
+    alignItems: 'center',
+    borderRadius: 12,
+    justifyContent: 'center',
+    paddingVertical: 12,
+    width: '30%',
+  },
+  pickerCellActive: {
+    backgroundColor: '#7C3AED',
+  },
+  pickerCellText: {
+    color: theme.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  pickerCellTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  pickerYearText: {
+    color: theme.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

@@ -1,54 +1,65 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path } from 'react-native-svg';
 import { Tabs } from 'expo-router';
-import { Animated, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
+import { ExpoSpeechRecognitionModule, isSpeechRecognitionSupported, useSpeechRecognitionEvent } from '../../utils/speechRecognitionCompat';
+import { Alert, Animated, Linking, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { PlanModal } from '../../modals/PlanModal';
 import { SavingPlanModal } from '../../modals/SavingPlanModal';
 import { TransactionModal } from '../../modals/TransactionModal';
-import { APP_COLORS } from '../../constants/colors';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { AppTheme } from '../../constants/colors';
+import { useAppStore } from '../../store/useAppStore';
+import type { BudgetCategory, Plan, SavingPlan, Transaction } from '../../types';
+import {
+  buildVoiceActionRecord,
+  getVoiceActionReady,
+  getVoiceContextualStrings,
+  parseVoiceAction,
+  type ParsedVoiceAction,
+} from '../../utils/voiceActions';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
   movimientos: { active: 'receipt', inactive: 'receipt-outline' },
-  ahorro: { active: 'map', inactive: 'map-outline' },
+  extras: { active: 'grid', inactive: 'grid-outline' },
   categorias: { active: 'pie-chart', inactive: 'pie-chart-outline' },
 };
 
 const TAB_LABELS: Record<string, string> = {
   index: 'Inicio',
   movimientos: 'Movimientos',
-  ahorro: 'Planes',
-  categorias: 'Categorias',
+  extras: 'Extras',
+  categorias: 'Categorías',
 };
 
-const TAB_ACTIVE_WIDTHS: Record<string, number> = {
-  index: 88,
-  movimientos: 128,
-  ahorro: 96,
-  categorias: 120,
-};
-
-const TAB_LABEL_WIDTHS: Record<string, number> = {
-  index: 38,
-  movimientos: 76,
-  ahorro: 44,
+const TAB_ITEM_WIDTHS: Record<string, number> = {
+  index: 52,
+  movimientos: 74,
+  extras: 56,
   categorias: 68,
 };
 
-const HIDDEN_TAB_ROUTES = new Set(['create', 'perfil', 'ahorros']);
+const HIDDEN_TAB_ROUTES = new Set(['create', 'ahorros', 'ahorro', 'perfil']);
 
 const DROPUP_OPTIONS: Array<{ label: string; description: string; icon: IoniconName; key: string }> = [
   { key: 'movimiento', label: 'Nuevo movimiento', description: 'Registra un ingreso o gasto en tu cuenta', icon: 'add-circle-outline' },
   { key: 'categoria', label: 'Nueva categoría', description: 'Agrupa gastos y establece un presupuesto mensual', icon: 'pie-chart-outline' },
+  { key: 'ahorro', label: 'Nuevo ahorro', description: 'Define una meta y sigue tu progreso de ahorro', icon: 'wallet-outline' },
   { key: 'plan', label: 'Nuevo plan', description: 'Organiza gastos compartidos con tu pareja', icon: 'map-outline' },
-  { key: 'ahorro', label: 'Nuevo ahorro', description: 'Define una meta y sigue tu progreso de ahorro', icon: 'bookmark-outline' },
 ];
+
+const OPTION_THEMES: Record<string, { bg: string; iconColor: string }> = {
+  movimiento: { bg: '#00D158', iconColor: '#FFFFFF' },
+  categoria: { bg: '#EC1147', iconColor: '#FFFFFF' },
+  ahorro: { bg: '#7C3AED', iconColor: '#FFFFFF' },
+  plan: { bg: '#2563EB', iconColor: '#FFFFFF' },
+};
 
 export default function TabLayout() {
   const [showCreate, setShowCreate] = useState(false);
@@ -56,26 +67,194 @@ export default function TabLayout() {
   const [savingPlanCreateOpen, setSavingPlanCreateOpen] = useState(false);
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [dropupOpen, setDropupOpen] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState('');
   const rotateAnim = useRef(new Animated.Value(0)).current;
+  const voiceTranscriptRef = useRef('');
+  const voiceActiveRef = useRef(false);
+  const ignoreNextPressRef = useRef(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  const payload = useAppStore((s) => s.payload);
+  const currentUser = useAppStore((s) => s.currentUser);
+  const users = useAppStore((s) => s.users);
+  const partnerForUser = useAppStore((s) => s.partnerForUser);
+  const addTransaction = useAppStore((s) => s.addTransaction);
+  const addBudgetCategory = useAppStore((s) => s.addBudgetCategory);
+  const addSavingPlan = useAppStore((s) => s.addSavingPlan);
+  const addPlan = useAppStore((s) => s.addPlan);
+
+  useEffect(() => {
+    if (isSpeechRecognitionSupported) {
+      ExpoSpeechRecognitionModule.requestPermissionsAsync().catch(() => {});
+    }
+  }, []);
+
+  const voiceContext = useMemo(() => ({
+    payload,
+    currentUser,
+    users,
+    partnerForUser,
+  }), [currentUser, partnerForUser, payload, users]);
+
+  const parsedVoiceAction = useMemo(
+    () => voiceTranscript.trim() ? parseVoiceAction(voiceTranscript, voiceContext) : null,
+    [voiceContext, voiceTranscript],
+  );
 
   useEffect(() => {
     Animated.spring(rotateAnim, {
-      toValue: dropupOpen ? 1 : 0,
+      toValue: dropupOpen && !voiceMode ? 1 : 0,
       useNativeDriver: true,
       damping: 18,
       stiffness: 260,
       mass: 0.6,
     }).start();
-  }, [dropupOpen, rotateAnim]);
+  }, [dropupOpen, rotateAnim, voiceMode]);
+
+  useSpeechRecognitionEvent('start', () => {
+    setVoiceListening(true);
+    setVoiceError('');
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setVoiceListening(false);
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const nextTranscript = event.results[0]?.transcript?.trim() ?? '';
+    if (!nextTranscript) return;
+    voiceTranscriptRef.current = nextTranscript;
+    setVoiceTranscript(nextTranscript);
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    setVoiceListening(false);
+    setVoiceError(event.message || event.error);
+  });
+
   const fabSize = 58;
   const fabIconSize = width < 360 ? 25 : 28;
-  const fabBottom = Math.max(insets.bottom, 12);
+  const tabBottom = Math.max(insets.bottom, 12);
+  const fabBottom = tabBottom + 2;
 
   const handleCreatePress = () => {
+    if (ignoreNextPressRef.current) {
+      ignoreNextPressRef.current = false;
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDropupOpen((v) => !v);
+  };
+
+  const startVoiceAction = async () => {
+    ignoreNextPressRef.current = true;
+    voiceActiveRef.current = true;
+    voiceTranscriptRef.current = '';
+    setVoiceTranscript('');
+    setVoiceError('');
+    setVoiceMode(true);
+    setDropupOpen(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    try {
+      const permissions = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permissions.granted) {
+        const canAskAgain = 'canAskAgain' in permissions ? Boolean(permissions.canAskAgain) : true;
+        voiceActiveRef.current = false;
+        setVoiceMode(false);
+        setVoiceListening(false);
+        setTimeout(() => { ignoreNextPressRef.current = false; }, 350);
+        if (!canAskAgain) {
+          Alert.alert(
+            'Permiso de micrófono bloqueado',
+            'Para usar la voz ve a Ajustes y activa el micrófono para Nosotros.',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Abrir Ajustes', onPress: () => Linking.openSettings() },
+            ],
+          );
+        } else {
+          Alert.alert('Permiso requerido', 'Necesito permiso de micrófono y reconocimiento de voz para crear con el botón +.');
+        }
+        return;
+      }
+
+      if (!voiceActiveRef.current) return;
+
+      if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
+        voiceActiveRef.current = false;
+        setVoiceMode(false);
+        setVoiceListening(false);
+        setTimeout(() => { ignoreNextPressRef.current = false; }, 350);
+        Alert.alert('Voz no disponible', 'El reconocimiento de voz no está disponible en este dispositivo.');
+        return;
+      }
+
+      if (!voiceActiveRef.current) return;
+
+      ExpoSpeechRecognitionModule.start({
+        lang: 'es-ES',
+        interimResults: true,
+        continuous: false,
+        maxAlternatives: 3,
+        contextualStrings: getVoiceContextualStrings(voiceContext),
+      });
+    } catch (err) {
+      voiceActiveRef.current = false;
+      setVoiceMode(false);
+      setVoiceListening(false);
+      setVoiceError(err instanceof Error ? err.message : 'No pude iniciar la voz.');
+      setTimeout(() => { ignoreNextPressRef.current = false; }, 350);
+      Alert.alert('No pude escuchar', 'Revisa los permisos de voz y vuelve a intentarlo.');
+    }
+  };
+
+  const stopVoiceAction = () => {
+    if (!voiceActiveRef.current) return;
+    voiceActiveRef.current = false;
+    setVoiceListening(false);
+    ExpoSpeechRecognitionModule.stop();
+    setTimeout(() => finishVoiceAction(voiceTranscriptRef.current), 420);
+  };
+
+  const finishVoiceAction = (transcript: string) => {
+    ignoreNextPressRef.current = false;
+    setVoiceMode(false);
+    setDropupOpen(false);
+
+    if (!transcript.trim()) {
+      Alert.alert(
+        'No escuché nada claro',
+        'Prueba con frases como "gasté 25 en supermercado" o "quiero ahorrar 500 para vacaciones".',
+      );
+      return;
+    }
+
+    const parsed = parseVoiceAction(transcript, voiceContext);
+    if (!getVoiceActionReady(parsed)) {
+      Alert.alert(
+        'Me faltó contexto',
+        `${parsed.summary}. Faltante: ${parsed.missing.join(', ')}.\n\nEjemplos: "gasté 25 en comida", "crea categoría viajes con presupuesto 300", "crear plan playa con Gabi".`,
+      );
+      return;
+    }
+
+    const record = buildVoiceActionRecord(parsed, voiceContext);
+    if (!record) return;
+
+    if (parsed.type === 'transaction') addTransaction(record as Transaction);
+    else if (parsed.type === 'budgetCategory') addBudgetCategory(record as BudgetCategory);
+    else if (parsed.type === 'savingPlan') addSavingPlan(record as SavingPlan);
+    else if (parsed.type === 'plan') addPlan(record as Plan);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Creado por voz', parsed.summary);
   };
 
   const handleOption = (key: string) => {
@@ -86,20 +265,22 @@ export default function TabLayout() {
     else if (key === 'plan') setNewPlanOpen(true);
   };
 
+  const blurTint = theme.mode === 'light' ? 'light' : 'dark';
+
   return (
     <>
       <Tabs
         detachInactiveScreens={false}
         screenOptions={({ route }) => ({
-          tabBarActiveTintColor: '#303236',
-          tabBarInactiveTintColor: '#B3B5B8',
+          tabBarActiveTintColor: theme.textPrimary,
+          tabBarInactiveTintColor: theme.textMuted,
           tabBarStyle: styles.tabBar,
           tabBarLabelStyle: styles.tabLabel,
           tabBarShowLabel: false,
           headerStyle: styles.header,
           headerShadowVisible: false,
           headerTitleStyle: styles.headerTitle,
-          animation: 'fade',
+          animation: 'none',
           tabBarIcon: ({ focused, color, size }) => {
             const icons = TAB_ICONS[route.name];
             if (!icons) return null;
@@ -115,56 +296,18 @@ export default function TabLayout() {
         tabBar={(props) => (
           <FloatingTabBar
             {...props}
+            blurTint={blurTint}
           />
         )}
       >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Home',
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="movimientos"
-          options={{
-            title: 'Movimientos',
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="create"
-          options={{
-            title: '',
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="ahorro"
-          options={{
-            title: 'Ahorro',
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="categorias"
-          options={{
-            title: 'Categorias',
-            headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="perfil"
-          options={{
-            href: null,
-          }}
-        />
-        <Tabs.Screen
-          name="ahorros"
-          options={{
-            href: null,
-          }}
-        />
+        <Tabs.Screen name="index" options={{ title: 'Home', headerShown: false }} />
+        <Tabs.Screen name="movimientos" options={{ title: 'Movimientos', headerShown: false }} />
+        <Tabs.Screen name="categorias" options={{ title: 'Categorías', headerShown: false }} />
+        <Tabs.Screen name="extras" options={{ title: 'Extras', headerShown: false }} />
+        <Tabs.Screen name="perfil" options={{ href: null, headerShown: false }} />
+        <Tabs.Screen name="create" options={{ title: '', headerShown: false }} />
+        <Tabs.Screen name="ahorros" options={{ title: 'Ahorros', headerShown: false }} />
+        <Tabs.Screen name="ahorro" options={{ title: 'Planes', headerShown: false }} />
       </Tabs>
 
       {dropupOpen && (
@@ -173,10 +316,16 @@ export default function TabLayout() {
           onSelect={handleOption}
           fabBottom={fabBottom}
           fabSize={fabSize}
+          voiceMode={voiceMode}
+          voiceListening={voiceListening}
+          voiceTranscript={voiceTranscript}
+          voiceError={voiceError}
+          parsedVoiceAction={parsedVoiceAction}
+          blurTint={blurTint}
         />
       )}
 
-      <View
+      <Animated.View
         pointerEvents="box-none"
         style={[styles.floatingFabShadow, styles.standalonefab, {
           bottom: fabBottom,
@@ -187,11 +336,15 @@ export default function TabLayout() {
       >
         <TouchableOpacity
           activeOpacity={0.86}
-          accessibilityLabel="Crear"
+          accessibilityLabel={voiceMode ? 'Grabando acción por voz' : 'Crear'}
           onPress={handleCreatePress}
+          onLongPress={startVoiceAction}
+          onPressOut={stopVoiceAction}
+          delayLongPress={280}
           style={[
             styles.floatingFab,
             dropupOpen && styles.floatingFabOpen,
+            voiceMode && styles.floatingFabRecording,
             {
               borderRadius: fabSize / 2,
               height: fabSize,
@@ -199,30 +352,23 @@ export default function TabLayout() {
             },
           ]}
         >
-          <BlurView intensity={34} tint="light" style={StyleSheet.absoluteFill} />
-          <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
-            <Ionicons name="add" size={fabIconSize} color="#111827" />
-          </Animated.View>
+          <BlurView intensity={42} tint={blurTint} style={StyleSheet.absoluteFill} />
+          {voiceMode ? (
+            <View style={styles.recordingIconOuter}>
+              <View style={styles.recordingIconInner} />
+            </View>
+          ) : (
+            <Animated.View style={{ transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] }) }] }}>
+              <Ionicons name="add" size={fabIconSize} color={theme.textPrimary} />
+            </Animated.View>
+          )}
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
-      <TransactionModal
-        visible={showCreate}
-        initialKind="expense"
-        onClose={() => setShowCreate(false)}
-      />
-      <BudgetCategoryModal
-        visible={newCategoryOpen}
-        onClose={() => setNewCategoryOpen(false)}
-      />
-      <SavingPlanModal
-        visible={savingPlanCreateOpen}
-        onClose={() => setSavingPlanCreateOpen(false)}
-      />
-      <PlanModal
-        visible={newPlanOpen}
-        onClose={() => setNewPlanOpen(false)}
-      />
+      <TransactionModal visible={showCreate} initialKind="expense" onClose={() => setShowCreate(false)} />
+      <BudgetCategoryModal visible={newCategoryOpen} onClose={() => setNewCategoryOpen(false)} />
+      <SavingPlanModal visible={savingPlanCreateOpen} onClose={() => setSavingPlanCreateOpen(false)} />
+      <PlanModal visible={newPlanOpen} onClose={() => setNewPlanOpen(false)} />
     </>
   );
 }
@@ -232,13 +378,27 @@ function DropupOverlay({
   onSelect,
   fabBottom,
   fabSize,
+  voiceMode = false,
+  voiceListening = false,
+  voiceTranscript = '',
+  voiceError = '',
+  parsedVoiceAction = null,
+  blurTint,
 }: {
   onClose: () => void;
   onSelect: (key: string) => void;
   fabBottom: number;
   fabSize: number;
+  voiceMode?: boolean;
+  voiceListening?: boolean;
+  voiceTranscript?: string;
+  voiceError?: string;
+  parsedVoiceAction?: ParsedVoiceAction | null;
+  blurTint: 'dark' | 'light';
 }) {
   const anim = useRef(new Animated.Value(0)).current;
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   useEffect(() => {
     Animated.spring(anim, {
@@ -258,13 +418,37 @@ function DropupOverlay({
   };
 
   return (
-    <Pressable style={StyleSheet.absoluteFill} onPress={() => animateClose()}>
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: anim }]}>
-        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.dropupScrim]} />
-      </Animated.View>
+    <Pressable style={StyleSheet.absoluteFill} onPress={() => !voiceMode && animateClose()}>
+      {!voiceMode && (
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: anim }]}>
+          <BlurView intensity={22} tint={blurTint} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, styles.dropupScrim]} />
+        </Animated.View>
+      )}
 
-      <View style={styles.dropupAnchor}>
+      <View style={[styles.dropupAnchor, { bottom: fabBottom + fabSize + 18 }]}>
+        {voiceMode && (
+          <Animated.View
+            style={[
+              styles.voiceCard,
+              {
+                opacity: anim,
+                transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+              },
+            ]}
+          >
+            <View style={styles.voiceHeader}>
+              <View style={[styles.voicePulse, voiceListening && styles.voicePulseActive]} />
+              <Text style={styles.voiceTitle}>{voiceListening ? 'Escuchando' : 'Procesando voz'}</Text>
+            </View>
+            <Text style={styles.voiceTranscript} numberOfLines={2}>
+              {voiceTranscript || 'Mantén presionado y di el movimiento, ahorro, plan o categoría.'}
+            </Text>
+            <Text style={styles.voiceHint} numberOfLines={2}>
+              {voiceError || parsedVoiceAction?.summary || 'Ej. gaste 25 en supermercado hoy'}
+            </Text>
+          </Animated.View>
+        )}
         <Animated.View
           style={[
             styles.dropupCard,
@@ -275,26 +459,29 @@ function DropupOverlay({
           ]}
         >
           <View style={styles.dropupInner}>
-            {DROPUP_OPTIONS.map((opt, i) => (
-              <Pressable
-                key={opt.key}
-                onPress={() => animateClose(() => onSelect(opt.key))}
-                style={({ pressed }) => [
-                  styles.dropupOption,
-                  i > 0 && styles.dropupOptionBorder,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={styles.dropupOptionIconWrap}>
-                  <Ionicons name={opt.icon} size={26} color="#7C3AED" />
-                </View>
-                <View style={styles.dropupOptionContent}>
-                  <Text style={styles.dropupOptionText}>{opt.label}</Text>
-                  <Text style={styles.dropupOptionDesc}>{opt.description}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={APP_COLORS.textMuted} />
-              </Pressable>
-            ))}
+            {DROPUP_OPTIONS.map((opt, i) => {
+              const optTheme = OPTION_THEMES[opt.key] || { bg: 'rgba(124, 58, 237, 0.16)', iconColor: '#7C3AED' };
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => animateClose(() => onSelect(opt.key))}
+                  style={({ pressed }) => [
+                    styles.dropupOption,
+                    i > 0 && styles.dropupOptionBorder,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={[styles.dropupOptionIconWrap, { backgroundColor: optTheme.bg }]}>
+                    <Ionicons name={opt.icon} size={22} color={optTheme.iconColor} />
+                  </View>
+                  <View style={styles.dropupOptionContent}>
+                    <Text style={styles.dropupOptionText}>{opt.label}</Text>
+                    <Text style={styles.dropupOptionDesc}>{opt.description}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+                </Pressable>
+              );
+            })}
           </View>
         </Animated.View>
       </View>
@@ -302,16 +489,22 @@ function DropupOverlay({
   );
 }
 
-function FloatingTabBar({ state, descriptors, navigation, insets }: any) {
+function FloatingTabBar({ state, descriptors, navigation, insets, blurTint }: any) {
   const visibleRoutes = state.routes.filter((route: any) => !HIDDEN_TAB_ROUTES.has(route.name));
+  const tabOrder = ['index', 'movimientos', 'categorias', 'extras'];
+  const sortedVisibleRoutes = [...visibleRoutes].sort((a: any, b: any) => {
+    return tabOrder.indexOf(a.name) - tabOrder.indexOf(b.name);
+  });
   const bottom = Math.max(insets?.bottom ?? 0, 12);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
     <View pointerEvents="box-none" style={[styles.floatingBarWrap, { bottom }]}>
       <View style={styles.tabPillShadow}>
         <View style={styles.tabPill}>
-          <BlurView intensity={32} tint="light" style={StyleSheet.absoluteFill} />
-          {visibleRoutes.map((route: any) => {
+          <BlurView intensity={42} tint={blurTint} style={StyleSheet.absoluteFill} />
+          {sortedVisibleRoutes.map((route: any) => {
             const routeIndex = state.routes.findIndex((item: any) => item.key === route.key);
             const focused = state.index === routeIndex;
             const icons = TAB_ICONS[route.name];
@@ -324,7 +517,6 @@ function FloatingTabBar({ state, descriptors, navigation, insets }: any) {
                 target: route.key,
                 canPreventDefault: true,
               });
-
               if (!focused && !event.defaultPrevented) {
                 navigation.navigate(route.name, route.params);
               }
@@ -344,9 +536,6 @@ function FloatingTabBar({ state, descriptors, navigation, insets }: any) {
           })}
         </View>
       </View>
-
-      {/* Spacer to reserve FAB width in the row */}
-      <View style={{ height: 58, width: 58 }} />
     </View>
   );
 }
@@ -366,25 +555,10 @@ function FloatingTabItem({
   onPress: () => void;
   routeName: string;
 }) {
-  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(progress, {
-      toValue: focused ? 1 : 0,
-      duration: 230,
-      easing: focused ? EASE_OUT_CUBIC : EASE_IN_OUT_CUBIC,
-      useNativeDriver: false,
-    }).start();
-  }, [focused, progress]);
-
-  const activeWidth = TAB_ACTIVE_WIDTHS[routeName] ?? 112;
-  const activeLabelWidth = TAB_LABEL_WIDTHS[routeName] ?? 68;
-  const width = progress.interpolate({ inputRange: [0, 1], outputRange: [44, activeWidth] });
-  const backgroundColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['rgba(255, 255, 255, 0)', '#F1F5F9'] });
-  const labelWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, activeLabelWidth] });
-  const labelMarginLeft = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
-  const labelOpacity = progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0, 1] });
-  const iconColor = focused ? '#111827' : '#7B8491';
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const itemWidth = TAB_ITEM_WIDTHS[routeName] ?? 62;
+  const iconColor = focused ? theme.textPrimary : theme.textMuted;
 
   return (
     <Pressable
@@ -394,7 +568,7 @@ function FloatingTabItem({
       onPress={onPress}
       style={({ pressed }) => [pressed && styles.pressed]}
     >
-      <Animated.View style={[styles.tabItem, { backgroundColor, width }]}>
+      <Animated.View style={[styles.tabItem, { width: itemWidth }]}>
         <View style={styles.tabIconBox}>
           {routeName === 'index' ? (
             <HomeMinimalIcon color={iconColor} filled={focused} />
@@ -406,19 +580,13 @@ function FloatingTabItem({
             />
           ) : null}
         </View>
-        <Animated.View style={{ marginLeft: labelMarginLeft, opacity: labelOpacity, overflow: 'hidden', width: labelWidth }}>
-          <Text numberOfLines={1} style={styles.tabItemLabel}>{label}</Text>
-        </Animated.View>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.86} style={[styles.tabItemLabel, { color: iconColor }]}>
+          {label}
+        </Text>
       </Animated.View>
     </Pressable>
   );
 }
-
-const EASE_OUT_CUBIC = (value: number) => 1 - Math.pow(1 - value, 3);
-const EASE_IN_OUT_CUBIC = (value: number) => (
-  value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2
-);
-
 
 function HomeMinimalIcon({ color, filled = false }: { color: string; filled?: boolean }) {
   return (
@@ -435,25 +603,27 @@ function HomeMinimalIcon({ color, filled = false }: { color: string; filled?: bo
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   dropupAnchor: {
-    bottom: 96,
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     position: 'absolute',
     right: 18,
+    gap: 10,
   },
   dropupCard: {
     borderRadius: 20,
-    elevation: 16,
+    elevation: 24,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.48,
+    shadowRadius: 30,
     width: 300,
   },
   dropupInner: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderWidth: 1,
     borderRadius: 20,
     overflow: 'hidden',
   },
@@ -465,7 +635,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   dropupOptionBorder: {
-    borderTopColor: APP_COLORS.border,
+    borderTopColor: t.border,
     borderTopWidth: 1,
   },
   dropupOptionContent: {
@@ -473,26 +643,28 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   dropupOptionDesc: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '400',
   },
   dropupOptionIconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 32,
+    width: 40,
+    height: 40,
+    borderRadius: 16,
   },
   dropupOptionText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
   },
   dropupScrim: {
-    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+    backgroundColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.18)' : 'rgba(0, 0, 0, 0.28)',
   },
   fab: {
     alignItems: 'center',
-    backgroundColor: '#252A32',
+    backgroundColor: t.surface,
     justifyContent: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -508,49 +680,67 @@ const styles = StyleSheet.create({
   floatingBarWrap: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 16,
     justifyContent: 'center',
     left: 14,
     position: 'absolute',
-    right: 14,
+    right: 88,
   },
   floatingFab: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.76)',
-    borderColor: 'rgba(255, 255, 255, 0.88)',
+    backgroundColor: t.mode === 'light' ? 'rgba(240, 240, 245, 0.60)' : 'rgba(38, 45, 51, 0.34)',
+    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.16)',
     borderWidth: 1,
     justifyContent: 'center',
     overflow: 'hidden',
   },
   floatingFabOpen: {
-    backgroundColor: 'rgba(241, 245, 249, 0.9)',
+    backgroundColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.16)',
+  },
+  floatingFabRecording: {
+    backgroundColor: 'rgba(254, 226, 226, 0.94)',
+    borderColor: 'rgba(248, 113, 113, 0.72)',
   },
   floatingFabShadow: {
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
-    elevation: 6,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.01)',
+    elevation: 18,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.46,
+    shadowRadius: 26,
   },
   standalonefab: {
     position: 'absolute',
-    right: 22,
+    right: 14,
   },
   header: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.surface,
   },
   headerTitle: {
-    color: '#0F172A',
+    color: t.textPrimary,
     fontSize: 18,
     fontWeight: '800',
   },
   pressed: {
     opacity: 0.72,
   },
+  recordingIconInner: {
+    backgroundColor: '#DC2626',
+    borderRadius: 8,
+    height: 16,
+    width: 16,
+  },
+  recordingIconOuter: {
+    alignItems: 'center',
+    borderColor: '#DC2626',
+    borderRadius: 16,
+    borderWidth: 2,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
   tabBar: {
-    backgroundColor: '#FFFFFF',
-    borderTopColor: '#FFFFFF',
+    backgroundColor: t.surface,
+    borderTopColor: t.border,
     height: 78,
     paddingBottom: 12,
     paddingTop: 8,
@@ -562,49 +752,96 @@ const styles = StyleSheet.create({
   tabItem: {
     alignItems: 'center',
     borderRadius: 22,
-    flexDirection: 'row',
-    height: 44,
+    height: 52,
     justifyContent: 'center',
-    paddingHorizontal: 7,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
   },
   tabIconBox: {
     alignItems: 'center',
     borderRadius: 15,
-    height: 30,
+    height: 24,
     justifyContent: 'center',
     width: 30,
   },
   tabItemLabel: {
-    color: '#111827',
-    flexShrink: 1,
-    fontSize: 12,
+    fontSize: 9.5,
     fontWeight: '600',
+    lineHeight: 12,
+    marginTop: 3,
+    textAlign: 'center',
+    width: '100%',
   },
   tabPill: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.76)',
-    borderColor: 'rgba(255, 255, 255, 0.88)',
+    backgroundColor: t.mode === 'light' ? 'rgba(240, 240, 245, 0.60)' : 'rgba(38, 45, 51, 0.34)',
+    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.16)',
     borderWidth: 1,
-    borderRadius: 29,
+    borderRadius: 33,
     flex: 1,
     flexDirection: 'row',
     gap: 2,
-    height: 58,
+    height: 62,
     justifyContent: 'space-between',
     overflow: 'hidden',
     paddingHorizontal: 8,
   },
   tabPillShadow: {
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
-    borderRadius: 29,
-    elevation: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.01)',
+    borderRadius: 33,
+    elevation: 18,
     flex: 1,
-    height: 58,
-    maxWidth: 390,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
+    height: 62,
+    maxWidth: 430,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.46,
+    shadowRadius: 26,
   },
-
+  voiceCard: {
+    backgroundColor: t.mode === 'light' ? 'rgba(255, 255, 255, 0.97)' : 'rgba(255, 255, 255, 0.94)',
+    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.10)' : 'rgba(226, 232, 240, 0.92)',
+    borderRadius: 16,
+    borderWidth: 1,
+    elevation: 10,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    width: 300,
+  },
+  voiceHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  voiceHint: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  voicePulse: {
+    backgroundColor: '#94A3B8',
+    borderRadius: 5,
+    height: 10,
+    width: 10,
+  },
+  voicePulseActive: {
+    backgroundColor: '#DC2626',
+  },
+  voiceTitle: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  voiceTranscript: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 19,
+  },
 });

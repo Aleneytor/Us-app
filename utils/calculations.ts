@@ -42,27 +42,8 @@ export function savingPlanProgress(plan: SavingPlan) {
 }
 
 export function calcSaldoActual(payload: AppPayload, uid: UserId): number {
-  let total = 0;
-
-  for (const t of payload.expenses) {
-    if (t.del || t.uid !== uid) continue;
-
-    if (t.type === 'once') {
-      const ym = t.date.slice(0, 7);
-      if (getPaid(t, ym)) total += t.kind === 'income' ? t.amt : -t.amt;
-      continue;
-    }
-
-    if (!t.paid || typeof t.paid !== 'object') continue;
-    for (const [ym, isPaid] of Object.entries(t.paid)) {
-      if (isPaid) {
-        const monthAmount = getTransactionAmountForMonth(t, ym);
-        total += t.kind === 'income' ? monthAmount : -monthAmount;
-      }
-    }
-  }
-
-  return total;
+  const today = todayStr();
+  return calcSaldoHastaFecha(payload, uid, today);
 }
 
 export function calcSaldoProyectado(
@@ -70,21 +51,33 @@ export function calcSaldoProyectado(
   uid: UserId,
   ym: string,
 ): number {
-  const actual = calcSaldoActual(payload, uid);
-  const ingresoActualMes = calcIngresosActual(payload, uid, ym);
-  const gastoActualMes = calcGastosActual(payload, uid, ym);
-  const ingresoProyectadoMes = calcIngresosProyectados(payload, uid, ym);
-  const gastoProyectadoMes = calcGastosProyectados(payload, uid, ym);
+  const today = todayStr();
+  const currentYM = today.slice(0, 7);
 
-  return actual
-    + Math.max(0, ingresoProyectadoMes - ingresoActualMes)
-    - Math.max(0, gastoProyectadoMes - gastoActualMes);
+  if (ym < currentYM) {
+    return calcSaldoHastaFecha(payload, uid, getMonthEnd(ym));
+  }
+
+  let total = calcSaldoActual(payload, uid);
+  for (let cursor = currentYM; cursor <= ym; cursor = addMonths(cursor, 1)) {
+    const ingresoActualMes = calcIngresosActual(payload, uid, cursor);
+    const gastoActualMes = calcGastosActual(payload, uid, cursor);
+    const ingresoProyectadoMes = calcIngresosProyectados(payload, uid, cursor);
+    const gastoProyectadoMes = calcGastosProyectados(payload, uid, cursor);
+    const ahorroFuturoMes = sumContribsAfterTodayInMonth(payload, uid, cursor, today);
+
+    total += Math.max(0, ingresoProyectadoMes - ingresoActualMes)
+      - Math.max(0, gastoProyectadoMes - gastoActualMes)
+      - ahorroFuturoMes;
+  }
+
+  return total;
 }
 
 export function calcGastosActual(payload: AppPayload, uid: UserId, ym: string): number {
   return payload.expenses
-    .filter((t) => t.uid === uid && !t.del && t.kind === 'expense' && isMonthVisible(t, ym) && getPaid(t, ym))
-    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
+    .filter((t) => t.uid === uid && !t.del && t.kind === 'expense')
+    .reduce((sum, t) => sum + getTransactionAmountElapsedInMonth(t, ym), 0);
 }
 
 export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: string): number {
@@ -110,8 +103,8 @@ export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: stri
 
 export function calcIngresosActual(payload: AppPayload, uid: UserId, ym: string): number {
   return payload.expenses
-    .filter((t) => t.uid === uid && !t.del && t.kind === 'income' && isMonthVisible(t, ym) && getPaid(t, ym))
-    .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
+    .filter((t) => t.uid === uid && !t.del && t.kind === 'income')
+    .reduce((sum, t) => sum + getTransactionAmountElapsedInMonth(t, ym), 0);
 }
 
 export function calcIngresosProyectados(payload: AppPayload, uid: UserId, ym: string): number {
@@ -129,11 +122,13 @@ export function calcIngresosProyectados(payload: AppPayload, uid: UserId, ym: st
 export function calcBudgetCategorySpending(
   payload: AppPayload,
   catId: number,
+  uid: UserId,
   ym: string,
 ): number {
   return payload.expenses
     .filter(
       (t) =>
+        t.uid === uid &&
         !t.del &&
         t.kind === 'expense' &&
         String(t.budgetCatId) === String(catId) &&
@@ -179,6 +174,59 @@ function sumTransactionsForBudgetCategory(
         isMonthVisible(t, ym),
     )
     .reduce((sum, t) => sum + getTransactionAmountForMonth(t, ym), 0);
+}
+
+function calcSaldoHastaFecha(payload: AppPayload, uid: UserId, endDate: string): number {
+  let total = 0;
+
+  for (const t of payload.expenses) {
+    if (t.del || t.uid !== uid) continue;
+    const amount = getTransactionAmountThroughDate(t, endDate);
+    total += t.kind === 'income' ? amount : -amount;
+  }
+
+  for (const c of payload.contribs) {
+    if (c.uid === uid && c.date <= endDate) total -= c.amt;
+  }
+
+  return total;
+}
+
+function getTransactionAmountThroughDate(t: Transaction, endDate: string): number {
+  if (!t.date) return 0;
+  if (t.type === 'once') return t.date <= endDate ? t.amt : 0;
+
+  let total = 0;
+  const endYM = endDate.slice(0, 7);
+  for (let cursor = t.date.slice(0, 7); cursor <= endYM; cursor = addMonths(cursor, 1)) {
+    total += getOccurrenceDatesInMonth(t, cursor).filter((date) => date <= endDate).length * t.amt;
+  }
+  return total;
+}
+
+function getTransactionAmountElapsedInMonth(t: Transaction, ym: string): number {
+  const today = todayStr();
+  const currentYM = today.slice(0, 7);
+  if (ym > currentYM) return 0;
+  const cutoff = ym === currentYM ? today : getMonthEnd(ym);
+  return getOccurrenceDatesInMonth(t, ym).filter((date) => date <= cutoff).length * t.amt;
+}
+
+function sumContribsAfterTodayInMonth(
+  payload: AppPayload,
+  uid: UserId,
+  ym: string,
+  today: string,
+): number {
+  return payload.contribs
+    .filter((c) => c.uid === uid && c.date.slice(0, 7) === ym && c.date > today)
+    .reduce((sum, c) => sum + c.amt, 0);
+}
+
+function getMonthEnd(ym: string): string {
+  const [year, month] = ym.split('-').map(Number);
+  const date = new Date(year, month, 0);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export function getProximosMovimientos(

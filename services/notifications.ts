@@ -58,13 +58,13 @@ export async function scheduleTransactionReminder(
     if (triggerDate <= new Date()) continue;
 
     const identifier = reminderId(transaction.id, days);
-    const label = days === 1 ? 'manana' : `en ${days} dias`;
+    const label = days === 1 ? 'mañana' : `en ${days} días`;
     const action = transaction.kind === 'expense' ? 'pagar' : 'recibir';
 
     await Notifications.scheduleNotificationAsync({
       identifier,
       content: {
-        title: `Movimiento proximo: ${transaction.desc || 'Sin descripcion'}`,
+        title: `Movimiento próximo: ${transaction.desc || 'Sin descripción'}`,
         body: `Debes ${action} ${label}.`,
         data: {
           transactionId: transaction.id,

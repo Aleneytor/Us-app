@@ -1,53 +1,87 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppModal as Modal } from './AppModal';
 import { ModalScreen } from './ModalScreen';
-import { APP_COLORS } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { AppTheme } from '../constants/colors';
+import { SURFACE_SHADOW } from '../constants/shadows';
 import { MONTHS_ES, formatYM, nextYM, prevYM } from '../utils/format';
 
 interface MonthNavigatorProps {
   ym: string;
   onChange: (ym: string) => void;
+  onOpen?: (buttonBottomY: number) => void;
+  variant?: 'default' | 'plain';
 }
 
-export function MonthNavigator({ ym, onChange }: MonthNavigatorProps) {
+export function MonthNavigator({ ym, onChange, onOpen, variant = 'default' }: MonthNavigatorProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const centerBtnRef = useRef<View>(null);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const year = Number(ym.slice(0, 4));
   const month = Number(ym.slice(5, 7));
+  const isPlain = variant === 'plain';
+
+  const handleCenterPress = () => {
+    if (onOpen) {
+      centerBtnRef.current?.measure((_x, _y, _w, height, _pageX, pageY) => {
+        onOpen(pageY + height);
+      });
+    } else {
+      setPickerOpen(true);
+    }
+  };
 
   return (
     <>
       <View style={styles.monthRow}>
         <Pressable
           onPress={() => onChange(prevYM(ym))}
-          style={({ pressed }) => [styles.monthButton, pressed && styles.monthButtonPressed]}
+          style={({ pressed }) => [
+            styles.monthButton,
+            isPlain && styles.monthButtonPlain,
+            pressed && (isPlain ? styles.monthButtonPlainPressed : styles.monthButtonPressed),
+          ]}
         >
-          <Ionicons name="chevron-back" size={21} color={APP_COLORS.textSecondary} />
+          <Ionicons name="chevron-back" size={21} color={theme.textSecondary} />
         </Pressable>
-        <Pressable
-          onPress={() => setPickerOpen(true)}
-          style={({ pressed }) => [styles.monthCenterButton, pressed && styles.monthButtonPressed]}
-        >
-          <Text style={styles.monthText}>{formatYM(ym)}</Text>
-        </Pressable>
+        <View ref={centerBtnRef} style={styles.monthCenterWrap}>
+          <Pressable
+            onPress={handleCenterPress}
+            style={({ pressed }) => [
+              styles.monthCenterButton,
+              isPlain && styles.monthCenterButtonPlain,
+              pressed && (isPlain ? styles.monthButtonPlainPressed : styles.monthButtonPressed),
+            ]}
+          >
+            <Text style={styles.monthText}>{formatYM(ym)}</Text>
+          </Pressable>
+        </View>
         <Pressable
           onPress={() => onChange(nextYM(ym))}
-          style={({ pressed }) => [styles.monthButton, pressed && styles.monthButtonPressed]}
+          style={({ pressed }) => [
+            styles.monthButton,
+            isPlain && styles.monthButtonPlain,
+            pressed && (isPlain ? styles.monthButtonPlainPressed : styles.monthButtonPressed),
+          ]}
         >
-          <Ionicons name="chevron-forward" size={21} color={APP_COLORS.textSecondary} />
+          <Ionicons name="chevron-forward" size={21} color={theme.textSecondary} />
         </Pressable>
       </View>
-      <MonthPickerModal
-        visible={pickerOpen}
-        year={year}
-        month={month}
-        onSelect={(y, m) => {
-          onChange(`${y}-${String(m).padStart(2, '0')}`);
-          setPickerOpen(false);
-        }}
-        onClose={() => setPickerOpen(false)}
-      />
+      {!onOpen && (
+        <MonthPickerModal
+          visible={pickerOpen}
+          year={year}
+          month={month}
+          onSelect={(y, m) => {
+            onChange(`${y}-${String(m).padStart(2, '0')}`);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -66,6 +100,8 @@ function MonthPickerModal({
   onClose: () => void;
 }) {
   const [pickerYear, setPickerYear] = useState(year);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   useEffect(() => {
     if (visible) setPickerYear(year);
@@ -80,79 +116,87 @@ function MonthPickerModal({
         activeBreadcrumb={1}
         onBack={onClose}
       >
-          <View style={styles.pickerCard}>
-            <View style={styles.pickerYearRow}>
-              <Pressable
-                onPress={() => setPickerYear((y) => y - 1)}
-                style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="chevron-back" size={20} color={APP_COLORS.textSecondary} />
-              </Pressable>
-              <Text style={styles.pickerYearText}>{pickerYear}</Text>
-              <Pressable
-                onPress={() => setPickerYear((y) => y + 1)}
-                style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="chevron-forward" size={20} color={APP_COLORS.textSecondary} />
-              </Pressable>
-            </View>
-            <View style={styles.pickerGrid}>
-              {MONTHS_ES.map((name, idx) => {
-                const m = idx + 1;
-                const isActive = pickerYear === year && m === month;
-                return (
-                  <Pressable
-                    key={m}
-                    onPress={() => onSelect(pickerYear, m)}
-                    style={({ pressed }) => [
-                      styles.pickerCell,
-                      isActive && styles.pickerCellActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={[styles.pickerCellText, isActive && styles.pickerCellTextActive]}>
-                      {name.slice(0, 3)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+        <View style={styles.pickerCard}>
+          <View style={styles.pickerYearRow}>
+            <Pressable
+              onPress={() => setPickerYear((y) => y - 1)}
+              style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-back" size={20} color={theme.textSecondary} />
+            </Pressable>
+            <Text style={styles.pickerYearText}>{pickerYear}</Text>
+            <Pressable
+              onPress={() => setPickerYear((y) => y + 1)}
+              style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+            </Pressable>
           </View>
+          <View style={styles.pickerGrid}>
+            {MONTHS_ES.map((name, idx) => {
+              const m = idx + 1;
+              const isActive = pickerYear === year && m === month;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => onSelect(pickerYear, m)}
+                  style={({ pressed }) => [
+                    styles.pickerCell,
+                    isActive && styles.pickerCellActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={[styles.pickerCellText, isActive && styles.pickerCellTextActive]}>
+                    {name.slice(0, 3)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
       </ModalScreen>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   monthButton: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
-    elevation: 4,
+    borderWidth: 1,
     height: 42,
     justifyContent: 'center',
-    shadowColor: '#7E7E7E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
     width: 42,
   },
   monthButtonPressed: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: t.softSurface,
     opacity: 0.8,
+  },
+  monthButtonPlain: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  monthButtonPlainPressed: {
+    backgroundColor: 'transparent',
+    opacity: 0.62,
+  },
+  monthCenterWrap: {
+    flex: 1,
   },
   monthCenterButton: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
-    elevation: 4,
-    flex: 1,
+    borderWidth: 1,
     justifyContent: 'center',
     paddingVertical: 11,
-    shadowColor: '#7E7E7E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
+  },
+  monthCenterButtonPlain: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   monthRow: {
     alignItems: 'center',
@@ -160,33 +204,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   monthText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 18,
     fontWeight: '600',
   },
-  pickerBackdrop: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
   pickerCard: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     borderRadius: 20,
-    overflow: 'hidden',
     padding: 20,
     width: '100%',
-  },
-  pickerCardShadow: {
-    borderRadius: 20,
-    elevation: 14,
-    maxWidth: 360,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.24,
-    shadowRadius: 30,
-    width: '100%',
+    ...SURFACE_SHADOW,
   },
   pickerCell: {
     alignItems: 'center',
@@ -198,7 +225,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#7C3AED',
   },
   pickerCellText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '600',
     textTransform: 'capitalize',
@@ -219,11 +246,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   pickerYearText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
   pressed: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: t.softSurface,
   },
 });

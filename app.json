@@ -38,11 +38,27 @@
           "icon": "./assets/images/icon.png",
           "color": "#23C55E"
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Permite que Nosotros use el microfono para crear movimientos por voz.",
+          "speechRecognitionPermission": "Permite que Nosotros use reconocimiento de voz para entender tus acciones."
+        }
       ]
     ],
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "name": "Nosotros",
+      "shortName": "Nosotros",
+      "description": "Tu app de finanzas compartidas",
+      "themeColor": "#23C55E",
+      "backgroundColor": "#0a0a0a",
+      "display": "standalone",
+      "orientation": "portrait",
+      "scope": "/",
+      "startUrl": "/"
     },
     "experiments": {
       "typedRoutes": true

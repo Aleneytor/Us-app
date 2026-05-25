@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -9,39 +9,46 @@ import {
   Text,
   View,
 } from 'react-native';
+import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BudgetCategoryCard } from '../../components/BudgetCategoryCard';
-import { GuidelineCard } from '../../components/GuidelineCard';
-import type { GuidelineCardItem } from '../../components/GuidelineCard';
-import { SpendingGaugeCard } from '../../components/SpendingGaugeCard';
-import type { GaugeSlice } from '../../components/SpendingGaugeCard';
+import { CategoryRingChart } from '../../components/CategoryRingChart';
+import type { RingSlice } from '../../components/CategoryRingChart';
 import { UserHeaderButton } from '../../components/UserHeaderButton';
-import { APP_COLORS, getIconColor } from '../../constants/colors';
+import { type AppTheme, getIconColor } from '../../constants/colors';
 import { BudgetCategoryDetailModal } from '../../modals/BudgetCategoryDetailModal';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import type { BudgetCategory } from '../../types';
-import { calcBudgetCategoryIncome, calcBudgetCategorySpending } from '../../utils/calculations';
+import { calcBudgetCategorySpending } from '../../utils/calculations';
 import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
+import { reportFabScroll } from '../../utils/fabScroll';
+import { useTheme } from '../../contexts/ThemeContext';
 
-const CHART_MODE_META = {
-  gastos:   { prefix: 'Este es el total de ', accent: 'gastos',   suffix: ' de tus categorias', color: '#EC1147' },
-  ingresos: { prefix: 'Este es el total de ', accent: 'ingresos', suffix: ' de tus categorias', color: '#25C55B' },
-} as const;
+// Purple palette — same as movimientos hero
+type Palette = { base: string; soft: string; bright: string; glow: string; deep: string; shade: string; veil: string };
+const PURPLE_BASE: Palette = {
+  base: '#5B21B6', soft: '#8B5CF6', bright: '#A78BFA', glow: '#C4B5FD', deep: '#3B0764', shade: '#4C1D95', veil: '#7C3AED',
+};
+const PURPLE_SHIFT: Palette = {
+  base: '#4C1D95', soft: '#7C3AED', bright: '#9061F9', glow: '#B89AF8', deep: '#2E0070', shade: '#3D1882', veil: '#6D28D9',
+};
 
 export default function CategoriasScreen() {
   const tabPadding = useTabPadding();
+  const insets = useSafeAreaInsets();
   const payload = useAppStore((s) => s.payload);
   const currentUser = useAppStore((s) => s.currentUser);
   const users = useAppStore((s) => s.users);
   const selectedYM = useAppStore((s) => s.selectedYM);
   const currency = useAppStore((s) => s.currency);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
-  const [scrollEnabled, setScrollEnabled] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null);
-  const [chartMode, setChartMode] = useState<'gastos' | 'ingresos'>('gastos');
 
   const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation();
 
@@ -52,66 +59,26 @@ export default function CategoriasScreen() {
     return all.filter((bc) => bc.uid === undefined || bc.uid === currentUser);
   }, [payload.budgetCategories, currentUser]);
 
-  const allBudgetCategories = useMemo(() => {
-    return payload.budgetCategories ?? [];
-  }, [payload.budgetCategories]);
-
   const sortedBudgetCategories = useMemo(() => {
     return [...budgetCategories].sort((a, b) => {
-      const spentA = calcBudgetCategorySpending(payload, a.id, selectedYM);
-      const spentB = calcBudgetCategorySpending(payload, b.id, selectedYM);
+      const spentA = calcBudgetCategorySpending(payload, a.id, currentUser, selectedYM);
+      const spentB = calcBudgetCategorySpending(payload, b.id, currentUser, selectedYM);
       return spentB - spentA || a.name.localeCompare(b.name);
     });
-  }, [budgetCategories, payload, selectedYM]);
+  }, [budgetCategories, currentUser, payload, selectedYM]);
 
-  const sortedChartCategories = useMemo(() => {
-    return [...allBudgetCategories].sort((a, b) => {
-      const spentA = calcBudgetCategorySpending(payload, a.id, selectedYM);
-      const spentB = calcBudgetCategorySpending(payload, b.id, selectedYM);
-      return spentB - spentA || a.name.localeCompare(b.name);
-    });
-  }, [allBudgetCategories, payload, selectedYM]);
-
-  const gaugeSlices = useMemo((): GaugeSlice[] => {
-    return sortedChartCategories.map((cat) => ({
+  const ringSlices = useMemo((): RingSlice[] => {
+    return sortedBudgetCategories.map((cat) => ({
       id: cat.id,
       label: cat.name,
       color: getIconColor(cat.iconColor).color,
-      value: calcBudgetCategorySpending(payload, cat.id, selectedYM),
+      value: calcBudgetCategorySpending(payload, cat.id, currentUser, selectedYM),
     }));
-  }, [sortedChartCategories, payload, selectedYM]);
-
-  const incomeGaugeSlices = useMemo((): GaugeSlice[] => {
-    return [...allBudgetCategories]
-      .sort((a, b) => {
-        const incomeA = calcBudgetCategoryIncome(payload, a.id, selectedYM);
-        const incomeB = calcBudgetCategoryIncome(payload, b.id, selectedYM);
-        return incomeB - incomeA || a.name.localeCompare(b.name);
-      })
-      .map((cat) => ({
-        id: cat.id,
-        label: cat.name,
-        color: getIconColor(cat.iconColor).color,
-        value: calcBudgetCategoryIncome(payload, cat.id, selectedYM),
-      }));
-  }, [allBudgetCategories, payload, selectedYM]);
+  }, [sortedBudgetCategories, currentUser, payload, selectedYM]);
 
   const totalSpent = useMemo(
-    () => gaugeSlices.reduce((sum, s) => sum + s.value, 0),
-    [gaugeSlices],
-  );
-
-  const totalIncome = useMemo(
-    () => incomeGaugeSlices.reduce((sum, s) => sum + s.value, 0),
-    [incomeGaugeSlices],
-  );
-
-  const categoryItems = useMemo<GuidelineCardItem<'gastos' | 'ingresos'>[]>(
-    () => [
-      { key: 'gastos',   value: totalSpent,  accent: '#EC1147' },
-      { key: 'ingresos', value: totalIncome, accent: '#25C55B' },
-    ],
-    [totalSpent, totalIncome],
+    () => ringSlices.reduce((sum, s) => sum + s.value, 0),
+    [ringSlices],
   );
 
   const handleRefresh = async () => {
@@ -128,50 +95,83 @@ export default function CategoriasScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
-        scrollEnabled={scrollEnabled}
+        onScroll={(event) => reportFabScroll(event.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={16}
       >
+        {/* ── Hero card ─────────────────────────────────────────── */}
         <Animated.View
           style={[
-            styles.heroHeader,
+            styles.heroCard,
             {
               opacity: heroAnim,
               transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
             },
           ]}
         >
-          <View style={styles.heroTop}>
+          <CatHeroGradient />
+          <View style={[styles.heroTop, { paddingTop: insets.top + 14 }]}>
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
               <Text style={styles.heroSubtitle}>
-                {CHART_MODE_META[chartMode].prefix}
-                <Text style={{ color: CHART_MODE_META[chartMode].color }}>
-                  {CHART_MODE_META[chartMode].accent}
-                </Text>
-                {CHART_MODE_META[chartMode].suffix}
+                Consulta tus gastos y el presupuesto restante por categoría
               </Text>
             </View>
-            <UserHeaderButton />
+            <UserHeaderButton variant="light" tintColor="#C4B5FD" />
           </View>
-
-          {allBudgetCategories.length > 0 && (
-            <View style={styles.balanceSummary}>
-              <GuidelineCard
-                items={categoryItems}
-                currency={currency}
-                onStateChange={(state) => setChartMode(state)}
-                onSwipeBegin={() => setScrollEnabled(false)}
-                onSwipeEnd={() => setScrollEnabled(true)}
-                topSlot={
-                  <SpendingGaugeCard
-                    slices={chartMode === 'gastos' ? gaugeSlices : incomeGaugeSlices}
-                    currency={currency}
-                  />
-                }
-              />
-            </View>
-          )}
         </Animated.View>
 
+        {/* ── Action button ─────────────────────────────────────── */}
+        <Animated.View
+          style={[
+            styles.actionRow,
+            {
+              opacity: contentAnim,
+              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+            },
+          ]}
+        >
+          <Pressable
+            onPress={() => setCreateOpen(true)}
+            style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+          >
+            <Ionicons name="pie-chart-outline" size={18} color="#7C3AED" />
+            <Text style={styles.actionBtnText}>Crear categoría</Text>
+          </Pressable>
+        </Animated.View>
+
+        {/* ── Donut ring chart ──────────────────────────────────── */}
+        {budgetCategories.length > 0 && (
+          <Animated.View
+            style={{
+              marginTop: 28,
+              opacity: contentAnim,
+              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+            }}
+          >
+            <CategoryRingChart
+              slices={ringSlices}
+              currency={currency}
+              selectedYM={selectedYM}
+            />
+
+            {/* ── Legend pills ─────────────────────────────────── */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.legendRow}
+              style={styles.legendScroll}
+            >
+              {ringSlices.filter((s) => s.value > 0).map((slice) => (
+                <View key={slice.id} style={styles.legendPill}>
+                  <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
+                  <Text style={styles.legendLabel} numberOfLines={1}>{slice.label}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        )}
+
+        {/* ── Section header ────────────────────────────────────── */}
         <Animated.View
           style={[
             styles.sectionHeader,
@@ -181,49 +181,41 @@ export default function CategoriasScreen() {
             },
           ]}
         >
-          <Text style={styles.sectionTitle}>Todas las categorias</Text>
-          <Pressable
-            accessibilityLabel="Crear categoria"
-            onPress={() => setCreateOpen(true)}
-            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="add" size={20} color="#FFFFFF" />
-          </Pressable>
+          <Text style={styles.sectionTitle}>Todas las categorías</Text>
         </Animated.View>
 
+        {/* ── Category list ─────────────────────────────────────── */}
         {budgetCategories.length === 0 ? (
           <Animated.View style={[styles.emptyState, { opacity: headerAnim }]}>
-            <Ionicons name="pie-chart-outline" size={34} color={APP_COLORS.textMuted} />
-            <Text style={styles.emptyTitle}>Sin categorias</Text>
+            <Ionicons name="pie-chart-outline" size={34} color={theme.textMuted} />
+            <Text style={styles.emptyTitle}>Sin categorías</Text>
             <Text style={styles.emptyText}>
-              Crea una categoria para rastrear tu presupuesto mensual por tipo de gasto.
+              Crea una categoría para rastrear tu presupuesto mensual por tipo de gasto.
             </Text>
-            <Pressable
-              onPress={() => setCreateOpen(true)}
-              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="add" size={16} color="#FFFFFF" />
-              <Text style={styles.emptyButtonText}>Crear categoria</Text>
-            </Pressable>
           </Animated.View>
         ) : (
           <View style={styles.list}>
-            {sortedBudgetCategories.map((category, index) => (
-              <Animated.View
-                key={category.id}
-                style={{
-                  opacity: itemAnims[index],
-                  transform: [{ translateY: itemAnims[index].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
-                }}
-              >
-                <BudgetCategoryCard
-                  category={category}
-                  spent={calcBudgetCategorySpending(payload, category.id, selectedYM)}
-                  currency={currency}
-                  onPress={() => setSelectedCategory(category)}
-                />
-              </Animated.View>
-            ))}
+            {sortedBudgetCategories.map((category, index) => {
+              const spent = calcBudgetCategorySpending(payload, category.id, currentUser, selectedYM);
+              const percentOfTotal = totalSpent > 0 ? spent / totalSpent : 0;
+              return (
+                <Animated.View
+                  key={category.id}
+                  style={{
+                    opacity: itemAnims[index],
+                    transform: [{ translateY: itemAnims[index].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+                  }}
+                >
+                  <BudgetCategoryCard
+                    category={category}
+                    spent={spent}
+                    currency={currency}
+                    percentOfTotal={percentOfTotal}
+                    onPress={() => setSelectedCategory(category)}
+                  />
+                </Animated.View>
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -243,124 +235,254 @@ export default function CategoriasScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  addButton: {
-    alignItems: 'center',
-    backgroundColor: '#303236',
-    borderRadius: 18,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
+// ── Hero gradient ──────────────────────────────────────────────────────────
+
+function CatHeroGradient() {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const drift = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const pulseLoop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 6200, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 6200, useNativeDriver: true }),
+    ]));
+    const driftLoop = Animated.loop(Animated.sequence([
+      Animated.timing(drift, { toValue: 1, duration: 9800, useNativeDriver: true }),
+      Animated.timing(drift, { toValue: 0, duration: 9800, useNativeDriver: true }),
+    ]));
+    pulseLoop.start();
+    driftLoop.start();
+    return () => { pulseLoop.stop(); driftLoop.stop(); };
+  }, [drift, pulse]);
+
+  const shiftStyle = {
+    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.14, 0.38] }),
+    transform: [
+      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-8, 10] }) },
+      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [8, -6] }) },
+      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] }) },
+    ],
+  };
+
+  return (
+    <View pointerEvents="none" style={styles_hero.gradientCanvas}>
+      <HeroBlobSvg palette={PURPLE_BASE} idPrefix="cat-base" />
+      <Animated.View style={[StyleSheet.absoluteFill, shiftStyle]}>
+        <HeroBlobSvg palette={PURPLE_SHIFT} idPrefix="cat-shift" />
+      </Animated.View>
+    </View>
+  );
+}
+
+function HeroBlobSvg({ palette, idPrefix }: { palette: Palette; idPrefix: string }) {
+  const brightId = `${idPrefix}-bright`;
+  const deepId = `${idPrefix}-deep`;
+  const glowId = `${idPrefix}-glow`;
+  const softId = `${idPrefix}-soft`;
+  const shadeId = `${idPrefix}-shade`;
+  const veilId = `${idPrefix}-veil`;
+
+  return (
+    <Svg width="100%" height="100%" viewBox="0 0 430 360" preserveAspectRatio="none">
+      <Defs>
+        <RadialGradient id={brightId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.bright} stopOpacity="1" />
+          <Stop offset="70%" stopColor={palette.bright} stopOpacity="0.72" />
+          <Stop offset="100%" stopColor={palette.bright} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={deepId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.deep} stopOpacity="1" />
+          <Stop offset="74%" stopColor={palette.deep} stopOpacity="0.84" />
+          <Stop offset="100%" stopColor={palette.deep} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={glowId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.glow} stopOpacity="1" />
+          <Stop offset="66%" stopColor={palette.glow} stopOpacity="0.66" />
+          <Stop offset="100%" stopColor={palette.glow} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={softId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.soft} stopOpacity="1" />
+          <Stop offset="72%" stopColor={palette.soft} stopOpacity="0.76" />
+          <Stop offset="100%" stopColor={palette.soft} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={shadeId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.shade} stopOpacity="0.86" />
+          <Stop offset="72%" stopColor={palette.shade} stopOpacity="0.44" />
+          <Stop offset="100%" stopColor={palette.shade} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={veilId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.veil} stopOpacity="0.7" />
+          <Stop offset="100%" stopColor={palette.veil} stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="430" height="360" fill={palette.base} />
+      <Ellipse cx="28" cy="42" rx="214" ry="176" fill={`url(#${deepId})`} opacity="0.74" />
+      <Ellipse cx="132" cy="104" rx="218" ry="150" fill={`url(#${shadeId})`} opacity="0.38" />
+      <Ellipse cx="188" cy="86" rx="202" ry="162" fill={`url(#${softId})`} opacity="0.44" />
+      <Ellipse cx="365" cy="52" rx="190" ry="150" fill={`url(#${brightId})`} opacity="0.6" />
+      <Ellipse cx="50" cy="286" rx="230" ry="148" fill={`url(#${glowId})`} opacity="0.88" />
+      <Ellipse cx="248" cy="220" rx="240" ry="132" fill={`url(#${shadeId})`} opacity="0.3" />
+      <Ellipse cx="238" cy="258" rx="248" ry="150" fill={`url(#${softId})`} opacity="0.52" />
+      <Ellipse cx="426" cy="292" rx="226" ry="160" fill={`url(#${brightId})`} opacity="0.72" />
+      <Ellipse cx="214" cy="178" rx="246" ry="150" fill={`url(#${veilId})`} opacity="0.52" />
+      <Ellipse cx="232" cy="360" rx="310" ry="126" fill={`url(#${softId})`} opacity="0.36" />
+    </Svg>
+  );
+}
+
+// Static styles used only by CatHeroGradient (no theme tokens needed)
+const styles_hero = StyleSheet.create({
+  gradientCanvas: {
+    bottom: -36,
+    left: -28,
+    position: 'absolute',
+    right: -28,
+    top: -18,
+  },
+});
+
+// ── Styles ────────────────────────────────────────────────────────────────
+
+const makeStyles = (t: AppTheme) => StyleSheet.create({
+  screen: {
+    backgroundColor: t.background,
+    flex: 1,
   },
   content: {},
-  emptyButton: {
-    alignItems: 'center',
-    backgroundColor: '#303236',
-    borderRadius: 12,
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 4,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  emptyButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  emptyState: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 8,
-    marginHorizontal: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-  },
-  emptyText: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: 'center',
-  },
-  emptyTitle: {
-    color: APP_COLORS.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  heroGreeting: {
-    color: '#303236',
-    fontFamily: 'Inter_700Bold',
-    fontSize: 26,
-    lineHeight: 32,
-  },
-  heroHeader: {
-    backgroundColor: APP_COLORS.surface,
+
+  // Hero card
+  heroCard: {
+    backgroundColor: '#5B21B6',
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     elevation: 5,
-    paddingTop: 56,
-    shadowColor: '#7E7E7E',
+    overflow: 'hidden',
+    paddingBottom: 28,
+    paddingHorizontal: 30,
+    shadowColor: '#3B0764',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.32,
     shadowRadius: 12,
-  },
-  heroInnerHighlight: {
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  heroSubtitle: {
-    color: '#303236',
-    fontSize: 18,
-    fontWeight: '400',
-    lineHeight: 24,
-  },
-  heroTextWrap: {
-    flex: 1,
-    minWidth: 0,
   },
   heroTop: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     gap: 16,
     justifyContent: 'space-between',
-    paddingHorizontal: 30,
   },
-  balanceSummary: {
-    paddingTop: 4,
-    paddingBottom: 8,
+  heroTextWrap: {
+    flex: 1,
+    minWidth: 0,
   },
-  list: {
+  heroGreeting: {
+    color: '#FFFFFF',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 26,
+    lineHeight: 32,
+  },
+  heroSubtitle: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 16,
+    fontWeight: '400',
+    lineHeight: 22,
+    marginTop: 2,
+  },
+
+  // Legend pills
+  legendScroll: {
+    marginTop: 4,
+  },
+  legendRow: {
+    flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 20,
+    paddingVertical: 6,
   },
-  pressed: {
-    opacity: 0.72,
+  legendPill: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderRadius: 99,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  screen: {
-    backgroundColor: '#EDF2F6',
-    flex: 1,
+  legendDot: {
+    borderRadius: 99,
+    height: 8,
+    width: 8,
   },
+  legendLabel: {
+    color: t.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Action button
+  actionRow: {
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+    marginHorizontal: 20,
+  },
+  actionBtnText: {
+    color: t.textPrimary,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 16,
+  },
+
+  // Section header
   sectionHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
     paddingBottom: 12,
+    paddingHorizontal: 24,
     paddingTop: 24,
   },
   sectionTitle: {
-    color: '#0F172A',
+    color: t.textPrimary,
     fontSize: 18,
     fontWeight: '600',
+  },
+
+  // Category list
+  list: {
+    gap: 8,
+    paddingHorizontal: 20,
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
+  emptyTitle: {
+    color: t.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptyText: {
+    color: t.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+
+  pressed: {
+    opacity: 0.72,
   },
 });

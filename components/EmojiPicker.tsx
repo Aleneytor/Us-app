@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface EmojiPickerProps {
   options: string[];
@@ -8,6 +10,8 @@ interface EmojiPickerProps {
 }
 
 export function EmojiPicker({ options, value, onChange }: EmojiPickerProps) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const columns = options.reduce<string[][]>((acc, emoji, index) => {
     const columnIndex = Math.floor(index / 3);
     if (!acc[columnIndex]) acc[columnIndex] = [];
@@ -46,10 +50,10 @@ export function EmojiPicker({ options, value, onChange }: EmojiPickerProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   active: {
-    backgroundColor: '#DBEAFE',
-    borderColor: APP_COLORS.blue,
+    backgroundColor: 'rgba(37, 99, 235, 0.18)',
+    borderColor: theme.blue,
   },
   emoji: {
     fontSize: 22,
@@ -64,8 +68,8 @@ const styles = StyleSheet.create({
   },
   item: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderRadius: 12,
     borderWidth: 1,
     height: 44,

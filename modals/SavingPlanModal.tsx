@@ -15,11 +15,12 @@ import { IconPicker } from '../components/IconPicker';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
 import { SAVING_ICON_KEYS } from '../constants/categories';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
 import type { SavingPlan } from '../types';
 import { savingPlanMonthlyAmount } from '../utils/calculations';
-import { fmt, parseAmt, todayStr } from '../utils/format';
+import { fmt, parseAmt, splitAmount, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 
@@ -36,6 +37,8 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
   const currency = useAppStore((s) => s.currency);
   const addSavingPlan = useAppStore((s) => s.addSavingPlan);
   const updateSavingPlan = useAppStore((s) => s.updateSavingPlan);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState('');
@@ -84,7 +87,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
 
   const validateDataStep = () => {
     if (!title.trim()) {
-      Alert.alert('Falta el titulo', 'Ponle un nombre a tu ahorro.');
+      Alert.alert('Falta el título', 'Ponle un nombre a tu ahorro.');
       return false;
     }
     if (!Number.isFinite(targetNumber) || targetNumber <= 0) {
@@ -179,7 +182,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
           {step === 0 && (
             <View style={styles.block}>
               <LabeledInput
-                label="Titulo"
+                label="Título"
                 value={title}
                 onChangeText={setTitle}
                 placeholder="Ej. Auriculares"
@@ -191,7 +194,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
                   value={targetAmount}
                   onChangeText={setTargetAmount}
                   placeholder="0"
-                  placeholderTextColor="#CBD5E1"
+                  placeholderTextColor={theme.textMuted}
                   keyboardType="decimal-pad"
                   selectTextOnFocus
                   style={styles.amountInput}
@@ -204,12 +207,17 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
                 placeholder="Ej. 6"
                 keyboardType="number-pad"
               />
-              {monthlyPreview !== null && (
-                <View style={styles.preview}>
-                  <Text style={styles.previewLabel}>Debes ahorrar al mes</Text>
-                  <Text style={styles.previewAmount}>{fmt(monthlyPreview, currency)}</Text>
-                </View>
-              )}
+              {monthlyPreview !== null && (() => {
+                const parts = splitAmount(monthlyPreview, currency);
+                return (
+                  <View style={styles.preview}>
+                    <Text style={styles.previewLabel}>Debes ahorrar al mes</Text>
+                    <Text style={styles.previewAmount}>
+                      {parts.sign}{parts.whole}<Text style={styles.previewDecimals}>,{parts.decimals} {parts.symbol}</Text>
+                    </Text>
+                  </View>
+                );
+              })()}
             </View>
           )}
 
@@ -281,11 +289,14 @@ function LabeledInput({
   multiline,
   ...props
 }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={[styles.input, multiline && styles.textarea]}
         multiline={multiline}
         {...props}
@@ -305,6 +316,9 @@ function ChoiceButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -314,21 +328,22 @@ function ChoiceButton({
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : APP_COLORS.textSecondary} />
+      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : theme.textSecondary} />
       <Text style={[styles.choiceBtnText, active && styles.choiceBtnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   amountInput: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    color: t.textPrimary,
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 36,
+    letterSpacing: -1.8,
     minHeight: 72,
     padding: 12,
     textAlign: 'center',
@@ -338,8 +353,8 @@ const styles = StyleSheet.create({
   },
   choiceBtn: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
@@ -354,7 +369,7 @@ const styles = StyleSheet.create({
     borderColor: SAVINGS_ACCENT,
   },
   choiceBtnText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '400',
   },
@@ -373,20 +388,20 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
     minHeight: 46,
-    padding: 0,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -394,20 +409,27 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   preview: {
-    backgroundColor: '#F8FAFC',
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.background,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     gap: 4,
     padding: 14,
   },
   previewAmount: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
+    fontFamily: 'Poppins_700Bold',
     fontSize: 22,
-    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  previewDecimals: {
+    color: t.textMuted,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    letterSpacing: -0.3,
   },
   previewLabel: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -429,7 +451,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -437,7 +459,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
   },

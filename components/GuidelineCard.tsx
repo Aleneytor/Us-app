@@ -27,22 +27,34 @@ interface GuidelineCardProps<State extends string> {
   items: readonly GuidelineCardItem<State>[];
   currency: CurrencyCode;
   showPillToggle?: boolean;
+  amountColor?: string;
+  amountMutedOpacity?: number;
+  toggleColor?: string;
+  indicatorActiveColor?: string;
+  indicatorInactiveColor?: string;
   onStateChange?: (state: State) => void;
   onSwipeBegin?: () => void;
   onSwipeEnd?: () => void;
   onPillToggle?: (expanded: boolean) => void;
   topSlot?: React.ReactNode;
+  topSlotOverlap?: number;
 }
 
 export function GuidelineCard<State extends string>({
   items,
   currency,
   showPillToggle = true,
+  amountColor = '#2F3033',
+  amountMutedOpacity = 0.5,
+  toggleColor,
+  indicatorActiveColor,
+  indicatorInactiveColor = 'rgba(255, 255, 255, 0.34)',
   onStateChange,
   onSwipeBegin,
   onSwipeEnd,
   onPillToggle,
   topSlot,
+  topSlotOverlap = 90,
 }: GuidelineCardProps<State>) {
   const onSwipeBeginRef = useRef(onSwipeBegin);
   const onSwipeEndRef = useRef(onSwipeEnd);
@@ -59,6 +71,7 @@ export function GuidelineCard<State extends string>({
   const slide = useRef(new Animated.Value(0)).current;
   const toggleFade = useRef(new Animated.Value(1)).current;
   const toggleSlide = useRef(new Animated.Value(0)).current;
+  const toggleBtnRotate = useRef(new Animated.Value(0)).current;
 
   const indicatorWidths = useRef(
     items.map((_, i) => new Animated.Value(i === 0 ? 28 : 14)),
@@ -70,6 +83,13 @@ export function GuidelineCard<State extends string>({
   const togglePill = () => {
     const next = !pillExpanded;
     const exitY = next ? -10 : 10;
+
+    Animated.spring(toggleBtnRotate, {
+      toValue: next ? 1 : 0,
+      useNativeDriver: true,
+      damping: 14,
+      stiffness: 180,
+    }).start();
 
     Animated.timing(toggleFade, { toValue: 0, duration: 80, useNativeDriver: true }).start(() => {
       setPillExpanded(next);
@@ -96,6 +116,7 @@ export function GuidelineCard<State extends string>({
     onPillToggleRef.current?.(false);
     toggleFade.setValue(1);
     toggleSlide.setValue(0);
+    toggleBtnRotate.setValue(0);
 
     Animated.parallel([
       Animated.timing(fade, { toValue: 0, duration: 90, useNativeDriver: true }),
@@ -157,23 +178,26 @@ export function GuidelineCard<State extends string>({
 
   if (!activeItem) return null;
 
-  const iconColor = pillExpanded ? activeItem.accent : '#C0C3CB';
+  const iconColor = toggleColor ?? (pillExpanded ? activeItem.accent : '#C0C3CB');
+  const btnRotateDeg = toggleBtnRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
 
   return (
     <View style={[styles.card, topSlot ? styles.cardWithSlot : null]} {...panResponder.panHandlers}>
       {topSlot}
-      <Animated.View style={[styles.inner, topSlot ? styles.innerWithSlot : null, { opacity: fade, transform: [{ translateX: slide }] }]}>
+      <Animated.View style={[styles.inner, topSlot ? styles.innerWithSlot : null, topSlot ? { marginTop: -topSlotOverlap } : null, { opacity: fade, transform: [{ translateX: slide }] }]}>
         <View style={styles.amountLine}>
-          <Animated.View style={[styles.amountWrap, { opacity: toggleFade, transform: [{ translateY: toggleSlide }] }]}>
-            <AmountText value={displayValue} currency={currency} />
-          </Animated.View>
-
           {activeItem.pill && showPillToggle && (
             <Pressable onPress={togglePill} hitSlop={12} style={styles.toggleBtn}>
-              <View style={[styles.toggleCircle, { borderColor: iconColor }]}>
-                <Ionicons name="swap-vertical-outline" size={14} color={iconColor} />
-              </View>
+              <Animated.View style={[styles.toggleCircle, { borderColor: iconColor, transform: [{ rotate: btnRotateDeg }] }]}>
+                <Ionicons name="swap-vertical" size={14} color={iconColor} />
+              </Animated.View>
             </Pressable>
+          )}
+          <Animated.View style={[styles.amountWrap, { opacity: toggleFade, transform: [{ translateY: toggleSlide }] }]}>
+            <AmountText value={displayValue} currency={currency} color={amountColor} mutedOpacity={amountMutedOpacity} />
+          </Animated.View>
+          {activeItem.pill && showPillToggle && (
+            <View style={styles.toggleBtnSpacer} />
           )}
         </View>
       </Animated.View>
@@ -186,7 +210,9 @@ export function GuidelineCard<State extends string>({
               style={[
                 styles.indicator,
                 {
-                  backgroundColor: item.key === activeItem.key ? activeItem.accent : '#DADDE2',
+                  backgroundColor: item.key === activeItem.key
+                    ? (indicatorActiveColor ?? activeItem.accent)
+                    : indicatorInactiveColor,
                   width: indicatorWidths[i],
                 },
               ]}
@@ -198,10 +224,19 @@ export function GuidelineCard<State extends string>({
   );
 }
 
-function AmountText({ value, currency }: { value: number; currency: CurrencyCode }) {
+function AmountText({
+  value,
+  currency,
+  color,
+  mutedOpacity,
+}: {
+  value: number;
+  currency: CurrencyCode;
+  color: string;
+  mutedOpacity: number;
+}) {
   const amount = splitAmount(value, currency);
   const decimalSeparator = currency === 'USD' ? '.' : ',';
-  const color = '#2F3033';
 
   return (
     <Text
@@ -211,10 +246,10 @@ function AmountText({ value, currency }: { value: number; currency: CurrencyCode
       style={[styles.amount, { color }]}
     >
       {amount.sign}{amount.whole}
-      <Text style={[styles.decimals, { color, opacity: 0.5 }]}>
+      <Text style={[styles.decimals, { color, opacity: mutedOpacity }]}>
         {decimalSeparator}{amount.decimals}
       </Text>
-      <Text style={[styles.symbol, { color, opacity: 0.5 }]}>
+      <Text style={[styles.symbol, { color, opacity: mutedOpacity }]}>
         {' '}{amount.symbol}
       </Text>
     </Text>
@@ -225,8 +260,9 @@ const styles = StyleSheet.create({
   amount: {
     color: '#2F3033',
     flexShrink: 1,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 46,
+    letterSpacing: -2.3,
     lineHeight: 52,
     minWidth: 0,
     textAlign: 'center',
@@ -244,12 +280,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   toggleBtn: {
-    marginLeft: 10,
+    marginRight: 8,
+    transform: [{ translateY: -5 }],
+  },
+  toggleBtnSpacer: {
+    marginLeft: 8,
+    width: 24,
   },
   toggleCircle: {
     alignItems: 'center',
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.5,
     height: 24,
     justifyContent: 'center',
     width: 24,
@@ -263,12 +304,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     paddingTop: 0,
   },
-  innerWithSlot: {
-    marginTop: -90,
-  },
+  innerWithSlot: {},
   decimals: {
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 28,
+    letterSpacing: -1.4,
   },
   indicator: {
     borderRadius: 999,
@@ -284,7 +324,8 @@ const styles = StyleSheet.create({
   },
   inner: {},
   symbol: {
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 22,
+    letterSpacing: -1.1,
   },
 });

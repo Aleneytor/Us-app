@@ -13,23 +13,24 @@ export interface UserData {
 }
 
 export const USERS: Record<string, UserData> = {
-  a: { name: 'Alan',       initials: 'A',  color: '#2563EB', bg: '#DBEAFE' },
-  b: { name: 'Gabi',       initials: 'G',  color: '#E11D48', bg: '#FFE4E6' },
-  c: { name: 'Fabi',       initials: 'F',  color: '#7C3AED', bg: '#EDE9FE' },
-  d: { name: 'Julio',      initials: 'J',  color: '#0D9488', bg: '#CCFBF1' },
-  e: { name: 'Franchesca', initials: 'Fr', color: '#D97706', bg: '#FEF3C7' },
+  demo_a: { name: 'Demo',        initials: 'DM', color: '#7C3AED', bg: '#EDE9FE' },
+  demo_b: { name: 'Pareja Demo', initials: 'PD', color: '#E11D48', bg: '#FFE4E6' },
+  alan:   { name: 'Alan',        initials: 'AL', color: '#4F46E5', bg: '#E0E7FF', photo: require('../assets/images/alan.png') },
+  gabi:   { name: 'Gabi',        initials: 'GA', color: '#DB2777', bg: '#FCE7F3', photo: require('../assets/images/gabi.png') },
 };
 
 export const ROOM_FOR_USER: Record<string, string> = {
-  a: 'nosotros-main',
-  b: 'nosotros-main',
-  c: 'fabijulio-main',
-  d: 'fabijulio-main',
-  e: 'franchesca-main',
+  demo_a: 'demo-main',
+  demo_b: 'demo-main',
+  alan:   'alan-gabi-main',
+  gabi:   'alan-gabi-main',
 };
 
 export const PARTNER: Record<string, string> = {
-  a: 'b', b: 'a', c: 'd', d: 'c', e: 'e',
+  demo_a: 'demo_b',
+  demo_b: 'demo_a',
+  alan:   'gabi',
+  gabi:   'alan',
 };
 
 // ─── Data models ─────────────────────────────────────────────────────────────
@@ -45,8 +46,8 @@ export interface Transaction {
   date: string;                          // 'YYYY-MM-DD'
   type: 'monthly' | 'biweekly' | 'weekly' | 'once';
   kind: 'expense' | 'income';
-  tags: string[];                        // e.g. ['#comida', '#mercado']
   notes: string;
+  tags?: string[];
   del?: boolean;                         // soft delete
   paid?: Record<string, boolean>;        // { 'YYYY-MM': true }
   paidAt?: Record<string, string>;       // { 'YYYY-MM': 'YYYY-MM-DD' }

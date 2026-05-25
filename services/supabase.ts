@@ -67,6 +67,7 @@ export function subscribeToRoom(
   roomId: string,
   clientId: string,
   onUpdate: (payload: AppPayload) => void,
+  onStatusChange?: (status: string) => void,
 ): RealtimeChannel {
   return supabase
     .channel(`room:${roomId}`)
@@ -86,5 +87,55 @@ export function subscribeToRoom(
         }
       },
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (err) {
+        console.error('[supabase] channel error:', err instanceof Error ? err.message : String(err));
+      }
+      onStatusChange?.(status);
+    });
+}
+
+export async function unsubscribeFromRoom(channel: RealtimeChannel): Promise<void> {
+  try {
+    await supabase.removeChannel(channel);
+  } catch (err) {
+    console.error('[supabase] unsubscribeFromRoom error:', err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function fetchRawPayload(roomId: string): Promise<any | null> {
+  const { data, error } = await supabase
+    .from('shared_state')
+    .select('payload')
+    .eq('room_id', roomId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[supabase] fetchRawPayload error:', error.message);
+    throw error;
+  }
+
+  return data?.payload || null;
+}
+
+export async function pushRawPayload(
+  roomId: string,
+  payload: any,
+  clientId: string,
+): Promise<boolean> {
+  const { error } = await supabase.from('shared_state').upsert(
+    {
+      room_id: roomId,
+      payload,
+      updated_by: clientId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'room_id' },
+  );
+
+  if (error) {
+    console.error('[supabase] pushRawPayload error:', error.message);
+    return false;
+  }
+  return true;
 }

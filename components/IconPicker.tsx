@@ -1,7 +1,10 @@
+import { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ALL_CATEGORY_KEYS, CATEGORIES } from '../constants/categories';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { getIconColor, type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface IconPickerProps {
   value: string;
@@ -12,6 +15,8 @@ interface IconPickerProps {
 }
 
 export function IconPicker({ value, colorId, keys, horizontalInset = 0, onChange }: IconPickerProps) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const color = getIconColor(colorId);
   const categoryKeys = keys ?? ALL_CATEGORY_KEYS;
   const columns = categoryKeys.reduce<string[][]>((acc, key, index) => {
@@ -43,17 +48,20 @@ export function IconPicker({ value, colorId, keys, horizontalInset = 0, onChange
             return (
               <Pressable
                 key={key}
-                onPress={() => onChange(key)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onChange(key);
+                }}
                 style={({ pressed }) => [
                   styles.item,
-                  active && { borderColor: color.color, backgroundColor: color.bg },
+                  active && { borderColor: color.color, backgroundColor: color.color },
                   pressed && styles.pressed,
                 ]}
               >
                 <Ionicons
                   name={category.icon}
                   size={22}
-                  color={active ? color.color : APP_COLORS.textSecondary}
+                  color={active ? '#FFFFFF' : theme.textSecondary}
                 />
               </Pressable>
             );
@@ -64,7 +72,7 @@ export function IconPicker({ value, colorId, keys, horizontalInset = 0, onChange
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     gap: 8,
@@ -75,8 +83,8 @@ const styles = StyleSheet.create({
   },
   item: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderRadius: 16,
     borderWidth: 1,
     height: 46,

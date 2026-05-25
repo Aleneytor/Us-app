@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { fetchSnapshot, pushSnapshot, subscribeToRoom, deleteRoom } from '../services/supabase';
+import type { ImageSourcePropType } from 'react-native';
+import { fetchSnapshot, pushSnapshot, subscribeToRoom, unsubscribeFromRoom, deleteRoom, fetchRawPayload, pushRawPayload } from '../services/supabase';
 import { currentYM, todayStr } from '../utils/format';
 import { normalizeAppPayload } from '../utils/payload';
 import { cancelTransactionReminders, scheduleTransactionReminder } from '../services/notifications';
 import { USERS, ROOM_FOR_USER, PARTNER } from '../types';
 import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, BudgetCategory, UserData, Plan, PlanCategory, PlanExpense, PlanSettlement } from '../types';
+import { buildSeedPayload } from '../utils/seedData';
+import type { ThemeMode } from '../constants/colors';
 
 const STORAGE_USER_KEY     = 'nosotros_user';
 const STORAGE_PAYLOAD_KEY  = 'nosotros_payload';
@@ -14,6 +17,8 @@ const STORAGE_CURRENCY_KEY = 'nosotros_currency';
 const STORAGE_USERS_KEY    = 'nosotros_users';
 const STORAGE_ROOMS_KEY    = 'nosotros_rooms';
 const STORAGE_PARTNERS_KEY = 'nosotros_partners';
+const STORAGE_DELETED_KEY  = 'nosotros_deleted_users';
+const STORAGE_THEME_KEY    = 'nosotros_theme';
 
 const payloadStorageKey = (roomId: string) => `${STORAGE_PAYLOAD_KEY}:${roomId}`;
 const emptyPayload = (): AppPayload => ({ expenses: [], savings: [], goals: [], contribs: [], budgetCategories: [], plans: [] });
@@ -25,18 +30,21 @@ interface AppState {
   currentUser: UserId;
   selectedYM: string;
   currency: CurrencyCode;
+  themeMode: ThemeMode;
   isConnected: boolean;
   syncStatus: 'live' | 'connecting' | 'error';
   clientId: string;
   users: Record<string, UserData>;
   roomForUser: Record<string, string>;
   partnerForUser: Record<string, string>;
+  deletedUserIds: string[];
 }
 
 interface AppActions {
   setCurrentUser: (uid: UserId) => Promise<void>;
   setSelectedYM: (ym: string) => void;
   setCurrency: (c: CurrencyCode) => Promise<void>;
+  setThemeMode: (m: ThemeMode) => Promise<void>;
   _setPayload: (payload: AppPayload) => void;
   _setSyncStatus: (status: AppState['syncStatus']) => void;
   addUser: (params: { uid: string; data: UserData; roomId: string; partnerId: string }) => Promise<void>;
@@ -67,6 +75,7 @@ interface AppActions {
   deletePlanExpense: (planId: number, expenseId: number) => void;
   addPlanSettlement: (planId: number, settlement: PlanSettlement) => void;
   deletePlanSettlement: (planId: number, settlementId: number) => void;
+  updateUserPhoto: (uid: string, photo: ImageSourcePropType) => Promise<void>;
 }
 
 // ─── Module-level (not in store — not serializable) ──────────────────────────
@@ -74,20 +83,25 @@ interface AppActions {
 let _syncTimer: ReturnType<typeof setTimeout> | null = null;
 let _channel: RealtimeChannel | null = null;
 let _payloadReady = false; // true only after first successful load — prevents pushing stale/empty state
+let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let _reconnectAttempts = 0;
+let _activeUid: string | null = null;
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
   payload: emptyPayload(),
-  currentUser: 'a',
+  currentUser: 'alan',
   selectedYM: currentYM(),
   currency: 'EUR',
+  themeMode: 'dark',
   isConnected: false,
   syncStatus: 'connecting',
   clientId: Math.random().toString(36).slice(2) + Date.now().toString(36),
   users: { ...USERS },
   roomForUser: { ...ROOM_FOR_USER },
   partnerForUser: { ...PARTNER },
+  deletedUserIds: [],
 
   setCurrentUser: async (uid) => {
     await AsyncStorage.setItem(STORAGE_USER_KEY, uid);
@@ -100,6 +114,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     await AsyncStorage.setItem(STORAGE_CURRENCY_KEY, c);
     set({ currency: c });
   },
+  setThemeMode: async (m) => {
+    await AsyncStorage.setItem(STORAGE_THEME_KEY, m);
+    set({ themeMode: m });
+  },
   _setPayload: (payload) => set({ payload: normalizeAppPayload(payload) }),
   _setSyncStatus: (syncStatus) => set({ syncStatus }),
 
@@ -109,15 +127,51 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     const newRooms = { ...roomForUser, [uid]: roomId };
     const newPartners = { ...partnerForUser, [uid]: partnerId };
     set({ users: newUsers, roomForUser: newRooms, partnerForUser: newPartners });
+
+    const customUsers = getCustomUsers(newUsers);
+    const customRooms = { ...newRooms };
+    const customPartners = { ...newPartners };
+    for (const staticKey of Object.keys(USERS)) {
+      delete customRooms[staticKey];
+      delete customPartners[staticKey];
+    }
+
     await AsyncStorage.multiSet([
-      [STORAGE_USERS_KEY, JSON.stringify(newUsers)],
-      [STORAGE_ROOMS_KEY, JSON.stringify(newRooms)],
-      [STORAGE_PARTNERS_KEY, JSON.stringify(newPartners)],
+      [STORAGE_USERS_KEY, JSON.stringify(customUsers)],
+      [STORAGE_ROOMS_KEY, JSON.stringify(customRooms)],
+      [STORAGE_PARTNERS_KEY, JSON.stringify(customPartners)],
     ]);
+
+    _syncCustomUsersToCloud();
+  },
+
+  updateUserPhoto: async (uid, photo) => {
+    const { users } = get();
+    if (!users[uid]) return;
+
+    const newUsers = {
+      ...users,
+      [uid]: {
+        ...users[uid]!,
+        photo,
+      },
+    };
+    set({ users: newUsers });
+
+    const customUsers = getCustomUsers(newUsers);
+    await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(customUsers));
+
+    _syncCustomUsersToCloud();
   },
 
   deleteUser: async (uid) => {
-    const { users, roomForUser, partnerForUser, currentUser } = get();
+    const { users, roomForUser, partnerForUser, currentUser, deletedUserIds } = get();
+
+    // Persist tombstone so the user never comes back from USERS constant or cloud merge
+    const newDeleted = deletedUserIds.includes(uid) ? deletedUserIds : [...deletedUserIds, uid];
+    set({ deletedUserIds: newDeleted });
+    await AsyncStorage.setItem(STORAGE_DELETED_KEY, JSON.stringify(newDeleted));
+
     const newUsers = { ...users };
     delete newUsers[uid];
     const newRooms = { ...roomForUser };
@@ -134,14 +188,26 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       void deleteRoom(roomId).catch((err) => console.warn('[store] deleteRoom failed:', err));
     }
     set({ users: newUsers, roomForUser: newRooms, partnerForUser: newPartners });
+
+    const customUsers = getCustomUsers(newUsers);
+    const customRooms = { ...newRooms };
+    const customPartners = { ...newPartners };
+    for (const staticKey of Object.keys(USERS)) {
+      delete customRooms[staticKey];
+      delete customPartners[staticKey];
+    }
+
     await AsyncStorage.multiSet([
-      [STORAGE_USERS_KEY, JSON.stringify(newUsers)],
-      [STORAGE_ROOMS_KEY, JSON.stringify(newRooms)],
-      [STORAGE_PARTNERS_KEY, JSON.stringify(newPartners)],
+      [STORAGE_USERS_KEY, JSON.stringify(customUsers)],
+      [STORAGE_ROOMS_KEY, JSON.stringify(customRooms)],
+      [STORAGE_PARTNERS_KEY, JSON.stringify(customPartners)],
     ]);
+
+    _syncCustomUsersToCloud();
+
     // Switch away from the deleted user
     if (currentUser === uid) {
-      const fallback = Object.keys(newUsers)[0] ?? 'a';
+      const fallback = Object.keys(newUsers)[0] ?? 'demo_a';
       await get().setCurrentUser(fallback);
     }
   },
@@ -329,6 +395,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         budgetCategories: (s.payload.budgetCategories ?? []).filter(
           (bc) => String(bc.id) !== String(id),
         ),
+        expenses: s.payload.expenses.map((exp) =>
+          String(exp.budgetCatId) === String(id)
+            ? {
+                ...exp,
+                budgetCatId: undefined,
+                cat: 'close-circle-outline',
+                iconColor: 'slate',
+              }
+            : exp
+        ),
       },
     }));
     _persistCurrentPayload();
@@ -492,6 +568,51 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
+function _clearReconnectTimer(): void {
+  if (_reconnectTimer) {
+    clearTimeout(_reconnectTimer);
+    _reconnectTimer = null;
+  }
+}
+
+function _scheduleReconnect(): void {
+  if (_reconnectTimer || !_activeUid) return;
+  const delay = Math.min(1000 * Math.pow(2, _reconnectAttempts), 30_000);
+  _reconnectAttempts = Math.min(_reconnectAttempts + 1, 6);
+  console.log(`[store] reconnecting in ${delay}ms (attempt ${_reconnectAttempts})`);
+  _reconnectTimer = setTimeout(async () => {
+    _reconnectTimer = null;
+    if (_activeUid) await _connectToRoom(_activeUid as UserId);
+  }, delay);
+}
+
+function _syncCustomUsersToCloud(): void {
+  const { users, roomForUser, partnerForUser, clientId } = useAppStore.getState();
+
+  const customUsers = getCustomUsers(users);
+  const customRooms: Record<string, string> = { ...roomForUser };
+  const customPartners: Record<string, string> = { ...partnerForUser };
+
+  for (const staticKey of Object.keys(USERS)) {
+    delete customRooms[staticKey];
+    delete customPartners[staticKey];
+  }
+
+  const payload = {
+    expenses: [],
+    wishlist: [],
+    goals: [],
+    contribs: [],
+    customUsers,
+    customRooms,
+    customPartners,
+  };
+
+  void pushRawPayload('global-users', payload, clientId).catch((err) => {
+    console.warn('[store] push custom users failed:', err);
+  });
+}
+
 function _syncToCloud(): void {
   if (!_payloadReady) return;
   if (_syncTimer) clearTimeout(_syncTimer);
@@ -527,9 +648,15 @@ function _persistCurrentPayload(): void {
 }
 
 async function _connectToRoom(uid: UserId): Promise<void> {
+  _clearReconnectTimer();
+  _activeUid = uid;
+
   if (_channel) {
-    _channel.unsubscribe();
+    const oldChannel = _channel;
     _channel = null;
+    void unsubscribeFromRoom(oldChannel).catch((err) => {
+      console.warn('[store] unsubscribe old channel failed:', err);
+    });
   }
 
   _payloadReady = false;
@@ -539,37 +666,50 @@ async function _connectToRoom(uid: UserId): Promise<void> {
   const { clientId } = useAppStore.getState();
   useAppStore.getState()._setSyncStatus('connecting');
 
+  // Immediately load initial cached payload from disk to make the UI instant and responsive offline-first
+  try {
+    const cached = await AsyncStorage.getItem(payloadStorageKey(roomId));
+    if (cached) {
+      useAppStore.getState()._setPayload(normalizeAppPayload(JSON.parse(cached)));
+    } else {
+      useAppStore.getState()._setPayload(emptyPayload());
+    }
+  } catch (err) {
+    console.warn('[store] failed to load initial cached payload:', err);
+  }
+
   try {
     const snapshot = await fetchSnapshot(roomId);
     if (snapshot) {
       useAppStore.getState()._setPayload(snapshot);
       await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(snapshot));
-    } else {
-      // Server has no row — prefer local cache over wiping state
-      const cached = await AsyncStorage.getItem(payloadStorageKey(roomId));
-      if (cached) {
-        useAppStore.getState()._setPayload(normalizeAppPayload(JSON.parse(cached)));
-      } else {
-        useAppStore.getState()._setPayload(emptyPayload());
-      }
     }
 
-    _channel = subscribeToRoom(roomId, clientId, async (incoming) => {
-      useAppStore.getState()._setPayload(incoming);
-      await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(incoming));
-    });
+    _channel = subscribeToRoom(
+      roomId,
+      clientId,
+      async (incoming) => {
+        _reconnectAttempts = 0;
+        useAppStore.getState()._setPayload(incoming);
+        await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(incoming));
+      },
+      (status) => {
+        if (status === 'SUBSCRIBED') {
+          _reconnectAttempts = 0;
+          useAppStore.setState({ isConnected: true, syncStatus: 'live' });
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[store] channel ${status} — scheduling reconnect`);
+          useAppStore.getState()._setSyncStatus('error');
+          _scheduleReconnect();
+        }
+      },
+    );
 
     useAppStore.setState({ isConnected: true, syncStatus: 'live' });
   } catch (err) {
     console.error('[store] connection error:', err);
     useAppStore.getState()._setSyncStatus('error');
-    // Fallback: load last known payload from disk
-    try {
-      const cached = await AsyncStorage.getItem(payloadStorageKey(roomId));
-      if (cached) useAppStore.getState()._setPayload(normalizeAppPayload(JSON.parse(cached)));
-    } catch {
-      // Nothing to fall back to
-    }
+    _scheduleReconnect();
   } finally {
     _payloadReady = true;
   }
@@ -578,17 +718,21 @@ async function _connectToRoom(uid: UserId): Promise<void> {
 // ─── Public init — call once from app/_layout.tsx ────────────────────────────
 
 export async function initialize(): Promise<void> {
-  const [savedUser, savedCurrency, savedUsersStr, savedRoomsStr, savedPartnersStr] = await Promise.all([
+  const [savedUser, savedCurrency, savedTheme, savedUsersStr, savedRoomsStr, savedPartnersStr, savedDeletedStr] = await Promise.all([
     AsyncStorage.getItem(STORAGE_USER_KEY),
     AsyncStorage.getItem(STORAGE_CURRENCY_KEY),
+    AsyncStorage.getItem(STORAGE_THEME_KEY),
     AsyncStorage.getItem(STORAGE_USERS_KEY),
     AsyncStorage.getItem(STORAGE_ROOMS_KEY),
     AsyncStorage.getItem(STORAGE_PARTNERS_KEY),
+    AsyncStorage.getItem(STORAGE_DELETED_KEY),
   ]);
 
-  const uid = (savedUser as string | null) ?? 'a';
+  const deletedUserIds: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) as string[] : [];
   const currency = (savedCurrency as CurrencyCode | null) ?? 'EUR';
-  // Merge static defaults with any dynamically added users
+  const themeMode: ThemeMode = (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : 'dark';
+
+  // Merge static defaults with any dynamically added users, then strip deleted ones
   const users: Record<string, UserData> = savedUsersStr
     ? { ...USERS, ...JSON.parse(savedUsersStr) as Record<string, UserData> }
     : { ...USERS };
@@ -599,9 +743,104 @@ export async function initialize(): Promise<void> {
     ? { ...PARTNER, ...JSON.parse(savedPartnersStr) as Record<string, string> }
     : { ...PARTNER };
 
+  for (const id of deletedUserIds) {
+    delete users[id];
+    delete roomForUser[id];
+    delete partnerForUser[id];
+  }
+
+  // If the saved uid was deleted, fall back to the first remaining user
+  const savedUid = savedUser as string | null;
+  const uid = (savedUid && !deletedUserIds.includes(savedUid) && users[savedUid])
+    ? savedUid
+    : (Object.keys(users)[0] ?? 'demo_a');
+
   await AsyncStorage.removeItem(STORAGE_PAYLOAD_KEY);
-  useAppStore.setState({ currentUser: uid, selectedYM: currentYM(), currency, users, roomForUser, partnerForUser });
+  useAppStore.setState({ currentUser: uid, selectedYM: currentYM(), currency, themeMode, users, roomForUser, partnerForUser, deletedUserIds });
   await _connectToRoom(uid);
+
+  // Background cloud fetch and merge of custom users
+  void fetchRawPayload('global-users')
+    .then(async (cloudPayload) => {
+      if (cloudPayload && cloudPayload.customUsers) {
+        const cloudUsers = cloudPayload.customUsers as Record<string, UserData>;
+        const cloudRooms = cloudPayload.customRooms as Record<string, string>;
+        const cloudPartners = cloudPayload.customPartners as Record<string, string>;
+
+        const currentStore = useAppStore.getState();
+        const mergedUsers = { ...USERS, ...cloudUsers, ...currentStore.users };
+        const mergedRooms = { ...ROOM_FOR_USER, ...cloudRooms, ...currentStore.roomForUser };
+        const mergedPartners = { ...PARTNER, ...cloudPartners, ...currentStore.partnerForUser };
+
+        // Strip any tombstoned users that may have been re-introduced by cloud
+        for (const id of currentStore.deletedUserIds) {
+          delete mergedUsers[id];
+          delete mergedRooms[id];
+          delete mergedPartners[id];
+        }
+
+        const customUsersOnly = { ...mergedUsers };
+        const customRoomsOnly = { ...mergedRooms };
+        const customPartnersOnly = { ...mergedPartners };
+        for (const staticKey of Object.keys(USERS)) {
+          delete customUsersOnly[staticKey];
+          delete customRoomsOnly[staticKey];
+          delete customPartnersOnly[staticKey];
+        }
+
+        useAppStore.setState({
+          users: mergedUsers,
+          roomForUser: mergedRooms,
+          partnerForUser: mergedPartners,
+        });
+
+        await AsyncStorage.multiSet([
+          [STORAGE_USERS_KEY, JSON.stringify(customUsersOnly)],
+          [STORAGE_ROOMS_KEY, JSON.stringify(customRoomsOnly)],
+          [STORAGE_PARTNERS_KEY, JSON.stringify(customPartnersOnly)],
+        ]);
+      }
+    })
+    .catch((err) => {
+      console.warn('[store] fetch global-users failed:', err);
+    });
+}
+
+export async function seedDemoData(): Promise<void> {
+  const ts     = Date.now();
+  const uidA   = `demo_a_${ts}`;
+  const uidB   = `demo_b_${ts}`;
+  const roomId = `demo-${ts}-main`;
+  const { addUser, setCurrentUser, clientId } = useAppStore.getState();
+
+  // Register both demo users sharing the same room
+  await addUser({
+    uid: uidA,
+    data: { name: 'Demo', initials: 'DM', color: '#7C3AED', bg: '#EDE9FE' },
+    roomId,
+    partnerId: uidB,
+  });
+  await addUser({
+    uid: uidB,
+    data: { name: 'Pareja Demo', initials: 'PD', color: '#E11D48', bg: '#FFE4E6' },
+    roomId,
+    partnerId: uidA,
+  });
+
+  const seed = buildSeedPayload(uidA, uidB, 'Demo', 'Pareja Demo');
+
+  // Cache locally so it works offline; also push to cloud
+  await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(seed));
+  pushSnapshot(roomId, seed, clientId).catch(() => {});
+
+  // Switch to the demo user — _connectToRoom will load from cache/cloud
+  await setCurrentUser(uidA);
+}
+
+export async function foregroundRefresh(): Promise<void> {
+  if (!_activeUid) return;
+  _clearReconnectTimer();
+  await _connectToRoom(_activeUid as UserId);
 }
 
 export async function refreshCurrentRoom(): Promise<void> {
@@ -622,4 +861,16 @@ export async function refreshCurrentRoom(): Promise<void> {
   } catch {
     useAppStore.getState()._setSyncStatus('error');
   }
+}
+
+function getCustomUsers(users: Record<string, UserData>): Record<string, UserData> {
+  const customUsers: Record<string, UserData> = {};
+  for (const [uid, user] of Object.entries(users)) {
+    const isStatic = uid in USERS;
+    const hasCustomPhoto = user.photo && typeof user.photo === 'object' && 'uri' in user.photo;
+    if (!isStatic || hasCustomPhoto) {
+      customUsers[uid] = user;
+    }
+  }
+  return customUsers;
 }

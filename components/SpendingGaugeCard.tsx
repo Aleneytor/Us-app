@@ -1,6 +1,6 @@
-﻿import React, { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, useWindowDimensions } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Defs, FeGaussianBlur, Filter, Path } from 'react-native-svg';
 import type { CurrencyCode } from '../types';
 
 export interface GaugeSlice {
@@ -16,10 +16,13 @@ interface Props {
 }
 
 const STROKE_W = 16;
+const GLOW_W = Math.round(STROKE_W * 1.2); // 19 — minimal expansion
+const BLUR_SD = 5; // stronger blur for softer diffusion
+const BLUR_PAD = Math.ceil(BLUR_SD * 3); // ~15px visual extent of blur
 const GAP_DEG = 5;
 const EDGE_PAD_DEG = 5;
-// Stroke extends STROKE_W/2 above arc top (y=cy-R); TOP_PAD shifts arc down so it stays in SVG.
-const TOP_PAD = Math.ceil(STROKE_W / 2) + 2;
+// TOP_PAD accounts for glow stroke half-width + blur spread above the arc top.
+const TOP_PAD = Math.ceil(GLOW_W / 2) + BLUR_PAD + 2;
 
 function polar(cx: number, cy: number, r: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
@@ -36,12 +39,13 @@ function arcPath(cx: number, cy: number, r: number, deg1: number, deg2: number):
 export function SpendingGaugeCard({ slices }: Props) {
   const { width: screenWidth } = useWindowDimensions();
 
-  const cardWidth = screenWidth - 32;
-  // Integer pixel values eliminate sub-pixel asymmetry between left and right sides.
-  const R = Math.floor((cardWidth - STROKE_W) / 2);
-  const cx = Math.round(cardWidth / 2);
+  // Arc dimensions based on normal card inset, but SVG canvas is full screen width
+  // so glow at the arc endpoints has room to breathe on both sides.
+  const arcWidth = screenWidth - 32;
+  const R = Math.floor((arcWidth - STROKE_W) / 2);
+  const cx = Math.round(screenWidth / 2);
   const cy = R + TOP_PAD;
-  const svgH = cy + STROKE_W / 2 + 4;
+  const svgH = cy + STROKE_W / 2 + 6;
 
   // Degrees each round cap visually extends past its mathematical endpoint.
   // Shrinking each segment by this on both sides gives exactly GAP_DEG visual gap.
@@ -81,16 +85,31 @@ export function SpendingGaugeCard({ slices }: Props) {
 
   return (
     <View style={{ alignItems: 'center' }}>
-      <Svg width={cardWidth} height={svgH}>
+      <Svg width={screenWidth} height={svgH}>
+        <Defs>
+          <Filter id="arc-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <FeGaussianBlur in="SourceGraphic" stdDeviation={BLUR_SD} />
+          </Filter>
+        </Defs>
         {segments.map(({ slice, d1, d2 }) => (
-          <Path
-            key={slice.id}
-            d={arcPath(cx, cy, R, d1, d2)}
-            fill="none"
-            stroke={slice.color}
-            strokeWidth={STROKE_W}
-            strokeLinecap="round"
-          />
+          <React.Fragment key={slice.id}>
+            <Path
+              d={arcPath(cx, cy, R, d1, d2)}
+              fill="none"
+              stroke={slice.color}
+              strokeWidth={GLOW_W}
+              strokeLinecap="round"
+              opacity={0.16}
+              filter="url(#arc-glow)"
+            />
+            <Path
+              d={arcPath(cx, cy, R, d1, d2)}
+              fill="none"
+              stroke={slice.color}
+              strokeWidth={STROKE_W}
+              strokeLinecap="round"
+            />
+          </React.Fragment>
         ))}
       </Svg>
     </View>

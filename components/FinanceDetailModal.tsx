@@ -14,7 +14,8 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import { AppModal as Modal } from './AppModal';
 import { ModalScreen } from './ModalScreen';
@@ -51,6 +52,8 @@ export function FinanceDetailModal({
   onClose,
   onAdd,
 }: FinanceDetailModalProps) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [search, setSearch] = useState('');
   const [modalYM, setModalYM] = useState(selectedYM);
   const monthSlide = useRef(new Animated.Value(0)).current;
@@ -112,7 +115,7 @@ export function FinanceDetailModal({
     const q = search.trim().toLowerCase();
     return monthlyTransactions
       .filter((t) => {
-        const text = `${t.desc} ${t.account} ${t.notes} ${(t.tags ?? []).join(' ')}`.toLowerCase();
+        const text = `${t.desc} ${t.account} ${t.notes}`.toLowerCase();
         return q === '' || text.includes(q);
       })
   }, [monthlyTransactions, search]);
@@ -145,7 +148,7 @@ export function FinanceDetailModal({
               Estos son los{'\n'}detalles de tus <Text style={{ color: accent }}>{noun}</Text>
             </Text>
             <Pressable onPress={onClose} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-              <Ionicons name="close" size={20} color={APP_COLORS.textPrimary} />
+              <Ionicons name="close" size={20} color={theme.textPrimary} />
             </Pressable>
           </View>
 
@@ -167,15 +170,15 @@ export function FinanceDetailModal({
             </View>
 
             <View style={styles.searchWrap}>
-              <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
+              <Ionicons name="search-outline" size={18} color={theme.textMuted} />
               <TextInput
                 value={search}
                 onChangeText={setSearch}
                 placeholder="Buscar..."
-                placeholderTextColor={APP_COLORS.textMuted}
+                placeholderTextColor={theme.textMuted}
                 style={styles.searchInput}
               />
-              <Ionicons name="chevron-down" size={18} color={APP_COLORS.textMuted} />
+              <Ionicons name="chevron-down" size={18} color={theme.textMuted} />
             </View>
 
             <ScrollView
@@ -223,7 +226,7 @@ function formatDetailSubtitle(noun: string) {
   return `Detalles de tus ${noun}`;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   addButton: {
     alignItems: 'center',
     borderRadius: 14,
@@ -235,7 +238,7 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#FFFFFF',
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 16,
   },
   backdrop: {
@@ -246,7 +249,7 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 22,
     height: '90%',
     maxHeight: '94%',
@@ -258,7 +261,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     elevation: 14,
     maxWidth: 560,
-    shadowColor: '#0F172A',
+    shadowColor: theme.shadowColor,
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.24,
     shadowRadius: 30,
@@ -266,7 +269,7 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     height: 40,
@@ -274,7 +277,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   empty: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 14,
     fontWeight: '700',
     paddingVertical: 28,
@@ -308,10 +311,10 @@ const styles = StyleSheet.create({
     width: 40,
   },
   monthButtonPressed: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: theme.softSurface,
   },
   monthLabel: {
-    color: APP_COLORS.textPrimary,
+    color: theme.textPrimary,
     flex: 1,
     fontSize: 17,
     fontWeight: '400',
@@ -319,29 +322,29 @@ const styles = StyleSheet.create({
   },
   monthSelector: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 14,
     elevation: 4,
     flexDirection: 'row',
     gap: 8,
     marginBottom: 24,
     padding: 6,
-    shadowColor: '#7E7E7E',
+    shadowColor: theme.shadowColor,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
+    shadowOpacity: theme.mode === 'light' ? 0.08 : 0.10,
     shadowRadius: 8,
   },
   pressed: {
     opacity: 0.74,
   },
   registeredTotal: {
-    color: APP_COLORS.textSecondary,
+    color: theme.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     marginTop: -4,
   },
   searchInput: {
-    color: APP_COLORS.textPrimary,
+    color: theme.textPrimary,
     flex: 1,
     fontSize: 14,
     fontWeight: '700',
@@ -349,7 +352,7 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
@@ -359,14 +362,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   title: {
-    color: APP_COLORS.textPrimary,
+    color: theme.textPrimary,
     flex: 1,
     fontSize: 20,
     fontWeight: MODAL_TITLE_FONT_WEIGHT,
     lineHeight: 26,
   },
   totalAmount: {
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_700Bold',
     fontSize: 44,
     lineHeight: 50,
     textAlign: 'center',

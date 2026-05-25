@@ -1,5 +1,16 @@
+
+> nosotros@1.0.0 start
+> expo start --host lan --port 8083
+
 Starting project at C:\Users\arios\OneDrive\Documents\Apps\nosotros
 Starting Metro Bundler
-warning: Bundler cache is empty, rebuilding (this may take a minute)
 Waiting on http://localhost:8083
 Logs for your project will appear below.
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web node_modules\expo-router\entry.js ▓░░░░░░░░░░░░░░░ 11.1% ( 45/157)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 60.0% (581/750)
+Web Bundled 10242ms node_modules\expo-router\entry.js (1159 modules)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 137ms node_modules\expo-router\entry.js (1 module)
+ LOG  [web] Logs will appear in the browser console

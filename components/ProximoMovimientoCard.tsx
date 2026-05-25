@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORIES } from '../constants/categories';
+import { type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import type { CurrencyCode, Transaction } from '../types';
 import { fmt } from '../utils/format';
 
@@ -19,6 +22,8 @@ export function ProximoMovimientoCard({
   onPress,
   onMenuPress,
 }: ProximoMovimientoCardProps) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const category = CATEGORIES[transaction.cat] ?? CATEGORIES.other;
   const isRecurring = transaction.type !== 'once';
   const bgColor = isRecurring ? '#EC1147' : '#94A3B8';
@@ -26,8 +31,8 @@ export function ProximoMovimientoCard({
   const verb = transaction.kind === 'income' ? 'recibir' : 'pagar';
   const daysLabel =
     daysLeft === 0 ? 'Hoy' :
-    daysLeft === 1 ? `Debes ${verb} en 1 Dia` :
-    `Debes ${verb} en ${daysLeft} Dias`;
+    daysLeft === 1 ? `Debes ${verb} en 1 día` :
+    `Debes ${verb} en ${daysLeft} días`;
 
   return (
     <Pressable
@@ -74,7 +79,7 @@ function getFrequencySuffix(type: Transaction['type']): string {
   return '/unico';
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   amount: {
     color: '#FFFFFF',
     fontSize: 15,
@@ -99,7 +104,7 @@ const styles = StyleSheet.create({
   },
   iconCircle: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 999,
     height: 34,
     justifyContent: 'center',

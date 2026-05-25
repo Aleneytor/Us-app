@@ -1,129 +1,70 @@
-import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
-import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
-import { SavingsCard } from '../../components/SavingsCard';
+import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { SearchBar } from '../../components/SearchBar';
 import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { CATEGORIES } from '../../constants/categories';
-import { APP_COLORS, getIconColor } from '../../constants/colors';
+import { type AppTheme, getIconColor } from '../../constants/colors';
+import { SURFACE_SHADOW } from '../../constants/shadows';
 import { PlanDetailModal } from '../../modals/PlanDetailModal';
 import { PlanModal } from '../../modals/PlanModal';
-import { SavingPlanDetailModal } from '../../modals/SavingPlanDetailModal';
-import { SavingPlanModal } from '../../modals/SavingPlanModal';
-import type { CurrencyCode, Plan, SavingPlan } from '../../types';
-import { savingPlanProgress, savingPlanSavedAmount } from '../../utils/calculations';
-import { fmt } from '../../utils/format';
+import type { CurrencyCode, Plan } from '../../types';
+import { fmt, splitAmount } from '../../utils/format';
 import { computeMemberBalances, planTotalBudget, planTotalSpent, resolveDebts } from '../../utils/planCalculations';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import { dismissKeyboardAndBlur } from '../../utils/keyboard';
-import { getPartnerId, getUserData } from '../../utils/users';
+import { getUserData } from '../../utils/users';
+import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { reportFabScroll } from '../../utils/fabScroll';
+import { useTheme } from '../../contexts/ThemeContext';
 
-type OwnerFilter = 'mine' | 'partner' | 'both';
-type ScreenMode = 'ahorros' | 'planes';
+type AhorroPalette = { base: string; soft: string; bright: string; glow: string; deep: string; shade: string; veil: string };
+
+const AH_BLUE_BASE: AhorroPalette = { base: '#1D4ED8', soft: '#3B82F6', bright: '#60A5FA', glow: '#BAE6FD', deep: '#1E3A8A', shade: '#1E40AF', veil: '#2563EB' };
+const AH_BLUE_SHIFT: AhorroPalette = { base: '#1E40AF', soft: '#2563EB', bright: '#4F86F8', glow: '#93C5FD', deep: '#172554', shade: '#1E3A8A', veil: '#1D4ED8' };
+
 type PlanFilter = 'todos' | 'activos' | 'saldados';
 
-const FILTER_OPTIONS: { label: string; value: OwnerFilter }[] = [
-  { label: 'Ambos', value: 'both' },
-  { label: 'Yo', value: 'mine' },
-  { label: 'Pareja', value: 'partner' },
-];
-
-const SAVINGS_ACCENT = '#7C3AED';
-
-export default function SavingsPreviewScreen() {
+export default function PlanesScreen() {
+  const router = useRouter();
   const tabPadding = useTabPadding();
   const insets = useSafeAreaInsets();
-  const payload = useAppStore((s) => s.payload);
-  const currentUser = useAppStore((s) => s.currentUser);
   const currency = useAppStore((s) => s.currency);
   const users = useAppStore((s) => s.users);
-  const partnerForUser = useAppStore((s) => s.partnerForUser);
-  const user = getUserData(users, currentUser);
-  const { width } = useWindowDimensions();
+  const currentUser = useAppStore((s) => s.currentUser);
   const plans = useAppStore((s) => s.payload.plans ?? []);
+  const user = getUserData(users, currentUser);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
-  const heroScrollRef = useRef<ScrollView>(null);
-  const heroPageRef = useRef(0);
-  const modeRef = useRef<ScreenMode>('ahorros');
-  const contentAnim = useRef(new Animated.Value(1)).current;
-
-  const [mode, setMode] = useState<ScreenMode>('ahorros');
-  const [transitionDirection, setTransitionDirection] = useState(1);
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
-  const [editPlanId, setEditPlanId] = useState<number | null>(null);
-  const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [detailPlanId, setDetailPlanId] = useState<number | null>(null);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
-  const [searchText, setSearchText] = useState('');
   const [planFilter, setPlanFilter] = useState<PlanFilter>('todos');
-
-  const [filterDropdown, setFilterDropdown] = useState<{ rightEdge: number; y: number; width: number } | null>(null);
-  const filterBtnRef = useRef<View>(null);
   const [planSearchText, setPlanSearchText] = useState('');
   const [planFilterDropdown, setPlanFilterDropdown] = useState<{ rightEdge: number; y: number; width: number } | null>(null);
   const planFilterBtnRef = useRef<View>(null);
 
-  const partner = getPartnerId(partnerForUser, currentUser);
-  const isSearching = searchText.trim().length > 0;
-
-  const openFilterDropdown = () => {
-    filterBtnRef.current?.measure((_, __, w, h, pageX, pageY) => {
-      setFilterDropdown({ rightEdge: pageX + w, y: pageY + h + 6, width: 140 });
-    });
-  };
-
+  const { heroAnim, contentAnim: contentEntranceAnim, headerAnim, itemAnims } = useEntranceAnimation();
   const openPlanFilterDropdown = () => {
     planFilterBtnRef.current?.measure((_, __, w, h, pageX, pageY) => {
       setPlanFilterDropdown({ rightEdge: pageX + w, y: pageY + h + 6, width: 140 });
     });
   };
-
-  const isPlanSearching = planSearchText.trim().length > 0;
-
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
-
-  const filteredSavings = useMemo<SavingPlan[]>(() => {
-    const query = searchText.trim().toLowerCase();
-    const matchesSearch = (plan: SavingPlan) =>
-      query === '' ||
-      plan.title.toLowerCase().includes(query) ||
-      (plan.link ?? '').toLowerCase().includes(query);
-
-    return payload.savings
-      .filter((plan) => {
-        if (!matchesSearch(plan)) return false;
-        if (plan.type === 'joint') return true;
-        if (ownerFilter === 'mine') return plan.uid === currentUser;
-        if (ownerFilter === 'partner') return plan.uid === partner;
-        return true;
-      })
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [currentUser, ownerFilter, partner, payload.savings, searchText]);
-
-  const savings = useMemo(() => {
-    const target = payload.savings.reduce((sum, plan) => sum + plan.targetAmount, 0);
-    const saved = payload.savings.reduce((sum, plan) => sum + savingPlanSavedAmount(plan), 0);
-    return { target, saved };
-  }, [payload.savings]);
 
   const totalInvested = useMemo(
     () => plans.reduce((s, p) => s + p.expenses.reduce((ps, e) => ps + e.amount, 0), 0),
@@ -141,293 +82,161 @@ export default function SavingsPreviewScreen() {
     });
   }, [plans, planFilter, planSearchText]);
 
-  const selectedPlan = useMemo(
-    () => payload.savings.find((plan) => String(plan.id) === String(selectedPlanId)) ?? null,
-    [payload.savings, selectedPlanId],
-  );
-  const selectedPlanReadOnly =
-    !!selectedPlan &&
-    (selectedPlan.type ?? 'personal') === 'personal' &&
-    selectedPlan.uid !== currentUser;
-
-  const switchMode = (newMode: ScreenMode) => {
-    if (newMode === modeRef.current) return;
-    setTransitionDirection(newMode === 'planes' ? 1 : -1);
-    modeRef.current = newMode;
-    Animated.timing(contentAnim, {
-      toValue: 0,
-      duration: 110,
-      useNativeDriver: true,
-    }).start(() => {
-      setMode(newMode);
-      Animated.spring(contentAnim, {
-        toValue: 1,
-        damping: 22,
-        stiffness: 300,
-        mass: 0.7,
-        useNativeDriver: true,
-      }).start();
-    });
-  };
-
-  const syncModeFromHeroOffset = (offsetX: number) => {
-    const pageWidth = Math.max(width, 1);
-    const page = Math.max(0, Math.min(1, Math.round(offsetX / pageWidth)));
-    if (page === heroPageRef.current) return;
-    heroPageRef.current = page;
-    switchMode(page === 0 ? 'ahorros' : 'planes');
-  };
-
-  const handleHeroScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    syncModeFromHeroOffset(event.nativeEvent.contentOffset.x);
-  };
-
   const handleRefresh = async () => {
     setRefreshing(true);
     await refreshCurrentRoom();
     setRefreshing(false);
   };
 
-  const openLink = async (plan: SavingPlan) => {
-    if (!plan.link) return;
-    const ok = await Linking.canOpenURL(plan.link);
-    if (ok) await Linking.openURL(plan.link);
-    else Alert.alert('No se pudo abrir', plan.link);
+  const contentAnimStyle = {
+    opacity: contentEntranceAnim,
+    transform: [
+      { translateY: contentEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+    ],
   };
 
-  const AhorrosHeader = (
-    <View style={styles.searchRow}>
-      <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
-        <TextInput
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder="Buscar ahorro"
-          placeholderTextColor={APP_COLORS.textMuted}
-          style={styles.searchInput}
-        />
-        {isSearching && (
-          <Pressable onPress={() => setSearchText('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={18} color={APP_COLORS.textMuted} />
-          </Pressable>
-        )}
-      </View>
-      <View ref={filterBtnRef}>
-        <Pressable
-          onPress={openFilterDropdown}
-          style={({ pressed }) => [
-            styles.filterIconBtn,
-            ownerFilter !== 'both' && styles.filterIconBtnActive,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons
-            name="options-outline"
-            size={20}
-            color={ownerFilter !== 'both' ? '#7C3AED' : APP_COLORS.textSecondary}
-          />
-        </Pressable>
-      </View>
-    </View>
-  );
-
-  const PLAN_FILTER_LABELS: Record<PlanFilter, string> = {
-    todos: 'Todos',
-    activos: 'Activos',
-    saldados: 'Saldados',
-  };
+  const FILTER_LABELS: Record<PlanFilter, string> = { todos: 'Todos', activos: 'Activos', saldados: 'Saldados' };
+  const isFiltered = planFilter !== 'todos';
 
   const PlanesHeader = (
-    <View style={styles.searchRow}>
-      <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={18} color={APP_COLORS.textMuted} />
-        <TextInput
-          value={planSearchText}
-          onChangeText={setPlanSearchText}
-          placeholder="Buscar plan"
-          placeholderTextColor={APP_COLORS.textMuted}
-          style={styles.searchInput}
-        />
-        {isPlanSearching && (
-          <Pressable onPress={() => setPlanSearchText('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={18} color={APP_COLORS.textMuted} />
-          </Pressable>
-        )}
-      </View>
-      <View ref={planFilterBtnRef}>
+    <Animated.View style={{
+      opacity: headerAnim,
+      transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+    }}>
+      <View style={styles.actionRow}>
         <Pressable
-          onPress={openPlanFilterDropdown}
-          style={({ pressed }) => [
-            styles.filterIconBtn,
-            planFilter !== 'todos' && styles.filterIconBtnActive,
-            pressed && styles.pressed,
-          ]}
+          onPress={() => setNewPlanOpen(true)}
+          style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
         >
-          <Ionicons
-            name="options-outline"
-            size={20}
-            color={planFilter !== 'todos' ? '#7C3AED' : APP_COLORS.textSecondary}
-          />
+          <Ionicons name="map-outline" size={18} color="#3B82F6" />
+          <Text style={styles.actionBtnText}>Crear plan</Text>
         </Pressable>
       </View>
-    </View>
-  );
 
-  const PlanesFooter = (
-    <Pressable
-      onPress={() => setNewPlanOpen(true)}
-      style={({ pressed }) => [styles.newPlanBtn, pressed && styles.pressed]}
-    >
-      <Ionicons name="add-circle-outline" size={18} color={SAVINGS_ACCENT} />
-      <Text style={styles.newPlanBtnText}>Nuevo plan</Text>
-    </Pressable>
-  );
+      <SearchBar
+        value={planSearchText}
+        onChangeText={setPlanSearchText}
+        placeholder="Buscar plan"
+        style={styles.searchBar}
+      />
 
-  const contentAnimStyle = {
-    opacity: contentAnim,
-    transform: [{
-      translateX: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [18 * transitionDirection, 0] }),
-    }],
-  };
+      <View style={styles.filterSectionHead}>
+        <Text style={styles.filterSectionTitle}>Planes</Text>
+        <Text style={styles.filterSectionSubtitle}>Toca los filtros para explorar</Text>
+      </View>
 
-  const listData = useMemo<Array<SavingPlan | Plan>>(
-    () => (mode === 'ahorros' ? filteredSavings : filteredPlans),
-    [filteredSavings, filteredPlans, mode],
+      <View style={styles.filtersBar}>
+        <View ref={planFilterBtnRef} style={styles.filterChipWrapper}>
+          <Pressable
+            onPress={openPlanFilterDropdown}
+            style={({ pressed }) => [styles.filterChip, isFiltered && styles.filterChipActive, pressed && styles.pressed]}
+          >
+            <Ionicons name="options-outline" size={14} color={isFiltered ? '#7C3AED' : theme.textSecondary} />
+            <Text style={[styles.filterChipText, isFiltered && styles.filterChipTextActive]}>
+              {FILTER_LABELS[planFilter]}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color={isFiltered ? '#7C3AED' : theme.textMuted} />
+          </Pressable>
+        </View>
+      </View>
+    </Animated.View>
   );
 
   return (
     <View style={styles.screen}>
-
-      {/* ── Hero fijo ── */}
-      <View style={styles.heroShadowWrap}>
+      {/* -- Hero fijo -- */}
+      <Animated.View
+        style={[
+          styles.heroShadowWrap,
+          {
+            opacity: heroAnim,
+            transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+          },
+        ]}
+      >
         <View style={styles.heroInner}>
-          <ScrollView
-            ref={heroScrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            decelerationRate="fast"
-            onScroll={handleHeroScroll}
-            onScrollEndDrag={handleHeroScroll}
-            onMomentumScrollEnd={handleHeroScroll}
-            style={{ width }}
-          >
-            {/* Page 0: Ahorros */}
-            <View style={[styles.heroPage, { width, paddingTop: insets.top + 14 }]}>
-              <View style={styles.heroTop}>
-                <View style={styles.heroTextWrap}>
-                  <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
-                  <Text style={styles.heroSubtitle}>
-                    {'Estos son tus '}
-                    <Text style={styles.heroHighlight}>planes de ahorro</Text>
-                    {' y tus '}
-                    <Text style={styles.heroHighlight}>ahorros hasta hoy</Text>
-                  </Text>
-                </View>
-                <UserHeaderButton />
+          <PlanesHeroGradient />
+          <View style={[styles.heroPage, { paddingTop: insets.top + 14 }]}>
+            <View style={styles.heroTop}>
+              <Pressable
+                onPress={() => router.navigate('/(tabs)/extras')}
+                style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
+              >
+                <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+              </Pressable>
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
+                <Text style={styles.heroSubtitle}>
+                  {'Estos son tus '}
+                  <Text style={styles.heroHighlight}>planes</Text>
+                  {' y cuanto has '}
+                  <Text style={styles.heroHighlight}>invertido</Text>
+                  {' en ellos'}
+                </Text>
               </View>
-              <SavingsCard
-                saved={savings.saved}
-                target={savings.target}
-                currency={currency}
-                showObjectiveSlide={false}
-                showPillToggle={false}
-              />
+              <UserHeaderButton variant="light" tintColor="#93C5FD" />
             </View>
-
-            {/* Page 1: Planes */}
-            <View style={[styles.heroPage, { width, paddingTop: insets.top + 14 }]}>
-              <View style={styles.heroTop}>
-                <View style={styles.heroTextWrap}>
-                  <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
-                  <Text style={styles.heroSubtitle}>
-                    {'Estos son tus '}
-                    <Text style={styles.heroHighlight}>planes</Text>
-                    {' y cuanto has '}
-                    <Text style={styles.heroHighlight}>invertido</Text>
-                    {' en ellos'}
+            <View style={styles.heroAmountWrap}>
+              {(() => {
+                const parts = splitAmount(totalInvested, currency);
+                return (
+                  <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>
+                    {parts.sign}{parts.whole}<Text style={styles.heroAmountDecimals}>,{parts.decimals} {parts.symbol}</Text>
                   </Text>
-                </View>
-                <UserHeaderButton />
-              </View>
+                );
+              })()}
             </View>
-          </ScrollView>
+          </View>
         </View>
-      </View>
+      </Animated.View>
 
-      {/* ── Área de contenido animada ── */}
+      {/* -- Lista de planes -- */}
       <Animated.View style={[styles.contentWrap, contentAnimStyle]}>
-        <FlatList<SavingPlan | Plan>
-          key={mode}
-          data={listData}
+        <FlatList<Plan>
+          data={filteredPlans}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           onScrollBeginDrag={dismissKeyboardAndBlur}
-          keyExtractor={(item) => `${mode}-${item.id}`}
+          onScroll={(event) => reportFabScroll(event.nativeEvent.contentOffset.y)}
+          scrollEventThrottle={16}
+          keyExtractor={(item) => `plan-${item.id}`}
           contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           bounces={false}
           overScrollMode="never"
-          ListHeaderComponent={mode === 'ahorros' ? AhorrosHeader : PlanesHeader}
-          ListFooterComponent={mode === 'planes' ? PlanesFooter : null}
+          ListHeaderComponent={PlanesHeader}
           ListEmptyComponent={
-            mode === 'ahorros' ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="wallet-outline" size={36} color={APP_COLORS.textMuted} />
-                <Text style={styles.emptyTitle}>Sin ahorros</Text>
-                <Text style={styles.emptySubtitle}>
-                  {isSearching
-                    ? 'No se encontraron ahorros con esa búsqueda.'
-                    : 'Aún no hay planes de ahorro para este filtro.'}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="map-outline" size={36} color={APP_COLORS.textMuted} />
-                <Text style={styles.emptyTitle}>Sin planes aún</Text>
-                <Text style={styles.emptySubtitle}>
-                  Crea tu primer plan para organizar un viaje o evento con amigos.
-                </Text>
-              </View>
-            )
+            <Animated.View style={[styles.emptyState, { opacity: headerAnim }]}>
+              <Ionicons name="map-outline" size={36} color={theme.textMuted} />
+              <Text style={styles.emptyTitle}>Sin planes aún</Text>
+              <Text style={styles.emptySubtitle}>
+                Crea tu primer plan para organizar un viaje o evento con amigos.
+              </Text>
+            </Animated.View>
           }
-          renderItem={({ item, index }) => {
-            if (mode === 'planes') {
-              const plan = item as Plan;
-              return (
+          renderItem={({ item: plan, index }) => {
+            const itemAnim = itemAnims[index] ?? headerAnim;
+            return (
+              <Animated.View
+                style={[
+                  styles.planListRow,
+                  index === filteredPlans.length - 1 && styles.planListRowLast,
+                  {
+                    opacity: itemAnim,
+                    transform: [{ translateY: itemAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+                  },
+                ]}
+              >
                 <PlanTileRow
                   plan={plan}
                   currency={currency}
                   onPress={() => setDetailPlanId(plan.id)}
                 />
-              );
-            }
-            const savingPlan = item as SavingPlan;
-            return (
-              <SavingTileRow
-                plan={savingPlan}
-                currency={currency}
-                isFirst={index === 0}
-                isLast={index === filteredSavings.length - 1}
-                readOnly={(savingPlan.type ?? 'personal') === 'personal' && savingPlan.uid !== currentUser}
-                onPress={() => setSelectedPlanId(savingPlan.id)}
-                onOpenLink={() => void openLink(savingPlan)}
-              />
+              </Animated.View>
             );
           }}
         />
       </Animated.View>
-
-      {filterDropdown && (
-        <OwnerFilterDropdown
-          pos={filterDropdown}
-          value={ownerFilter}
-          options={FILTER_OPTIONS}
-          onChange={(v) => setOwnerFilter(v as OwnerFilter)}
-          onClose={() => setFilterDropdown(null)}
-        />
-      )}
 
       {planFilterDropdown && (
         <OwnerFilterDropdown
@@ -443,24 +252,6 @@ export default function SavingsPreviewScreen() {
         />
       )}
 
-      {/* ── Modals ahorros ── */}
-      <SavingPlanDetailModal
-        plan={selectedPlan}
-        readOnly={selectedPlanReadOnly}
-        onClose={() => setSelectedPlanId(null)}
-        onEdit={() => {
-          setEditPlanId(selectedPlanId);
-          setSelectedPlanId(null);
-        }}
-        onDelete={() => setSelectedPlanId(null)}
-      />
-      <SavingPlanModal
-        visible={editPlanId !== null}
-        plan={payload.savings.find((p) => String(p.id) === String(editPlanId)) ?? null}
-        onClose={() => setEditPlanId(null)}
-      />
-
-      {/* ── Modals planes ── */}
       <PlanModal
         visible={newPlanOpen}
         onClose={() => setNewPlanOpen(false)}
@@ -483,7 +274,7 @@ export default function SavingsPreviewScreen() {
   );
 }
 
-// ─── OwnerFilterDropdown ──────────────────────────────────────────────────────
+// --- OwnerFilterDropdown ------------------------------------------------------
 
 function OwnerFilterDropdown({
   pos,
@@ -500,6 +291,8 @@ function OwnerFilterDropdown({
 }) {
   const { width: screenWidth } = useWindowDimensions();
   const anim = useRef(new Animated.Value(0)).current;
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   useEffect(() => {
     Animated.spring(anim, {
@@ -559,7 +352,7 @@ function OwnerFilterDropdown({
   );
 }
 
-// ─── PlanTileRow ──────────────────────────────────────────────────────────────
+// --- PlanTileRow --------------------------------------------------------------
 
 function PlanTileRow({
   plan,
@@ -570,11 +363,17 @@ function PlanTileRow({
   currency: CurrencyCode;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const iconInfo = CATEGORIES[plan.icon] ?? CATEGORIES.map;
-  const iconColor = getIconColor('purple');
+  const iconColor = getIconColor(plan.iconColor ?? 'purple');
   const totalSpent = planTotalSpent(plan);
   const totalBudget = planTotalBudget(plan);
-  const pct = totalBudget > 0 ? Math.min(100, Math.round((totalSpent / totalBudget) * 100)) : 0;
+  const hasBudget = totalBudget > 0;
+  const pct = hasBudget ? Math.min(1, totalSpent / totalBudget) : 0;
+  const remaining = totalBudget - totalSpent;
+  const isOver = hasBudget && remaining < 0;
+  const barColor = isOver ? theme.expense : pct >= 0.75 ? '#EA580C' : iconColor.color;
   const settled = plan.expenses.length > 0 && resolveDebts(computeMemberBalances(plan)).length === 0;
 
   return (
@@ -582,130 +381,183 @@ function PlanTileRow({
       onPress={onPress}
       style={({ pressed }) => [styles.planCard, pressed && styles.pressed]}
     >
-      <View style={[styles.tileIcon, { backgroundColor: iconColor.bg }]}>
-        <Ionicons name={iconInfo.icon} size={22} color={iconColor.color} />
+      <View style={[styles.tileIcon, styles.planCardIcon, { backgroundColor: iconColor.color }]}>
+        <Ionicons name={iconInfo.icon} size={20} color="#FFFFFF" />
       </View>
       <View style={styles.tileBody}>
         <View style={styles.planCardTitleRow}>
           <Text numberOfLines={1} style={styles.planCardTitle}>{plan.title}</Text>
-          <View style={[styles.planStatusBadge, settled ? styles.planStatusSettled : styles.planStatusActive]}>
-            <Text style={[styles.planStatusText, settled ? styles.planStatusSettledText : styles.planStatusActiveText]}>
-              {settled ? 'Saldado' : 'Activo'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.planCardMetaRow}>
-          <Text style={styles.planCardSpent}>{fmt(totalSpent, currency)}</Text>
-          <Text style={styles.planCardSep}>·</Text>
-          <Text style={styles.planCardExpenseCount}>
-            {plan.expenses.length} {plan.expenses.length === 1 ? 'gasto' : 'gastos'}
+          <Text style={styles.planCardBudgetText} numberOfLines={1}>
+            {hasBudget ? fmt(totalBudget, currency) : 'Sin presupuesto'}
           </Text>
-          <View style={{ flex: 1 }} />
-          <View style={styles.planMemberAvatars}>
-            {plan.members.slice(0, 4).map((m) => (
-              <View key={m.id} style={[styles.planMiniAvatar, { backgroundColor: m.bg }]}>
-                <Text style={[styles.planMiniInitials, { color: m.color }]}>{m.initials}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-        {totalBudget > 0 && (
-          <View style={styles.tileProgressRow}>
-            <View style={styles.tileBarTrack}>
-              <View style={[styles.tileBarFill, { width: `${pct}%` as `${number}%` }]} />
+          {settled && (
+            <View style={styles.planStatusBadge}>
+              <Text style={styles.planStatusText}>Saldado</Text>
             </View>
-            <Text style={styles.tileRemainingSmall}>{pct}%</Text>
-          </View>
+          )}
+        </View>
+        {hasBudget ? (
+          <>
+            <View style={styles.planCardBarTrack}>
+              <View
+                style={[
+                  styles.tileBarFill,
+                  { width: `${Math.round(pct * 100)}%` as `${number}%`, backgroundColor: barColor },
+                ]}
+              />
+            </View>
+            <View style={styles.planCardAmountRow}>
+              <Text style={[styles.planCardSpent, { color: iconColor.color }]} numberOfLines={1}>
+                {fmt(totalSpent, currency)}
+              </Text>
+              <Text style={styles.planCardAvailable} numberOfLines={1}>
+                {isOver ? `Excedido +${fmt(Math.abs(remaining), currency)}` : fmt(remaining, currency)}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.planCardPrompt} numberOfLines={1}>
+            {plan.expenses.length} {plan.expenses.length === 1 ? 'gasto' : 'gastos'} sin presupuesto.
+          </Text>
         )}
       </View>
     </Pressable>
   );
 }
 
-// ─── SavingTileRow ─────────────────────────────────────────────────────────────
+// --- PlanesHeroGradient -------------------------------------------------------
 
-function SavingTileRow({
-  plan,
-  currency,
-  isFirst,
-  isLast,
-  readOnly,
-  onPress,
-  onOpenLink,
-}: {
-  plan: SavingPlan;
-  currency: CurrencyCode;
-  isFirst: boolean;
-  isLast: boolean;
-  readOnly: boolean;
-  onPress: () => void;
-  onOpenLink: () => void;
-}) {
-  const iconColor = getIconColor('purple');
-  const iconInfo = CATEGORIES[plan.icon ?? 'savings'] ?? CATEGORIES.savings;
-  const progress = savingPlanProgress(plan);
-  const progressPct = Math.min(100, Math.round(progress.pct));
+function PlanesHeroGradient() {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const drift = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const pulseLoop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 6200, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 6200, useNativeDriver: true }),
+    ]));
+    const driftLoop = Animated.loop(Animated.sequence([
+      Animated.timing(drift, { toValue: 1, duration: 9800, useNativeDriver: true }),
+      Animated.timing(drift, { toValue: 0, duration: 9800, useNativeDriver: true }),
+    ]));
+    pulseLoop.start();
+    driftLoop.start();
+    return () => { pulseLoop.stop(); driftLoop.stop(); };
+  }, [drift, pulse]);
+
+  const shiftStyle = {
+    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.14, 0.38] }),
+    transform: [
+      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-8, 10] }) },
+      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [8, -6] }) },
+      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] }) },
+    ],
+  };
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.tileRow,
-        isFirst && styles.tileFirst,
-        isLast && styles.tileLast,
-        !isLast && styles.tileBorder,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={[styles.tileIcon, { backgroundColor: iconColor.bg }]}>
-        <Ionicons name={iconInfo.icon} size={22} color={iconColor.color} />
-      </View>
-      <View style={styles.tileBody}>
-        <View style={styles.tileTitleRow}>
-          {plan.type === 'joint' && (
-            <View style={styles.jointBadge}>
-              <Ionicons name="people" size={10} color={SAVINGS_ACCENT} />
-            </View>
-          )}
-          <Text numberOfLines={2} style={styles.tileTitle}>{plan.title}</Text>
-          {plan.link && (
-            <Pressable hitSlop={8} onPress={(e) => { e.stopPropagation(); onOpenLink(); }}>
-              <Ionicons name="link-outline" size={15} color={SAVINGS_ACCENT} />
-            </Pressable>
-          )}
-        </View>
-        <View style={styles.tileProgressRow}>
-          <Text style={styles.tileSavedSmall}>{fmt(progress.total, currency)}</Text>
-          <View style={styles.tileBarTrack}>
-            <View style={[styles.tileBarFill, { width: `${progressPct}%` as `${number}%` }]} />
-          </View>
-          <Text style={styles.tileRemainingSmall}>{fmt(progress.remaining, currency)}</Text>
-        </View>
-      </View>
-    </Pressable>
+    <View pointerEvents="none" style={HERO_CANVAS.heroGradientCanvas}>
+      <PlanBlobSvg palette={AH_BLUE_BASE} idPrefix="pl-bb" />
+      <Animated.View style={[StyleSheet.absoluteFill, shiftStyle]}>
+        <PlanBlobSvg palette={AH_BLUE_SHIFT} idPrefix="pl-bs" />
+      </Animated.View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
+function PlanBlobSvg({ palette, idPrefix }: { palette: AhorroPalette; idPrefix: string }) {
+  const brightId = `${idPrefix}-bright`;
+  const deepId = `${idPrefix}-deep`;
+  const glowId = `${idPrefix}-glow`;
+  const softId = `${idPrefix}-soft`;
+  const shadeId = `${idPrefix}-shade`;
+  const veilId = `${idPrefix}-veil`;
+
+  return (
+    <Svg width="100%" height="100%" viewBox="0 0 430 360" preserveAspectRatio="none">
+      <Defs>
+        <RadialGradient id={brightId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.bright} stopOpacity="1" />
+          <Stop offset="70%" stopColor={palette.bright} stopOpacity="0.72" />
+          <Stop offset="100%" stopColor={palette.bright} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={deepId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.deep} stopOpacity="1" />
+          <Stop offset="74%" stopColor={palette.deep} stopOpacity="0.84" />
+          <Stop offset="100%" stopColor={palette.deep} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={glowId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.glow} stopOpacity="1" />
+          <Stop offset="66%" stopColor={palette.glow} stopOpacity="0.66" />
+          <Stop offset="100%" stopColor={palette.glow} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={softId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.soft} stopOpacity="1" />
+          <Stop offset="72%" stopColor={palette.soft} stopOpacity="0.76" />
+          <Stop offset="100%" stopColor={palette.soft} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={shadeId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.shade} stopOpacity="0.86" />
+          <Stop offset="72%" stopColor={palette.shade} stopOpacity="0.44" />
+          <Stop offset="100%" stopColor={palette.shade} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id={veilId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={palette.veil} stopOpacity="0.7" />
+          <Stop offset="100%" stopColor={palette.veil} stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="430" height="360" fill={palette.base} />
+      <Ellipse cx="28" cy="42" rx="214" ry="176" fill={`url(#${deepId})`} opacity="0.74" />
+      <Ellipse cx="132" cy="104" rx="218" ry="150" fill={`url(#${shadeId})`} opacity="0.38" />
+      <Ellipse cx="188" cy="86" rx="202" ry="162" fill={`url(#${softId})`} opacity="0.44" />
+      <Ellipse cx="365" cy="52" rx="190" ry="150" fill={`url(#${brightId})`} opacity="0.6" />
+      <Ellipse cx="50" cy="286" rx="230" ry="148" fill={`url(#${glowId})`} opacity="0.88" />
+      <Ellipse cx="248" cy="220" rx="240" ry="132" fill={`url(#${shadeId})`} opacity="0.3" />
+      <Ellipse cx="238" cy="258" rx="248" ry="150" fill={`url(#${softId})`} opacity="0.52" />
+      <Ellipse cx="426" cy="292" rx="226" ry="160" fill={`url(#${brightId})`} opacity="0.72" />
+      <Ellipse cx="214" cy="178" rx="246" ry="150" fill={`url(#${veilId})`} opacity="0.52" />
+      <Ellipse cx="232" cy="360" rx="310" ry="126" fill={`url(#${softId})`} opacity="0.36" />
+    </Svg>
+  );
+}
+
+// Static canvas used by PlanesHeroGradient
+const HERO_CANVAS = StyleSheet.create({
+  heroGradientCanvas: {
+    bottom: -36,
+    left: -28,
+    position: 'absolute',
+    right: -28,
+    top: -18,
+  },
+});
+
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   screen: {
-    backgroundColor: '#EDF2F6',
+    backgroundColor: t.background,
     flex: 1,
   },
   contentWrap: {
     flex: 1,
   },
   content: {},
+  planListRow: {
+    paddingBottom: 8,
+    paddingHorizontal: 16,
+  },
+  planListRowLast: {
+    paddingBottom: 16,
+  },
 
-  // ── Hero ──
+  // -- Hero --
   heroShadowWrap: {
     elevation: 5,
-    shadowColor: '#7E7E7E',
+    shadowColor: '#1E3A8A',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.32,
     shadowRadius: 12,
   },
   heroInner: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: '#1D4ED8',
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     overflow: 'hidden',
@@ -715,20 +567,44 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   heroGreeting: {
-    color: '#303236',
-    fontFamily: 'Inter_700Bold',
-    fontSize: 22,
-    lineHeight: 28,
+    color: '#FFFFFF',
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 26,
+    lineHeight: 32,
   },
   heroHighlight: {
-    color: '#7C3AED',
+    color: 'rgba(255,255,255,0.85)',
     fontWeight: '400',
   },
   heroSubtitle: {
-    color: '#303236',
-    fontSize: 15,
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: '400',
-    lineHeight: 21,
+    lineHeight: 24,
+  },
+  heroAmountWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 24,
+    marginTop: 12,
+    marginBottom: 12,
+    minHeight: 52,
+    paddingHorizontal: 16,
+  },
+  heroAmount: {
+    color: '#FFFFFF',
+    flexShrink: 1,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 46,
+    letterSpacing: -2.3,
+    lineHeight: 52,
+    textAlign: 'center',
+  },
+  heroAmountDecimals: {
+    color: 'rgba(255,255,255,0.45)',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 24,
+    letterSpacing: -0.8,
   },
   heroTextWrap: {
     flex: 1,
@@ -736,92 +612,119 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   heroTop: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
     justifyContent: 'space-between',
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
     paddingBottom: 12,
   },
-
-  // ── Planes hero card ──
-  planesHeroCard: {
+  backBtn: {
     alignItems: 'center',
-    backgroundColor: '#F5F3FF',
-    borderRadius: 16,
-    gap: 4,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-  },
-  planesInvestedLabel: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  planesInvestedAmount: {
-    color: SAVINGS_ACCENT,
-    fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 40,
-  },
-  planesInvestedSub: {
-    color: APP_COLORS.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-
-  // ── Search ──
-  searchRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 18,
-    marginTop: 22,
-    paddingHorizontal: 24,
-  },
-  searchWrap: {
-    alignItems: 'center',
-    borderBottomColor: APP_COLORS.border,
-    borderBottomWidth: 1,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 8,
-    height: 44,
-  },
-  searchInput: {
-    color: APP_COLORS.textPrimary,
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    padding: 0,
-  },
-  filterIconBtn: {
-    alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: 'rgba(255,255,255,0.28)',
     borderRadius: 22,
     borderWidth: 1,
     height: 40,
     justifyContent: 'center',
     width: 40,
   },
-  filterIconBtnActive: {
-    borderColor: '#7C3AED',
+  backBtnPressed: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    opacity: 0.8,
   },
 
-  // ── Filter dropdown ──
+  // -- Action button --
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 48,
+    justifyContent: 'center',
+  },
+  actionBtnText: {
+    color: t.textPrimary,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 16,
+  },
+
+  // -- Search & filters --
+  searchBar: {
+    marginHorizontal: 16,
+    marginTop: 18,
+  },
+  filterSectionHead: {
+    gap: 2,
+    marginTop: 18,
+    paddingHorizontal: 20,
+  },
+  filterSectionTitle: {
+    color: t.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  filterSectionSubtitle: {
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  filtersBar: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+    marginBottom: 18,
+    paddingHorizontal: 16,
+  },
+  filterChipWrapper: {
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    ...SURFACE_SHADOW,
+  },
+  filterChip: {
+    alignItems: 'center',
+    borderRadius: 20,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+  },
+  filterChipText: {
+    color: t.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#7C3AED',
+  },
+
+  // -- Filter dropdown --
   filterDropCard: {
     borderRadius: 14,
     elevation: 5,
     position: 'absolute',
-    shadowColor: '#7E7E7E',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
   },
   filterDropInner: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     borderRadius: 14,
     overflow: 'hidden',
   },
@@ -833,14 +736,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   filterDropOptionBorder: {
-    borderTopColor: APP_COLORS.border,
+    borderTopColor: t.border,
     borderTopWidth: 1,
   },
   filterDropOptionActive: {
-    backgroundColor: '#F5F3FF',
+    backgroundColor: 'rgba(124, 58, 237, 0.18)',
   },
   filterDropOptionText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -849,45 +752,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ── "Nuevo plan" footer button ──
-  newPlanBtn: {
-    alignItems: 'center',
-    borderColor: SAVINGS_ACCENT,
-    borderRadius: 16,
-    borderStyle: 'dashed',
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    gap: 8,
-    height: 52,
-    justifyContent: 'center',
-    marginTop: 10,
-    marginHorizontal: 0,
-  },
-  newPlanBtnText: {
-    color: SAVINGS_ACCENT,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  // ── Tile rows ──
-  tileRow: {
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 72,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  tileFirst: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  tileLast: {},
-  tileBorder: {
-    borderBottomColor: '#EEF2F7',
-    borderBottomWidth: 1,
-  },
+  // -- Tile icon --
   tileIcon: {
     alignItems: 'center',
     borderRadius: 14,
@@ -901,177 +766,94 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 0,
   },
-  tileTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  jointBadge: {
-    alignItems: 'center',
-    backgroundColor: '#EDE9FE',
-    borderRadius: 6,
-    height: 16,
-    justifyContent: 'center',
-    width: 16,
-  },
-  tileTitle: {
-    color: APP_COLORS.textPrimary,
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tileProgressRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  tileBarTrack: {
-    backgroundColor: '#EEF0F3',
-    borderRadius: 3,
-    flex: 1,
-    height: 5,
-    overflow: 'hidden',
-  },
   tileBarFill: {
-    backgroundColor: SAVINGS_ACCENT,
     borderRadius: 3,
     height: '100%',
   },
-  tileSavedSmall: {
-    color: APP_COLORS.textMuted,
-    fontSize: 10,
-    fontWeight: '600',
-    minWidth: 42,
-  },
-  tileRemainingSmall: {
-    color: SAVINGS_ACCENT,
-    fontSize: 10,
-    fontWeight: '700',
-    minWidth: 42,
-    textAlign: 'right',
-  },
 
-  // ── Plan tile extras ──
-  planMemberAvatars: {
-    flexDirection: 'row',
-  },
-  planMiniAvatar: {
-    alignItems: 'center',
-    borderColor: APP_COLORS.surface,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    height: 20,
-    justifyContent: 'center',
-    marginLeft: -5,
-    width: 20,
-  },
-  planMiniInitials: {
-    fontSize: 8,
-    fontWeight: '800',
-  },
-
-  // ── Plan filter pills ──
-  planesFilterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 12,
-  },
-  planFilterPill: {
-    alignItems: 'center',
-    borderColor: APP_COLORS.border,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-  },
-  planFilterPillActive: {
-    backgroundColor: '#EDE9FE',
-    borderColor: '#7C3AED',
-  },
-  planFilterPillText: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  planFilterPillTextActive: {
-    color: '#7C3AED',
-    fontWeight: '700',
-  },
-
-  // ── Plan card ──
+  // -- Plan card --
   planCard: {
-    alignItems: 'flex-start',
-    backgroundColor: APP_COLORS.surface,
+    alignItems: 'center',
+    backgroundColor: t.surface,
     borderRadius: 16,
+    elevation: 3,
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 10,
-    marginHorizontal: 16,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#7E7E7E',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: t.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+  },
+  planCardIcon: {
+    borderRadius: 16,
+    height: 40,
+    width: 40,
   },
   planCardTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 4,
+    gap: 6,
   },
   planCardTitle: {
-    color: APP_COLORS.textPrimary,
-    flex: 1,
-    fontSize: 15,
+    color: t.textPrimary,
+    flexShrink: 1,
+    fontSize: 14,
     fontWeight: '700',
   },
+  planCardBudgetText: {
+    color: t.textSecondary,
+    flexShrink: 0,
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  planCardBarTrack: {
+    backgroundColor: t.border,
+    borderRadius: 3,
+    height: 6,
+    marginTop: 7,
+    overflow: 'hidden',
+    width: '100%',
+  },
   planStatusBadge: {
+    backgroundColor: 'rgba(22, 163, 74, 0.18)',
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  planStatusActive: {
-    backgroundColor: '#EDE9FE',
-  },
-  planStatusSettled: {
-    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   planStatusText: {
+    color: '#16A34A',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  planCardAmountRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginTop: 5,
+  },
+  planCardAvailable: {
+    color: t.textMuted,
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  planCardSpent: {
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '700',
   },
-  planStatusActiveText: {
-    color: '#7C3AED',
-  },
-  planStatusSettledText: {
-    color: '#16A34A',
-  },
-  planCardMetaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 5,
-    marginBottom: 8,
-  },
-  planCardSpent: {
-    color: APP_COLORS.textPrimary,
-    fontFamily: 'DMSerifDisplay_400Regular',
-    fontSize: 16,
-  },
-  planCardSep: {
-    color: APP_COLORS.textMuted,
-    fontSize: 13,
-    fontWeight: '400',
-  },
-  planCardExpenseCount: {
-    color: APP_COLORS.textMuted,
+  planCardPrompt: {
+    color: t.textMuted,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '700',
+    marginTop: 7,
   },
 
-  // ── Empty ──
+  // -- Empty --
   emptyState: {
     alignItems: 'center',
     gap: 8,
@@ -1079,12 +861,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   emptyTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
   emptySubtitle: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',

@@ -15,12 +15,13 @@ import { IconPicker } from '../components/IconPicker';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
 import { SAVING_ICON_KEYS } from '../constants/categories';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { Plan, PlanMember } from '../types';
 import { MEMBER_COLORS } from '../types';
 import { todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { getPartnerId, getUserData } from '../utils/users';
 
@@ -38,6 +39,8 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
   const partnerForUser = useAppStore((s) => s.partnerForUser);
   const addPlan = useAppStore((s) => s.addPlan);
   const updatePlan = useAppStore((s) => s.updatePlan);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const partnerId = getPartnerId(partnerForUser, currentUser);
   const meData = getUserData(users, currentUser);
   const partnerData = getUserData(users, partnerId);
@@ -223,6 +226,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
         canPressBreadcrumb={(index) => index < step}
         onBreadcrumbPress={setStep}
         onBack={handleBack}
+        accentColor="#2563EB"
         contentContainerStyle={{ padding: 0 }}
         footer={(
           <>
@@ -263,7 +267,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
 
           {step === 1 && (
             <View style={styles.block}>
-              {/* Participantes */}
               <View style={styles.field}>
                 <Text style={styles.label}>Participantes</Text>
                 <View style={styles.membersWrap}>
@@ -307,7 +310,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                         <Text style={styles.splitPct}>%</Text>
                       )}
                       {!isPartnerIncluded && (
-                        <Ionicons name="add" size={14} color={APP_COLORS.textMuted} />
+                        <Ionicons name="add" size={14} color={theme.textMuted} />
                       )}
                     </Pressable>
                   )}
@@ -329,7 +332,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                         value={externalName}
                         onChangeText={setExternalName}
                         placeholder="Nombre de la persona"
-                        placeholderTextColor={APP_COLORS.textMuted}
+                        placeholderTextColor={theme.textMuted}
                         style={styles.externalInput}
                         autoFocus
                         onSubmitEditing={addExternal}
@@ -339,7 +342,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                         <Text style={styles.externalAddText}>Agregar</Text>
                       </Pressable>
                       <Pressable onPress={() => { setShowAddExternal(false); setExternalName(''); }}>
-                        <Ionicons name="close" size={18} color={APP_COLORS.textMuted} />
+                        <Ionicons name="close" size={18} color={theme.textMuted} />
                       </Pressable>
                     </View>
                   ) : (
@@ -354,7 +357,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                 </View>
               </View>
 
-              {/* División de gastos */}
               <View style={styles.field}>
                 <Text style={styles.label}>División de gastos</Text>
                 <View style={styles.choiceRow}>
@@ -405,8 +407,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
   );
 }
 
-// ─── MemberChip ───────────────────────────────────────────────────────────────
-
 function MemberChip({
   member,
   label,
@@ -424,6 +424,9 @@ function MemberChip({
   onSplitChange: (v: string) => void;
   onRemove?: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={[styles.memberChip, styles.memberChipActive]}>
       <View style={[styles.memberAvatar, { backgroundColor: member.bg }]}>
@@ -444,14 +447,12 @@ function MemberChip({
       )}
       {!locked && onRemove && (
         <Pressable onPress={onRemove} hitSlop={6}>
-          <Ionicons name="close-circle" size={16} color={APP_COLORS.textMuted} />
+          <Ionicons name="close-circle" size={16} color={theme.textMuted} />
         </Pressable>
       )}
     </View>
   );
 }
-
-// ─── ChoiceButton ─────────────────────────────────────────────────────────────
 
 function ChoiceButton({
   label,
@@ -464,6 +465,9 @@ function ChoiceButton({
   active: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <Pressable
       onPress={onPress}
@@ -473,20 +477,21 @@ function ChoiceButton({
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : APP_COLORS.textSecondary} />
+      <Ionicons name={icon} size={15} color={active ? '#FFFFFF' : theme.textSecondary} />
       <Text style={[styles.choiceBtnText, active && styles.choiceBtnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
-// ─── Field ────────────────────────────────────────────────────────────────────
-
 function Field({ label, ...props }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={[styles.input, props.multiline && styles.textarea]}
         {...props}
       />
@@ -494,7 +499,7 @@ function Field({ label, ...props }: ComponentProps<typeof TextInput> & { label: 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   content: {
     gap: 16,
     padding: 16,
@@ -505,34 +510,34 @@ const styles = StyleSheet.create({
   },
   field: { gap: 7 },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   textarea: {
     minHeight: 76,
     textAlignVertical: 'top',
   },
-  // ── Members ──
   membersWrap: {
     gap: 8,
   },
   memberChip: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
@@ -541,7 +546,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   memberChipActive: {
-    backgroundColor: '#F5F3FF',
+    backgroundColor: 'rgba(124, 58, 237, 0.18)',
     borderColor: '#C4B5FD',
   },
   memberAvatar: {
@@ -556,17 +561,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   memberName: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
   },
   memberNameActive: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
   },
   splitInput: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 8,
     borderWidth: 1,
     color: PLAN_ACCENT,
@@ -578,7 +583,7 @@ const styles = StyleSheet.create({
     width: 48,
   },
   splitPct: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -600,8 +605,8 @@ const styles = StyleSheet.create({
   },
   externalForm: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
@@ -610,7 +615,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   externalInput: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
@@ -627,15 +632,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  // ── Choice buttons (split mode) ──
   choiceRow: {
     flexDirection: 'row',
     gap: 8,
   },
   choiceBtn: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
@@ -650,7 +654,7 @@ const styles = StyleSheet.create({
     borderColor: PLAN_ACCENT,
   },
   choiceBtnText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '400',
   },
@@ -658,15 +662,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   splitHint: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
   },
   splitHintError: {
-    color: APP_COLORS.expense,
+    color: t.expense,
   },
-  // ── Footer ──
   primaryBtn: {
     alignItems: 'center',
     backgroundColor: PLAN_ACCENT,
@@ -682,7 +685,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -690,7 +693,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
   },

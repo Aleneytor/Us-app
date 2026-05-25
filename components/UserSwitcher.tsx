@@ -1,4 +1,4 @@
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
 
 const AVATAR = 30;
@@ -21,9 +21,13 @@ export function UserSwitcher() {
           >
             <View style={[styles.ring, { borderColor: active ? user.color : 'transparent' }]}>
               <View style={[styles.initialBadge, { backgroundColor: user.bg }]}>
-                <Text style={[styles.initial, { color: user.color, fontSize: user.initials.length > 1 ? 10 : 12 }]}>
-                  {user.initials}
-                </Text>
+                {user.photo ? (
+                  <Image source={user.photo} style={styles.avatarPhoto} />
+                ) : (
+                  <Text style={[styles.initial, { color: user.color, fontSize: user.initials.length > 1 ? 10 : 12 }]}>
+                    {user.initials}
+                  </Text>
+                )}
               </View>
             </View>
           </TouchableOpacity>
@@ -42,6 +46,11 @@ const styles = StyleSheet.create({
     borderRadius: AVATAR / 2,
     height: AVATAR,
     justifyContent: 'center',
+    width: AVATAR,
+  },
+  avatarPhoto: {
+    borderRadius: AVATAR / 2,
+    height: AVATAR,
     width: AVATAR,
   },
   ring: {

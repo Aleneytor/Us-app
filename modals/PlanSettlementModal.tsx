@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -10,23 +10,21 @@ import {
 } from 'react-native';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
 import type { Plan, PlanMember, PlanSettlement } from '../types';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import { runAfterKeyboardDismiss } from '../utils/keyboard';
 
 const ACCENT = '#7C3AED';
-const ACCENT_BG = '#EDE9FE';
+const ACCENT_BG = 'rgba(124, 58, 237, 0.18)';
 
 interface PlanSettlementModalProps {
   visible: boolean;
   plan: Plan;
-  /** Pre-fill: who pays */
   fromMember?: PlanMember;
-  /** Pre-fill: who receives */
   toMember?: PlanMember;
-  /** Pre-fill: suggested amount */
   suggestedAmount?: number;
   onClose: () => void;
 }
@@ -41,6 +39,8 @@ export function PlanSettlementModal({
 }: PlanSettlementModalProps) {
   const currency = useAppStore((s) => s.currency);
   const addPlanSettlement = useAppStore((s) => s.addPlanSettlement);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [amtText, setAmtText] = useState('');
   const [date, setDate] = useState(todayStr());
@@ -99,13 +99,12 @@ export function PlanSettlementModal({
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          {/* Transfer banner */}
           <View style={styles.transferCard}>
             <MemberBubble member={fromMember} label="Paga" />
             <View style={styles.arrowWrap}>
               <View style={styles.arrowLine} />
               <Text style={styles.arrowAmt}>
-                {Number.isFinite(amount) && amount > 0 ? fmt(amount, currency) : '—'}
+                {Number.isFinite(amount) && amount > 0 ? fmt(amount, currency) : ''}
               </Text>
               <View style={styles.arrowLine} />
               <View style={styles.arrowHead} />
@@ -113,7 +112,6 @@ export function PlanSettlementModal({
             <MemberBubble member={toMember} label="Recibe" />
           </View>
 
-          {/* Amount */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Monto</Text>
             <View style={styles.amountRow}>
@@ -121,7 +119,7 @@ export function PlanSettlementModal({
                 value={amtText}
                 onChangeText={setAmtText}
                 placeholder="0,00"
-                placeholderTextColor={APP_COLORS.textMuted}
+                placeholderTextColor={theme.textMuted}
                 keyboardType="decimal-pad"
                 style={[styles.input, styles.amountInput]}
                 autoFocus
@@ -132,7 +130,6 @@ export function PlanSettlementModal({
             </View>
           </View>
 
-          {/* Suggested amount shortcut */}
           {suggestedAmount != null && suggestedAmount > 0 && (
             <Pressable
               onPress={() => setAmtText(String(suggestedAmount).replace('.', ','))}
@@ -144,27 +141,25 @@ export function PlanSettlementModal({
             </Pressable>
           )}
 
-          {/* Date */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Fecha</Text>
             <TextInput
               value={date}
               onChangeText={setDate}
               placeholder="AAAA-MM-DD"
-              placeholderTextColor={APP_COLORS.textMuted}
+              placeholderTextColor={theme.textMuted}
               style={styles.input}
               keyboardType="numeric"
             />
           </View>
 
-          {/* Note */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Nota (opcional)</Text>
             <TextInput
               value={note}
               onChangeText={setNote}
               placeholder="Ej. Transferencia por Bizum"
-              placeholderTextColor={APP_COLORS.textMuted}
+              placeholderTextColor={theme.textMuted}
               style={[styles.input, styles.noteInput]}
               multiline
             />
@@ -175,9 +170,10 @@ export function PlanSettlementModal({
   );
 }
 
-// ─── MemberBubble ─────────────────────────────────────────────────────────────
-
 function MemberBubble({ member, label }: { member: PlanMember; label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.bubble}>
       <View style={[styles.bubbleAvatar, { backgroundColor: member.bg }]}>
@@ -189,18 +185,17 @@ function MemberBubble({ member, label }: { member: PlanMember; label: string }) 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   scroll: {
     gap: 8,
     padding: 16,
     paddingBottom: 32,
   },
 
-  // ── Transfer card ──
   transferCard: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
@@ -225,13 +220,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   bubbleName: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
   },
   bubbleLabel: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -241,48 +236,48 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   arrowLine: {
-    backgroundColor: APP_COLORS.border,
+    backgroundColor: t.border,
     height: 1.5,
     width: '80%',
   },
   arrowAmt: {
     color: ACCENT,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_700Bold',
     fontSize: 16,
     textAlign: 'center',
   },
   arrowHead: {
     borderBottomColor: 'transparent',
     borderBottomWidth: 5,
-    borderLeftColor: APP_COLORS.border,
+    borderLeftColor: t.border,
     borderLeftWidth: 8,
     borderTopColor: 'transparent',
     borderTopWidth: 5,
   },
 
-  // ── Fields ──
   field: {
     gap: 8,
     paddingVertical: 8,
   },
   fieldLabel: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '500',
     minHeight: 46,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   amountRow: {
     alignItems: 'center',
@@ -291,14 +286,15 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
-    fontFamily: 'DMSerifDisplay_400Regular',
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 24,
+    letterSpacing: -1.2,
     textAlign: 'center',
   },
   currencyBadge: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     height: 46,
@@ -306,7 +302,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   currencyText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -328,7 +324,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ── Footer ──
   saveBtn: {
     alignItems: 'center',
     backgroundColor: ACCENT,

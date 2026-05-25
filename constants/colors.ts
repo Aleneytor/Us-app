@@ -28,42 +28,70 @@ export function getIconColor(id: string): IconColorSet {
   return ICON_COLORS.find((c) => c.id === id) ?? ICON_COLORS[0];
 }
 
-export interface TagColorSet {
-  bg: string;
-  c: string;
+// ─── Theme system ─────────────────────────────────────────────────────────────
+
+export type ThemeMode = 'dark' | 'light';
+
+export interface AppTheme {
+  mode: ThemeMode;
+  background: string;
+  surface: string;
+  surfaceSecond: string;
+  border: string;
+  softSurface: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  blue: string;
+  green: string;
+  red: string;
+  income: string;
+  expense: string;
+  navBg: string;
+  navBorder: string;
+  inputBg: string;
+  shadowColor: string;
 }
 
-export const TAG_COLOR_SETS: TagColorSet[] = [
-  { bg: '#DBEAFE', c: '#2563EB' },
-  { bg: '#CCFBF1', c: '#0D9488' },
-  { bg: '#FFE4E6', c: '#EC1147' },
-  { bg: '#FEF3C7', c: '#D97706' },
-  { bg: '#DCFCE7', c: '#16A34A' },
-  { bg: '#EDE9FE', c: '#7C3AED' },
-  { bg: '#FCE7F3', c: '#BE185D' },
-  { bg: '#FEF9C3', c: '#CA8A04' },
-  { bg: '#E0F2FE', c: '#0284C7' },
-  { bg: '#FEE2E2', c: '#DC2626' },
-];
+export const DARK_THEME: AppTheme = {
+  mode: 'dark',
+  background:    '#0B1119',
+  surface:       '#262D33',
+  surfaceSecond: '#1C2228',
+  border:        'rgba(255, 255, 255, 0.12)',
+  softSurface:   'rgba(255, 255, 255, 0.08)',
+  textPrimary:   '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.72)',
+  textMuted:     'rgba(255, 255, 255, 0.48)',
+  blue:          '#2563EB',
+  green:         '#16A34A',
+  red:           '#EC1147',
+  income:        '#16A34A',
+  expense:       '#EC1147',
+  navBg:         '#151C23',
+  navBorder:     'rgba(255, 255, 255, 0.08)',
+  inputBg:       'rgba(255, 255, 255, 0.06)',
+  shadowColor:   '#7E7E7E',
+};
 
-export function tagColorFor(tag: string): TagColorSet {
-  let hash = 0;
-  for (let i = 0; i < tag.length; i++) {
-    hash = ((hash * 31) + tag.charCodeAt(i)) & 0xffff;
-  }
-  return TAG_COLOR_SETS[hash % TAG_COLOR_SETS.length];
-}
+export const LIGHT_THEME: AppTheme = {
+  mode: 'light',
+  background:    '#F2F2F7',
+  surface:       '#FFFFFF',
+  surfaceSecond: '#F8F8FA',
+  border:        'rgba(0, 0, 0, 0.10)',
+  softSurface:   'rgba(0, 0, 0, 0.05)',
+  textPrimary:   '#0F172A',
+  textSecondary: 'rgba(15, 23, 42, 0.65)',
+  textMuted:     'rgba(15, 23, 42, 0.40)',
+  blue:          '#2563EB',
+  green:         '#16A34A',
+  red:           '#EC1147',
+  income:        '#16A34A',
+  expense:       '#EC1147',
+  navBg:         '#FFFFFF',
+  navBorder:     'rgba(0, 0, 0, 0.08)',
+  inputBg:       '#F0F0F5',
+  shadowColor:   '#A0A0A0',
+};
 
-export const APP_COLORS = {
-  background: '#F8FAFC',
-  surface: '#FFFFFF',
-  border: '#E2E8F0',
-  textPrimary: '#0F172A',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  blue: '#2563EB',
-  green: '#16A34A',
-  red: '#EC1147',
-  income: '#16A34A',
-  expense: '#EC1147',
-} as const;

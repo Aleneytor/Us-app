@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -17,7 +18,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
-import { APP_COLORS, ICON_COLORS } from '../constants/colors';
+import { ICON_COLORS, type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { refreshCurrentRoom, seedDemoData, useAppStore } from '../store/useAppStore';
 import { CURRENCIES } from '../types';
 import type { CurrencyCode } from '../types';
@@ -49,7 +51,12 @@ export default function PerfilScreen() {
   const deleteUser     = useAppStore((s) => s.deleteUser);
   const partnerForUser = useAppStore((s) => s.partnerForUser);
   const updateUserPhoto = useAppStore((s) => s.updateUserPhoto);
- 
+  const themeMode      = useAppStore((s) => s.themeMode);
+  const setThemeMode   = useAppStore((s) => s.setThemeMode);
+
+  const theme  = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const router         = useRouter();
   const insets         = useSafeAreaInsets();
 
@@ -62,9 +69,9 @@ export default function PerfilScreen() {
   const [colorKey2, setColorKey2]     = useState('pink');
 
   const user    = users[currentUser] ?? { name: currentUser, initials: '?', color: '#6B7280', bg: '#F3F4F6' };
-  const sync    = SYNC_COPY[syncStatus];
+  const sync    = SYNC_COPY[syncStatus] ?? SYNC_COPY.connecting;
   const version = Constants.expoConfig?.version ?? '1.0.0';
-  const userIds = Object.keys(users);
+  const userIds = Object.keys(users ?? {});
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -87,7 +94,6 @@ export default function PerfilScreen() {
     const slug2  = name2.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const roomId = `${slug1}-${slug2}-main`;
 
-    // Create both users pointing to each other as partners, sharing the same room
     await addUser({ uid: uid1, data: { name: name1, initials: generateInitials(name1), color: palette1.color, bg: palette1.bg }, roomId, partnerId: uid2 });
     await addUser({ uid: uid2, data: { name: name2, initials: generateInitials(name2), color: palette2.color, bg: palette2.bg }, roomId, partnerId: uid1 });
 
@@ -129,7 +135,7 @@ export default function PerfilScreen() {
       ],
     );
   };
- 
+
   const handlePickPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -147,9 +153,7 @@ export default function PerfilScreen() {
       quality: 0.5,
     });
 
-    if (result.canceled || !result.assets || result.assets.length === 0) {
-      return;
-    }
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
 
     const localUri = result.assets[0].uri;
     setUploading(true);
@@ -157,26 +161,19 @@ export default function PerfilScreen() {
     try {
       const response = await fetch(localUri);
       const blob = await response.blob();
-
       const fileExt = localUri.split('.').pop() || 'png';
       const fileName = `${currentUser}-${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('avatars')
-        .upload(filePath, blob, {
+        .upload(fileName, blob, {
           contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
           upsert: true,
         });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       await updateUserPhoto(currentUser, { uri: publicUrl });
       Alert.alert('¡Éxito!', 'Foto de perfil actualizada correctamente.');
     } catch (err: any) {
@@ -195,7 +192,7 @@ export default function PerfilScreen() {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.scrollContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.textMuted} />}
       showsVerticalScrollIndicator={false}
       bounces={false}
       overScrollMode="never"
@@ -210,16 +207,13 @@ export default function PerfilScreen() {
         <View style={styles.heroHeaderRow}>
           <Pressable
             onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace('/(tabs)');
-              }
+              if (router.canGoBack()) router.back();
+              else router.replace('/(tabs)');
             }}
             style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
             hitSlop={12}
           >
-            <Ionicons name="arrow-back" size={24} color={APP_COLORS.textPrimary} />
+            <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
           </Pressable>
         </View>
 
@@ -235,7 +229,7 @@ export default function PerfilScreen() {
               ) : user.photo ? (
                 <Image source={user.photo} style={styles.heroPhoto} />
               ) : (
-                <Text style={[styles.heroInitials, { color: user.color, fontSize: user.initials.length > 1 ? 22 : 28 }]}>
+                <Text style={[styles.heroInitials, { color: user.color, fontSize: (user.initials?.length ?? 0) > 1 ? 22 : 28 }]}>
                   {user.initials}
                 </Text>
               )}
@@ -274,7 +268,7 @@ export default function PerfilScreen() {
                       {item.photo ? (
                         <Image source={item.photo} style={styles.userPhoto} />
                       ) : (
-                        <Text style={[styles.userInitials, { color: item.color, fontSize: item.initials.length > 1 ? 13 : 16 }]}>
+                        <Text style={[styles.userInitials, { color: item.color, fontSize: (item.initials?.length ?? 0) > 1 ? 13 : 16 }]}>
                           {item.initials}
                         </Text>
                       )}
@@ -285,7 +279,7 @@ export default function PerfilScreen() {
                       </Text>
                       {partner ? (
                         <Text style={styles.userPartner}>
-                          <Ionicons name="link-outline" size={11} color={APP_COLORS.textMuted} /> Vinculado con {partner.name}
+                          <Ionicons name="link-outline" size={11} color={theme.textMuted} /> Vinculado con {partner.name}
                         </Text>
                       ) : active ? (
                         <Text style={styles.userActive}>Activo ahora</Text>
@@ -299,7 +293,7 @@ export default function PerfilScreen() {
                           hitSlop={{ top: 10, bottom: 10, left: 12, right: 8 }}
                           style={({ pressed }) => [pressed && styles.pressed]}
                         >
-                          <Ionicons name="trash-outline" size={19} color={APP_COLORS.textMuted} />
+                          <Ionicons name="trash-outline" size={19} color={theme.textMuted} />
                         </Pressable>
                       )
                     }
@@ -309,7 +303,6 @@ export default function PerfilScreen() {
             })}
           </View>
 
-          {/* Add user */}
           {!showAddForm ? (
             <Pressable
               onPress={() => setShowAddForm(true)}
@@ -320,67 +313,133 @@ export default function PerfilScreen() {
             </Pressable>
           ) : (
             <View style={styles.addForm}>
-              <Text style={styles.addFormTitle}>Nuevo usuario</Text>
+              <Text style={styles.addFormTitle}>Nueva pareja</Text>
 
-              <Text style={styles.fieldLabel}>Nombre</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Ej. María"
-                placeholderTextColor={APP_COLORS.textMuted}
-                value={newName}
-                onChangeText={setNewName}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={() => runAfterKeyboardDismiss(() => void handleAddPair())}
-              />
+              {/* Usuario 1 */}
+              <View style={styles.userSectionForm}>
+                <Text style={styles.userSectionHeader}>Primer Integrante</Text>
+                
+                <Text style={styles.fieldLabel}>Nombre</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Ej. María"
+                  placeholderTextColor={theme.textMuted}
+                  value={newName}
+                  onChangeText={setNewName}
+                  autoFocus
+                  returnKeyType="next"
+                />
 
-              <Text style={styles.fieldLabel}>Color</Text>
-              <View style={styles.palette}>
-                {ICON_COLORS.map((c) => (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => setColorKey(c.id)}
-                    style={[
-                      styles.paletteCircle,
-                      { backgroundColor: c.color },
-                      colorKey === c.id && styles.paletteCircleSelected,
-                    ]}
-                  >
-                    {colorKey === c.id
-                      ? <Ionicons name="checkmark" size={13} color="#fff" />
-                      : null}
-                  </Pressable>
-                ))}
+                <Text style={styles.fieldLabel}>Color</Text>
+                <View style={styles.palette}>
+                  {ICON_COLORS.map((c) => (
+                    <Pressable
+                      key={c.id}
+                      onPress={() => setColorKey(c.id)}
+                      style={[
+                        styles.paletteCircle,
+                        { backgroundColor: c.color },
+                        colorKey === c.id && styles.paletteCircleSelected,
+                      ]}
+                    >
+                      {colorKey === c.id ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+                    </Pressable>
+                  ))}
+                </View>
               </View>
 
-              {/* Preview */}
-              {newName.trim().length > 0 && (() => {
-                const p = ICON_COLORS.find((c) => c.id === colorKey) ?? ICON_COLORS[0]!;
-                return (
-                  <View style={styles.previewRow}>
-                    <View style={[styles.previewAvatar, { backgroundColor: p.bg }]}>
-                      <Text style={[styles.previewInitials, { color: p.color }]}>
-                        {generateInitials(newName.trim())}
-                      </Text>
-                    </View>
-                    <Text style={styles.previewName}>{newName.trim()}</Text>
-                  </View>
-                );
-              })()}
+              {/* Divider */}
+              <View style={styles.formSectionDivider} />
+
+              {/* Usuario 2 */}
+              <View style={styles.userSectionForm}>
+                <Text style={styles.userSectionHeader}>Segundo Integrante (Pareja)</Text>
+                
+                <Text style={styles.fieldLabel}>Nombre</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Ej. Juan"
+                  placeholderTextColor={theme.textMuted}
+                  value={newName2}
+                  onChangeText={setNewName2}
+                  returnKeyType="done"
+                  onSubmitEditing={() => runAfterKeyboardDismiss(() => void handleAddPair())}
+                />
+
+                <Text style={styles.fieldLabel}>Color</Text>
+                <View style={styles.palette}>
+                  {ICON_COLORS.map((c) => (
+                    <Pressable
+                      key={c.id}
+                      onPress={() => setColorKey2(c.id)}
+                      style={[
+                        styles.paletteCircle,
+                        { backgroundColor: c.color },
+                        colorKey2 === c.id && styles.paletteCircleSelected,
+                      ]}
+                    >
+                      {colorKey2 === c.id ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Previews */}
+              {(newName.trim().length > 0 || newName2.trim().length > 0) && (
+                <View style={styles.previewsRow}>
+                  {newName.trim().length > 0 && (() => {
+                    const p = ICON_COLORS.find((c) => c.id === colorKey) ?? ICON_COLORS[0]!;
+                    return (
+                      <View style={styles.previewRow}>
+                        <View style={[styles.previewAvatar, { backgroundColor: p.bg }]}>
+                          <Text style={[styles.previewInitials, { color: p.color }]}>
+                            {generateInitials(newName.trim())}
+                          </Text>
+                        </View>
+                        <Text style={styles.previewName} numberOfLines={1}>{newName.trim()}</Text>
+                      </View>
+                    );
+                  })()}
+                  
+                  {newName.trim().length > 0 && newName2.trim().length > 0 && (
+                    <Ionicons name="heart" size={16} color="#EC1147" style={{ alignSelf: 'center' }} />
+                  )}
+
+                  {newName2.trim().length > 0 && (() => {
+                    const p = ICON_COLORS.find((c) => c.id === colorKey2) ?? ICON_COLORS[1]!;
+                    return (
+                      <View style={styles.previewRow}>
+                        <View style={[styles.previewAvatar, { backgroundColor: p.bg }]}>
+                          <Text style={[styles.previewInitials, { color: p.color }]}>
+                            {generateInitials(newName2.trim())}
+                          </Text>
+                        </View>
+                        <Text style={styles.previewName} numberOfLines={1}>{newName2.trim()}</Text>
+                      </View>
+                    );
+                  })()}
+                </View>
+              )}
 
               <View style={styles.formButtons}>
                 <Pressable
-                  onPress={() => runAfterKeyboardDismiss(() => { setShowAddForm(false); setNewName(''); setColorKey('purple'); })}
+                  onPress={() => runAfterKeyboardDismiss(() => {
+                    setShowAddForm(false);
+                    setNewName('');
+                    setColorKey('indigo');
+                    setNewName2('');
+                    setColorKey2('pink');
+                  })}
                   style={({ pressed }) => [styles.cancelBtn, pressed && styles.pressed]}
                 >
                   <Text style={styles.cancelBtnText}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => runAfterKeyboardDismiss(() => void handleAddPair())}
-                  disabled={!newName.trim()}
+                  disabled={!newName.trim() || !newName2.trim()}
                   style={({ pressed }) => [
                     styles.confirmBtn,
-                    !newName.trim() && styles.confirmBtnDisabled,
+                    (!newName.trim() || !newName2.trim()) && styles.confirmBtnDisabled,
                     pressed && styles.pressed,
                   ]}
                 >
@@ -395,6 +454,7 @@ export default function PerfilScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Preferencias</Text>
           <View style={styles.card}>
+            {/* Moneda */}
             {Object.values(CURRENCIES).map((item, idx) => (
               <View key={item.code}>
                 {idx > 0 && <View style={styles.divider} />}
@@ -416,6 +476,31 @@ export default function PerfilScreen() {
                 </Pressable>
               </View>
             ))}
+
+            {/* Toggle de tema */}
+            <View style={styles.divider} />
+            <View style={styles.themeTile}>
+              <Ionicons
+                name={themeMode === 'light' ? 'sunny' : 'moon'}
+                size={22}
+                color={theme.textSecondary}
+              />
+              <View style={styles.themeInfo}>
+                <Text style={styles.themeLabel}>
+                  {themeMode === 'light' ? 'Modo claro' : 'Modo oscuro'}
+                </Text>
+                <Text style={styles.themeSub}>
+                  {themeMode === 'light' ? 'Interfaz en colores claros' : 'Interfaz en colores oscuros'}
+                </Text>
+              </View>
+              <Switch
+                value={themeMode === 'light'}
+                onValueChange={(v) => void setThemeMode(v ? 'light' : 'dark')}
+                trackColor={{ false: theme.softSurface, true: '#7C3AED' }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor={theme.softSurface}
+              />
+            </View>
           </View>
         </View>
 
@@ -436,7 +521,7 @@ export default function PerfilScreen() {
               onPress={() => void handleRefresh()}
               style={({ pressed }) => [styles.refreshBtn, pressed && styles.pressed]}
             >
-              <Ionicons name="refresh" size={18} color={APP_COLORS.textPrimary} />
+              <Ionicons name="refresh" size={18} color={theme.textPrimary} />
             </Pressable>
           </View>
         </View>
@@ -450,7 +535,7 @@ export default function PerfilScreen() {
           </View>
         </View>
 
-        {/* Datos de prueba */}
+        {/* Desarrollo */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Desarrollo</Text>
           <View style={styles.card}>
@@ -468,7 +553,7 @@ export default function PerfilScreen() {
                 </Text>
                 <Text style={styles.devSub}>Crea usuarios de prueba con datos de ejemplo</Text>
               </View>
-              {!loadingDemo && <Ionicons name="chevron-forward" size={16} color={APP_COLORS.textMuted} />}
+              {!loadingDemo && <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />}
             </Pressable>
           </View>
         </View>
@@ -478,20 +563,17 @@ export default function PerfilScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  // -- Screen ----------------------------------------------------------------
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   screen: {
-    backgroundColor: APP_COLORS.background,
+    backgroundColor: t.background,
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 56,
   },
-
-  // -- Hero ------------------------------------------------------------------
   hero: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
     elevation: 4,
@@ -500,7 +582,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     paddingHorizontal: 28,
     paddingTop: 56,
-    shadowColor: '#7E7E7E',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.10,
     shadowRadius: 10,
@@ -545,51 +627,43 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   heroName: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontFamily: 'Poppins_700Bold',
     fontSize: 26,
     lineHeight: 32,
   },
   heroSub: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 13,
     fontWeight: '600',
     marginTop: 2,
   },
-
-  // -- Content ---------------------------------------------------------------
   content: {
     gap: 24,
     paddingHorizontal: 20,
     paddingTop: 24,
   },
-
-  // -- Section ---------------------------------------------------------------
   section: {
     gap: 10,
   },
   sectionLabel: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.6,
     marginLeft: 4,
     textTransform: 'uppercase',
   },
-
-  // -- Card ------------------------------------------------------------------
   card: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     borderRadius: 18,
     overflow: 'hidden',
   },
   divider: {
-    backgroundColor: APP_COLORS.border,
+    backgroundColor: t.border,
     height: StyleSheet.hairlineWidth,
     marginLeft: 64,
   },
-
-  // -- User tiles ------------------------------------------------------------
   userTile: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -618,7 +692,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   userName: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -628,12 +702,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   userPartner: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },
-
-  // -- Add user button -------------------------------------------------------
   addBtn: {
     alignItems: 'center',
     borderColor: '#C7D2FE',
@@ -650,21 +722,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-
-  // -- Add form --------------------------------------------------------------
   addForm: {
-    backgroundColor: APP_COLORS.surface,
+    backgroundColor: t.surface,
     borderRadius: 18,
     gap: 14,
     padding: 18,
   },
   addFormTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
   fieldLabel: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.4,
@@ -672,14 +742,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   textInput: {
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
     paddingHorizontal: 14,
     paddingVertical: 12,
+    backgroundColor: t.inputBg,
   },
   palette: {
     flexDirection: 'row',
@@ -694,19 +765,29 @@ const styles = StyleSheet.create({
     width: 32,
   },
   paletteCircleSelected: {
-    borderColor: APP_COLORS.textPrimary,
+    borderColor: t.textPrimary,
     borderWidth: 2.5,
+  },
+  previewsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 4,
   },
   previewRow: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.background,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.background,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flex: 1,
+    minWidth: 100,
   },
   previewAvatar: {
     alignItems: 'center',
@@ -720,9 +801,25 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   previewName: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '700',
+    flex: 1,
+  },
+  userSectionForm: {
+    gap: 10,
+  },
+  userSectionHeader: {
+    color: t.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+    opacity: 0.85,
+  },
+  formSectionDivider: {
+    backgroundColor: t.border,
+    height: 1,
+    marginVertical: 4,
   },
   formButtons: {
     flexDirection: 'row',
@@ -731,14 +828,14 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
     flex: 1,
     paddingVertical: 13,
   },
   cancelBtnText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -757,8 +854,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-
-  // -- Currency tiles --------------------------------------------------------
   currencyTile: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -768,14 +863,14 @@ const styles = StyleSheet.create({
   },
   currencySymbolBox: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: t.softSurface,
     borderRadius: 10,
     height: 38,
     justifyContent: 'center',
     width: 38,
   },
   currencySymbol: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 16,
     fontWeight: '900',
   },
@@ -785,24 +880,44 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   currencyLabel: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   currencyCode: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
   currencyCircleEmpty: {
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 11,
     borderWidth: 1.5,
     height: 22,
     width: 22,
   },
-
-  // -- Sync ------------------------------------------------------------------
+  themeTile: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  themeInfo: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  themeLabel: {
+    color: t.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  themeSub: {
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
   syncCard: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -823,7 +938,7 @@ const styles = StyleSheet.create({
     width: 42,
   },
   syncStatusLabel: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -834,14 +949,12 @@ const styles = StyleSheet.create({
   },
   refreshBtn: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: t.softSurface,
     borderRadius: 12,
     height: 42,
     justifyContent: 'center',
     width: 42,
   },
-
-  // -- About -----------------------------------------------------------------
   aboutCard: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -850,17 +963,15 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   aboutKey: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   aboutValue: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
-
-  // -- Dev tiles -------------------------------------------------------------
   devTile: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -882,12 +993,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   devLabel: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   devSub: {
-    color: APP_COLORS.textMuted,
+    color: t.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -908,10 +1019,8 @@ const styles = StyleSheet.create({
     height: 42,
     justifyContent: 'center',
     width: 42,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: t.softSurface,
   },
-
-  // -- Shared ----------------------------------------------------------------
   pressed: {
     opacity: 0.68,
   },

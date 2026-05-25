@@ -4,6 +4,7 @@ node_modules/
 # Editor
 .vscode/
 .idea/
+.claude/
 
 # OS
 .DS_Store
@@ -16,6 +17,10 @@ Thumbs.db
 
 # Netlify cache
 .netlify/
+
+# Local tool state / logs
+.expo/settings.json
+*.log
 
 # Markdown internos / notas de desarrollo
 PLAN_SALDO_REAL.md

@@ -1,41 +1,36 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRef } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORIES } from '../constants/categories';
-import { APP_COLORS, getIconColor } from '../constants/colors';
+import { getIconColor, type AppTheme } from '../constants/colors';
 import type { Transaction } from '../types';
 import { formatDateShort, fmt } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
-import { getUserData } from '../utils/users';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface TransactionTileProps {
   transaction: Transaction;
   ym: string;
   onPress: () => void;
   onLongPress?: () => void;
-  amountCategoryFontSize?: number;
-  amountCategoryColor?: string;
   flat?: boolean;
 }
 
 export function TransactionTile({
   transaction,
-  ym: _ym,
   onPress,
   onLongPress,
-  amountCategoryFontSize,
-  amountCategoryColor,
   flat = false,
 }: TransactionTileProps) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressPressRef = useRef(false);
   const currency = useAppStore((s) => s.currency);
-  const users = useAppStore((s) => s.users);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   const category = CATEGORIES[transaction.cat] ?? CATEGORIES.other;
   const iconColor = getIconColor(transaction.iconColor);
-  const user = getUserData(users, transaction.uid);
-  const amountColor = transaction.kind === 'income' ? APP_COLORS.income : APP_COLORS.expense;
-  const sign = transaction.kind === 'income' ? '+' : '-';
+  const isIncome = transaction.kind === 'income';
 
   const handlePress = () => {
     if (suppressPressRef.current) {
@@ -71,121 +66,84 @@ export function TransactionTile({
       onTouchEnd={() => {
         touchStartRef.current = null;
       }}
-      style={({ pressed }) => [styles.card, flat && styles.cardFlat, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.card,
+        flat && styles.cardFlat,
+        pressed && styles.pressed,
+      ]}
     >
-      <View style={[styles.iconWrap, { backgroundColor: iconColor.bg }]}>
-        <Ionicons name={category.icon} size={20} color={iconColor.color} />
+      <View style={[styles.iconWrap, { backgroundColor: iconColor.color }]}>
+        <Ionicons name={category.icon} size={20} color="#FFFFFF" />
       </View>
 
       <View style={styles.body}>
-        <View style={styles.topLine}>
-          <View style={[styles.userAvatar, { backgroundColor: user.bg }]}>
-            {user.photo ? (
-              <Image source={user.photo} style={styles.userPhoto} />
-            ) : (
-              <Text style={[styles.userInitial, { color: user.color }]}>{user.initials}</Text>
-            )}
-          </View>
-          <Text numberOfLines={1} style={styles.title}>
-            {transaction.desc || category.label}
-          </Text>
-        </View>
-
-        <View style={styles.metaLine}>
-          <Text style={styles.meta}>{formatDateShort(transaction.date)}</Text>
-          {transaction.type === 'once' ? (
-            <MaterialCommunityIcons name="star-four-points" size={11} color="#F97316" />
-          ) : (
-            <Ionicons name={getTransactionTypeIcon(transaction.type)} size={11} color="#F97316" />
-          )}
-          {transaction.account ? (
-            <>
-              <View style={styles.dot} />
-              <Text style={styles.meta} numberOfLines={1}>{transaction.account}</Text>
-            </>
-          ) : null}
-        </View>
+        <Text numberOfLines={1} style={styles.title}>
+          {transaction.desc || category.label}
+        </Text>
+        <Text style={styles.date}>{formatDateShort(transaction.date)}</Text>
       </View>
 
       <View style={styles.amountBlock}>
-        <Text style={[styles.amount, { color: amountColor }]}>
-          <Text style={styles.amountSign}>{sign}</Text>
+        <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
           {fmt(transaction.amt, currency)}
         </Text>
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.amountCategory,
-            amountCategoryFontSize !== undefined && { fontSize: amountCategoryFontSize },
-            amountCategoryColor !== undefined && { color: amountCategoryColor },
-          ]}
-        >
-          {category.label}
-        </Text>
+        <View style={[styles.kindIndicator, { backgroundColor: isIncome ? '#00D158' : '#FF0B4F' }]}>
+          <MaterialCommunityIcons
+            name={isIncome ? 'arrow-top-right' : 'arrow-bottom-left'}
+            size={15}
+            color="#FFFFFF"
+          />
+        </View>
       </View>
     </Pressable>
   );
 }
 
-function getTransactionTypeIcon(type: Transaction['type']): React.ComponentProps<typeof Ionicons>['name'] {
-  if (type === 'monthly') return 'refresh-outline';
-  if (type === 'weekly') return 'calendar-outline';
-  if (type === 'biweekly') return 'git-compare-outline';
-  return 'radio-button-on-outline';
-}
-
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   amount: {
-    fontFamily: 'Inter_600SemiBold',
+    color: t.textPrimary,
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'right',
   },
   amountBlock: {
-    alignItems: 'flex-end',
-    gap: 5,
-    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
     marginLeft: 12,
-    minWidth: 92,
-  },
-  amountSign: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  amountCategory: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
+    minWidth: 96,
   },
   body: {
     flex: 1,
-    gap: 6,
+    gap: 4,
     minWidth: 0,
   },
   card: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: 16,
+    backgroundColor: t.surface,
+    borderRadius: 20,
     elevation: 3,
     flexDirection: 'row',
     gap: 12,
+    minHeight: 60,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    shadowColor: '#7E7E7E',
+    shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
   },
   cardFlat: {
     elevation: 0,
     shadowOpacity: 0,
   },
-  dot: {
-    backgroundColor: '#CBD5E1',
-    borderRadius: 2,
-    height: 4,
-    width: 4,
+  date: {
+    color: t.textMuted,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    fontWeight: '600',
   },
   iconWrap: {
     alignItems: 'center',
@@ -195,44 +153,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 40,
   },
-  meta: {
-    color: APP_COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  metaLine: {
+  kindIndicator: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
+    borderRadius: 9,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
   },
   pressed: {
     opacity: 0.72,
   },
   title: {
-    color: APP_COLORS.textPrimary,
-    flex: 1,
+    color: t.textPrimary,
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 14,
-    fontWeight: '700',
-  },
-  topLine: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  userAvatar: {
-    alignItems: 'center',
-    borderRadius: 9,
-    height: 18,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: 18,
-  },
-  userInitial: {
-    fontSize: 9,
-    fontWeight: '800',
-  },
-  userPhoto: {
-    height: '100%',
-    width: '100%',
+    fontWeight: '600',
   },
 });

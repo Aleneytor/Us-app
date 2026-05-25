@@ -16,7 +16,7 @@ function asNumber(value: unknown): number {
 }
 
 function asUserId(value: unknown): UserId {
-  return value === 'a' || value === 'b' || value === 'c' || value === 'd' ? value : 'a';
+  return typeof value === 'string' && value.trim() ? value.trim() : 'demo_a';
 }
 
 function normalizeSavingPlanHistoryEntry(value: unknown): SavingPlanHistoryEntry | null {

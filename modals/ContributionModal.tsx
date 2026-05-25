@@ -11,12 +11,13 @@ import {
 } from 'react-native';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
 import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
 import type { Goal } from '../types';
 import { goalProgress } from '../utils/calculations';
 import { fmt, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
+import { useTheme } from '../contexts/ThemeContext';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 
 interface ContributionModalProps {
@@ -30,6 +31,8 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
   const contribs = useAppStore((s) => s.payload.contribs);
   const addContribution = useAppStore((s) => s.addContribution);
   const currency = useAppStore((s) => s.currency);
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [amt, setAmt] = useState('');
   const [date, setDate] = useState(todayStr());
@@ -110,11 +113,14 @@ function Field({
   label,
   ...props
 }: ComponentProps<typeof TextInput> & { label: string }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor={APP_COLORS.textMuted}
+        placeholderTextColor={theme.textMuted}
         style={[styles.input, props.multiline && styles.textarea]}
         {...props}
       />
@@ -122,7 +128,7 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: AppTheme) => StyleSheet.create({
   backdrop: {
     alignItems: 'center',
     flex: 1,
@@ -144,8 +150,8 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   footer: {
-    backgroundColor: APP_COLORS.surface,
-    borderTopColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderTopColor: t.border,
     borderTopWidth: 1,
     flexDirection: 'row',
     gap: 10,
@@ -153,8 +159,8 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderBottomColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderBottomColor: t.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -164,29 +170,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   input: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    textAlignVertical: 'center',
   },
   keyboardView: {
     flex: 1,
   },
   label: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: APP_COLORS.blue,
+    backgroundColor: t.blue,
     borderRadius: 13,
     flex: 1,
     height: 48,
@@ -198,25 +205,25 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   progressBox: {
-    backgroundColor: APP_COLORS.surface,
-    borderColor: APP_COLORS.border,
+    backgroundColor: t.surface,
+    borderColor: t.border,
     borderRadius: 14,
     borderWidth: 1,
     gap: 4,
     padding: 14,
   },
   progressText: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
   progressTitle: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 17,
     fontWeight: '900',
   },
   screen: {
-    backgroundColor: APP_COLORS.background,
+    backgroundColor: t.background,
     borderRadius: 22,
     maxHeight: '96%',
     overflow: 'hidden',
@@ -234,7 +241,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: APP_COLORS.border,
+    borderColor: t.border,
     borderRadius: 13,
     borderWidth: 1,
     flex: 1,
@@ -242,12 +249,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 15,
     fontWeight: '900',
   },
   subtitle: {
-    color: APP_COLORS.textSecondary,
+    color: t.textSecondary,
     fontSize: 13,
     fontWeight: '700',
     marginTop: 3,
@@ -257,7 +264,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   title: {
-    color: APP_COLORS.textPrimary,
+    color: t.textPrimary,
     fontSize: 21,
     fontWeight: MODAL_TITLE_FONT_WEIGHT,
   },

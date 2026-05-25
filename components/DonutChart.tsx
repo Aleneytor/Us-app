@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { APP_COLORS } from '../constants/colors';
+import { type AppTheme } from '../constants/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import type { CurrencyCode } from '../types';
 import { fmt } from '../utils/format';
 
@@ -38,7 +39,6 @@ const ARC_START_DEG = 180;
 const ARC_END_DEG = 360;
 const LEGENDS_PER_PAGE = 6;
 const LEGEND_PAGE_GAP = 32;
-const TRACK_COLOR = '#BFC9D4';
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -61,6 +61,8 @@ interface LegendRowProps {
 }
 
 function LegendRow({ slice, isDisabled, onPress, width, currency }: LegendRowProps) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const available = slice.budget - slice.value;
   const isOver = slice.value > slice.budget && slice.budget > 0;
 
@@ -68,9 +70,13 @@ function LegendRow({ slice, isDisabled, onPress, width, currency }: LegendRowPro
     <View style={{ width }}>
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [styles.legendRow, isDisabled && styles.legendRowDisabled, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.legendRow,
+          isDisabled && styles.legendRowDisabled,
+          pressed && styles.pressed,
+        ]}
       >
-        <View style={[styles.dot, { backgroundColor: isDisabled ? '#9CA3AF' : slice.color }]} />
+        <View style={[styles.dot, { backgroundColor: isDisabled ? (theme.mode === 'light' ? '#9CA3AF' : '#4B5563') : slice.color }]} />
         <Text style={[styles.legendName, isDisabled && styles.legendNameDisabled]} numberOfLines={1}>{slice.label}</Text>
         <Text style={[styles.legendAmt, !isDisabled && isOver && styles.legendAmtOver]} numberOfLines={1}>
           {isOver && !isDisabled ? `+${fmt(Math.abs(available), currency)}` : fmt(available, currency)}
@@ -82,6 +88,8 @@ function LegendRow({ slice, isDisabled, onPress, width, currency }: LegendRowPro
 
 export function DonutChart({ slices, currency, size, disabledIds, onLegendToggle }: Props) {
   const { width } = useWindowDimensions();
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [legendPage, setLegendPage] = useState(0);
   const legendPageRef = useRef(0);
 
@@ -236,13 +244,13 @@ export function DonutChart({ slices, currency, size, disabledIds, onLegendToggle
   return (
     <View style={styles.card}>
       <Animated.View style={[styles.chartWrap, { height: chartContainerHeightAnim, overflow: 'hidden' }]}>
-        <Svg width={chartWidth} height={chartHeight} overflow="hidden">
+        <Svg width={chartWidth} height={chartHeight}>
           {arcs.map((arc) => (
             <AnimatedPath
               key={`track-${arc.id}`}
               d={arc.path}
               fill="none"
-              stroke={TRACK_COLOR}
+              stroke={theme.mode === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.12)'}
               strokeLinecap="round"
               strokeWidth={strokeWidth}
               opacity={getArcOpacity(arc.id)}
@@ -314,7 +322,7 @@ export function DonutChart({ slices, currency, size, disabledIds, onLegendToggle
                 style={[
                   styles.indicator,
                   {
-                    backgroundColor: index === legendPage ? '#1F2937' : '#DADDE2',
+                    backgroundColor: index === legendPage ? (theme.mode === 'light' ? '#0F172A' : '#FFFFFF') : (theme.mode === 'light' ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.34)'),
                     width: legendIndicatorWidths[index],
                   },
                 ]}
@@ -340,7 +348,7 @@ export function DonutChart({ slices, currency, size, disabledIds, onLegendToggle
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme: AppTheme) => StyleSheet.create({
   card: {
     marginHorizontal: 0,
     marginTop: 16,
@@ -365,7 +373,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   indicator: {
-    backgroundColor: '#DADDE2',
+    backgroundColor: 'rgba(255, 255, 255, 0.34)',
     borderRadius: 999,
     height: 4,
     width: 14,
@@ -376,7 +384,7 @@ const styles = StyleSheet.create({
   },
   legendHint: {
     alignSelf: 'flex-start',
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 11,
     fontWeight: '500',
     paddingHorizontal: 20,
@@ -392,7 +400,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   legendAmt: {
-    color: APP_COLORS.textMuted,
+    color: theme.textMuted,
     fontSize: 11,
     fontWeight: '800',
     marginLeft: 'auto',
@@ -401,7 +409,7 @@ const styles = StyleSheet.create({
     color: '#DC2626',
   },
   legendName: {
-    color: APP_COLORS.textPrimary,
+    color: theme.textPrimary,
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
@@ -417,7 +425,7 @@ const styles = StyleSheet.create({
   },
   legendRow: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.surface,
     borderRadius: 10,
     flexDirection: 'row',
     gap: 7,
@@ -425,10 +433,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   legendRowDisabled: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: theme.mode === 'light' ? '#E5E7EB' : 'rgba(255,255,255,0.04)',
   },
   legendNameDisabled: {
-    color: '#9CA3AF',
+    color: theme.textMuted,
   },
   legendScroller: {
     alignSelf: 'center',

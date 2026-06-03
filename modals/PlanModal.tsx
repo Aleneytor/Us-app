@@ -69,8 +69,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [members, setMembers] = useState<PlanMember[]>([meMember]);
-  const [splitMode, setSplitMode] = useState<'equal' | 'parts' | 'percentage'>('equal');
-  const [splitPcts, setSplitPcts] = useState<Record<string, string>>({});
   const [externalName, setExternalName] = useState('');
   const [showAddExternal, setShowAddExternal] = useState(false);
   const [icon, setIcon] = useState('map');
@@ -83,17 +81,10 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
     setDescription(plan?.description ?? '');
     setIcon(plan?.icon ?? 'map');
     setIconColor(plan?.iconColor ?? 'purple');
-    setSplitMode(plan?.splitMode ?? 'equal');
     if (plan) {
       setMembers(plan.members);
-      const pcts: Record<string, string> = {};
-      for (const m of plan.members) {
-        if (m.splitPct != null) pcts[m.id] = String(m.splitPct);
-      }
-      setSplitPcts(pcts);
     } else {
       setMembers([meMember]);
-      setSplitPcts({});
     }
     setExternalName('');
     setShowAddExternal(false);
@@ -132,10 +123,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
     setMembers((prev) => prev.filter((m) => m.id !== id));
   };
 
-  const splitTotal = useMemo(() => {
-    return Object.values(splitPcts).reduce((sum, v) => sum + (Number.parseFloat(v) || 0), 0);
-  }, [splitPcts]);
-
   const validateStep0 = () => {
     if (!title.trim()) {
       Alert.alert('Falta el nombre', 'Dale un nombre al plan.');
@@ -147,10 +134,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
   const validateStep1 = () => {
     if (members.length === 0) {
       Alert.alert('Sin participantes', 'Agrega al menos un participante.');
-      return false;
-    }
-    if (splitMode === 'percentage' && Math.abs(splitTotal - 100) > 0.5) {
-      Alert.alert('Porcentajes incorrectos', `Los porcentajes deben sumar 100%. Actualmente suman ${splitTotal.toFixed(0)}%.`);
       return false;
     }
     return true;
@@ -190,11 +173,6 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
     if (!validateStep0()) { setStep(0); return; }
     if (!validateStep1()) { setStep(1); return; }
 
-    const finalMembers: PlanMember[] = members.map((m) => ({
-      ...m,
-      splitPct: splitMode === 'percentage' ? (Number.parseFloat(splitPcts[m.id] ?? '0') || 0) : undefined,
-    }));
-
     const next: Plan = {
       id: plan?.id ?? Date.now(),
       title: title.trim(),
@@ -202,11 +180,13 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
       iconColor,
       description: description.trim() || undefined,
       date: plan?.date ?? todayStr(),
-      members: finalMembers,
+      members,
       categories: plan?.categories ?? [],
       expenses: plan?.expenses ?? [],
       settlements: plan?.settlements ?? [],
-      splitMode,
+      splitMode: plan?.splitMode ?? 'equal',
+      budget: plan?.budget,
+      finalizedAt: plan?.finalizedAt,
     };
 
     if (editing) updatePlan(next);
@@ -226,14 +206,14 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
         canPressBreadcrumb={(index) => index < step}
         onBreadcrumbPress={setStep}
         onBack={handleBack}
-        accentColor="#2563EB"
+        accentColor="#7C3AED"
         contentContainerStyle={{ padding: 0 }}
         footer={(
           <>
-            <Pressable onPress={handleSecondary} style={styles.secondaryBtn}>
+            <Pressable onPress={handleSecondary} style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}>
               <Text style={styles.secondaryText}>{secondaryLabel}</Text>
             </Pressable>
-            <Pressable onPress={handlePrimary} style={styles.primaryBtn}>
+            <Pressable onPress={handlePrimary} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
               <Text style={styles.primaryText}>{primaryLabel}</Text>
             </Pressable>
           </>
@@ -248,20 +228,38 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
         >
           {step === 0 && (
             <View style={styles.block}>
-              <Field
-                label="Nombre del plan"
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Ej. Viaje a Amsterdam"
-                autoFocus
-              />
-              <Field
-                label="Descripción (opcional)"
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Ej. Fin de semana en mayo con amigos"
-                multiline
-              />
+              <View style={styles.field}>
+                <Text style={styles.label}>Información del Plan</Text>
+                <View style={styles.detailList}>
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailCopy}>
+                      <Text style={styles.detailLabel}>Nombre del plan</Text>
+                      <TextInput
+                        value={title}
+                        onChangeText={setTitle}
+                        placeholder="Ej. Viaje a Ámsterdam"
+                        placeholderTextColor={theme.textMuted}
+                        style={styles.detailInput}
+                        autoFocus
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.separator} />
+                  <View style={[styles.detailRow, { alignItems: 'flex-start' }]}>
+                    <View style={styles.detailCopy}>
+                      <Text style={styles.detailLabel}>Descripción (opcional)</Text>
+                      <TextInput
+                        value={description}
+                        onChangeText={setDescription}
+                        placeholder="Ej. Fin de semana en mayo con amigos"
+                        placeholderTextColor={theme.textMuted}
+                        style={[styles.detailInput, styles.detailTextarea]}
+                        multiline
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
             </View>
           )}
 
@@ -269,114 +267,82 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
             <View style={styles.block}>
               <View style={styles.field}>
                 <Text style={styles.label}>Participantes</Text>
-                <View style={styles.membersWrap}>
+                <View style={styles.detailList}>
                   <MemberChip
                     member={meMember}
                     label="Tú"
                     locked
-                    splitMode={splitMode}
-                    splitPct={splitPcts[meMember.id] ?? ''}
-                    onSplitChange={(v) => setSplitPcts((p) => ({ ...p, [meMember.id]: v }))}
                   />
 
                   {partnerId !== currentUser && (
-                    <Pressable
-                      onPress={togglePartner}
-                      style={({ pressed }) => [
-                        styles.memberChip,
-                        isPartnerIncluded && styles.memberChipActive,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <View style={[styles.memberAvatar, { backgroundColor: partnerMember.bg }]}>
-                        <Text style={[styles.memberInitials, { color: partnerMember.color }]}>
-                          {partnerMember.initials}
-                        </Text>
-                      </View>
-                      <Text style={[styles.memberName, isPartnerIncluded && styles.memberNameActive]}>
-                        {partnerMember.name}
-                      </Text>
-                      {isPartnerIncluded && splitMode === 'percentage' && (
-                        <TextInput
-                          value={splitPcts[partnerMember.id] ?? ''}
-                          onChangeText={(v) => setSplitPcts((p) => ({ ...p, [partnerMember.id]: v }))}
-                          placeholder="0"
-                          keyboardType="decimal-pad"
-                          style={styles.splitInput}
-                          onPressIn={(e) => e.stopPropagation()}
+                    <>
+                      <View style={styles.separator} />
+                      {isPartnerIncluded ? (
+                        <MemberChip
+                          member={partnerMember}
+                          onRemove={togglePartner}
                         />
+                      ) : (
+                        <Pressable
+                          onPress={togglePartner}
+                          style={({ pressed }) => [
+                            styles.memberRow,
+                            styles.memberRowInactive,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <View style={[styles.memberAvatar, { backgroundColor: partnerMember.bg, opacity: 0.6 }]}>
+                            <Text style={[styles.memberInitials, { color: partnerMember.color }]}>
+                              {partnerMember.initials}
+                            </Text>
+                          </View>
+                          <Text style={styles.memberNameInactiveText}>
+                            Incluir a {partnerMember.name}
+                          </Text>
+                          <Ionicons name="add-circle-outline" size={18} color={PLAN_ACCENT} />
+                        </Pressable>
                       )}
-                      {isPartnerIncluded && splitMode === 'percentage' && (
-                        <Text style={styles.splitPct}>%</Text>
-                      )}
-                      {!isPartnerIncluded && (
-                        <Ionicons name="add" size={14} color={theme.textMuted} />
-                      )}
-                    </Pressable>
+                    </>
                   )}
 
                   {members.filter((m) => !m.uid).map((m) => (
-                    <MemberChip
-                      key={m.id}
-                      member={m}
-                      splitMode={splitMode}
-                      splitPct={splitPcts[m.id] ?? ''}
-                      onSplitChange={(v) => setSplitPcts((p) => ({ ...p, [m.id]: v }))}
-                      onRemove={() => removeMember(m.id)}
-                    />
-                  ))}
-
-                  {showAddExternal ? (
-                    <View style={styles.externalForm}>
-                      <TextInput
-                        value={externalName}
-                        onChangeText={setExternalName}
-                        placeholder="Nombre de la persona"
-                        placeholderTextColor={theme.textMuted}
-                        style={styles.externalInput}
-                        autoFocus
-                        onSubmitEditing={addExternal}
-                        returnKeyType="done"
+                    <View key={m.id}>
+                      <View style={styles.separator} />
+                      <MemberChip
+                        member={m}
+                        onRemove={() => removeMember(m.id)}
                       />
-                      <Pressable onPress={addExternal} style={styles.externalAddBtn}>
-                        <Text style={styles.externalAddText}>Agregar</Text>
-                      </Pressable>
-                      <Pressable onPress={() => { setShowAddExternal(false); setExternalName(''); }}>
-                        <Ionicons name="close" size={18} color={theme.textMuted} />
-                      </Pressable>
                     </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => setShowAddExternal(true)}
-                      style={({ pressed }) => [styles.addExternalBtn, pressed && styles.pressed]}
-                    >
-                      <Ionicons name="person-add-outline" size={15} color={PLAN_ACCENT} />
-                      <Text style={styles.addExternalText}>Agregar persona</Text>
-                    </Pressable>
-                  )}
+                  ))}
                 </View>
-              </View>
 
-              <View style={styles.field}>
-                <Text style={styles.label}>División de gastos</Text>
-                <View style={styles.choiceRow}>
-                  <ChoiceButton
-                    label="Partes iguales"
-                    icon="people-outline"
-                    active={splitMode === 'equal'}
-                    onPress={() => setSplitMode('equal')}
-                  />
-                  <ChoiceButton
-                    label="Porcentajes"
-                    icon="pie-chart-outline"
-                    active={splitMode === 'percentage'}
-                    onPress={() => setSplitMode('percentage')}
-                  />
-                </View>
-                {splitMode === 'percentage' && (
-                  <Text style={[styles.splitHint, Math.abs(splitTotal - 100) > 0.5 && styles.splitHintError]}>
-                    Total: {splitTotal.toFixed(0)}% {Math.abs(splitTotal - 100) <= 0.5 ? '✓' : '(debe ser 100%)'}
-                  </Text>
+                {showAddExternal ? (
+                  <View style={styles.externalForm}>
+                    <TextInput
+                      value={externalName}
+                      onChangeText={setExternalName}
+                      placeholder="Nombre de la persona"
+                      placeholderTextColor={theme.textMuted}
+                      style={styles.externalInput}
+                      autoFocus
+                      onSubmitEditing={addExternal}
+                      returnKeyType="done"
+                    />
+                    <Pressable onPress={addExternal} style={({ pressed }) => [styles.externalAddBtn, pressed && styles.pressed]}>
+                      <Text style={styles.externalAddText}>Agregar</Text>
+                    </Pressable>
+                    <Pressable onPress={() => { setShowAddExternal(false); setExternalName(''); }} style={({ pressed }) => pressed && styles.pressed}>
+                      <Ionicons name="close" size={18} color={theme.textMuted} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => setShowAddExternal(true)}
+                    style={({ pressed }) => [styles.addExternalBtn, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="person-add-outline" size={15} color={PLAN_ACCENT} />
+                    <Text style={styles.addExternalText}>Agregar persona externa</Text>
+                  </Pressable>
                 )}
               </View>
             </View>
@@ -386,18 +352,22 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
             <View style={styles.block}>
               <View style={styles.field}>
                 <Text style={styles.label}>Ícono</Text>
-                <IconPicker
-                  value={icon}
-                  colorId={iconColor}
-                  keys={SAVING_ICON_KEYS}
-                  horizontalInset={16}
-                  onChange={setIcon}
-                />
+                <View style={styles.pickerCard}>
+                  <IconPicker
+                    value={icon}
+                    colorId={iconColor}
+                    keys={SAVING_ICON_KEYS}
+                    horizontalInset={16}
+                    onChange={setIcon}
+                  />
+                </View>
               </View>
 
               <View style={styles.field}>
                 <Text style={styles.label}>Color</Text>
-                <ColorPicker value={iconColor} onChange={setIconColor} />
+                <View style={styles.pickerCard}>
+                  <ColorPicker value={iconColor} onChange={setIconColor} />
+                </View>
               </View>
             </View>
           )}
@@ -411,43 +381,25 @@ function MemberChip({
   member,
   label,
   locked,
-  splitMode,
-  splitPct,
-  onSplitChange,
   onRemove,
 }: {
   member: PlanMember;
   label?: string;
   locked?: boolean;
-  splitMode: 'equal' | 'parts' | 'percentage';
-  splitPct: string;
-  onSplitChange: (v: string) => void;
   onRemove?: () => void;
 }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
-    <View style={[styles.memberChip, styles.memberChipActive]}>
+    <View style={styles.memberRow}>
       <View style={[styles.memberAvatar, { backgroundColor: member.bg }]}>
         <Text style={[styles.memberInitials, { color: member.color }]}>{member.initials}</Text>
       </View>
-      <Text style={[styles.memberName, styles.memberNameActive]}>{label ?? member.name}</Text>
-      {splitMode === 'percentage' && (
-        <>
-          <TextInput
-            value={splitPct}
-            onChangeText={onSplitChange}
-            placeholder="0"
-            keyboardType="decimal-pad"
-            style={styles.splitInput}
-          />
-          <Text style={styles.splitPct}>%</Text>
-        </>
-      )}
+      <Text style={styles.memberName}>{label ?? member.name}</Text>
       {!locked && onRemove && (
-        <Pressable onPress={onRemove} hitSlop={6}>
-          <Ionicons name="close-circle" size={16} color={theme.textMuted} />
+        <Pressable onPress={onRemove} hitSlop={6} style={({ pressed }) => pressed && styles.pressed}>
+          <Ionicons name="close-circle" size={18} color={theme.textMuted} />
         </Pressable>
       )}
     </View>
@@ -483,22 +435,6 @@ function ChoiceButton({
   );
 }
 
-function Field({ label, ...props }: ComponentProps<typeof TextInput> & { label: string }) {
-  const theme = useTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        placeholderTextColor={theme.textMuted}
-        style={[styles.input, props.multiline && styles.textarea]}
-        {...props}
-      />
-    </View>
-  );
-}
-
 const makeStyles = (t: AppTheme) => StyleSheet.create({
   content: {
     gap: 16,
@@ -508,79 +444,118 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   block: {
     gap: 16,
   },
-  field: { gap: 7 },
+  field: { gap: 8 },
   label: {
+    color: t.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  pickerCard: {
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 16,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  detailList: {
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  detailRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  detailCopy: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
+  },
+  detailLabel: {
     color: t.textSecondary,
     fontSize: 12,
     fontWeight: '600',
+    lineHeight: 16,
   },
-  input: {
-    backgroundColor: t.surface,
-    borderColor: t.border,
-    borderRadius: 12,
-    borderWidth: 1,
+  detailInput: {
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
-    minHeight: 46,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    textAlignVertical: 'center',
+    minHeight: 32,
+    padding: 0,
   },
-  textarea: {
-    minHeight: 76,
+  detailTextarea: {
+    minHeight: 64,
     textAlignVertical: 'top',
   },
-  membersWrap: {
-    gap: 8,
+  separator: {
+    backgroundColor: t.border,
+    height: 1,
   },
-  memberChip: {
+  memberRow: {
     alignItems: 'center',
-    backgroundColor: t.surface,
-    borderColor: t.border,
-    borderRadius: 14,
-    borderWidth: 1,
     flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '100%',
   },
-  memberChipActive: {
-    backgroundColor: 'rgba(124, 58, 237, 0.18)',
-    borderColor: '#C4B5FD',
+  memberRowInactive: {
+    backgroundColor: 'rgba(0, 0, 0, 0.01)',
   },
   memberAvatar: {
     alignItems: 'center',
-    borderRadius: 14,
-    height: 28,
+    borderRadius: 15,
+    height: 30,
     justifyContent: 'center',
-    width: 28,
+    width: 30,
   },
   memberInitials: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   memberName: {
-    color: t.textSecondary,
+    color: t.textPrimary,
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
   },
-  memberNameActive: {
-    color: t.textPrimary,
+  memberNameInactiveText: {
+    color: t.textSecondary,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  splitInputWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+    marginRight: 4,
   },
   splitInput: {
-    backgroundColor: t.surface,
+    backgroundColor: t.background,
     borderColor: t.border,
     borderRadius: 8,
     borderWidth: 1,
     color: PLAN_ACCENT,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     paddingHorizontal: 8,
     paddingVertical: 4,
     textAlign: 'center',
-    width: 48,
+    width: 52,
   },
   splitPct: {
     color: t.textSecondary,
@@ -590,13 +565,15 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   addExternalBtn: {
     alignItems: 'center',
     borderColor: PLAN_ACCENT,
-    borderRadius: 12,
+    borderRadius: 16,
     borderStyle: 'dashed',
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    minHeight: 48,
+    marginTop: 4,
+    paddingHorizontal: 16,
   },
   addExternalText: {
     color: PLAN_ACCENT,
@@ -607,12 +584,13 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: t.surface,
     borderColor: t.border,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    marginTop: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   externalInput: {
     color: t.textPrimary,
@@ -623,14 +601,14 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   externalAddBtn: {
     backgroundColor: PLAN_ACCENT,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   externalAddText: {
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   choiceRow: {
     flexDirection: 'row',
@@ -640,13 +618,13 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: t.surface,
     borderColor: t.border,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     flex: 1,
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     justifyContent: 'center',
-    minHeight: 42,
+    minHeight: 46,
     paddingHorizontal: 12,
   },
   choiceBtnActive: {
@@ -654,9 +632,9 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     borderColor: PLAN_ACCENT,
   },
   choiceBtnText: {
-    color: t.textPrimary,
-    fontSize: 13,
-    fontWeight: '400',
+    color: t.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   choiceBtnTextActive: {
     color: '#FFFFFF',
@@ -666,6 +644,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
+    textAlign: 'right',
   },
   splitHintError: {
     color: t.expense,
@@ -673,29 +652,30 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   primaryBtn: {
     alignItems: 'center',
     backgroundColor: PLAN_ACCENT,
-    borderRadius: 13,
+    borderRadius: 14,
     flex: 1,
-    height: 48,
+    height: 50,
     justifyContent: 'center',
   },
   primaryText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
   },
   secondaryBtn: {
     alignItems: 'center',
+    backgroundColor: t.mode === 'light' ? 'rgba(0,0,0,0.03)' : 'rgba(255, 255, 255, 0.075)',
     borderColor: t.border,
-    borderRadius: 13,
+    borderRadius: 14,
     borderWidth: 1,
     flex: 1,
-    height: 48,
+    height: 50,
     justifyContent: 'center',
   },
   secondaryText: {
-    color: t.textPrimary,
+    color: t.textSecondary,
     fontSize: 15,
-    fontWeight: '400',
+    fontWeight: '600',
   },
-  pressed: { opacity: 0.72 },
+  pressed: { opacity: 0.65 },
 });

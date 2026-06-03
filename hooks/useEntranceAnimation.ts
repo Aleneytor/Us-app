@@ -1,111 +1,144 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Animated, Easing } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAppStore } from '../store/useAppStore';
 
-export function useEntranceAnimation() {
+type ScrollToTopHandle = {
+  scrollTo?: (options: { x?: number; y?: number; animated?: boolean }) => void;
+  scrollToOffset?: (options: { offset: number; animated?: boolean }) => void;
+  scrollToLocation?: (options: { sectionIndex: number; itemIndex: number; animated?: boolean }) => void;
+};
+
+type EntranceAnimationOptions = {
+  itemCount?: number;
+  resetScrollOnFocus?: boolean;
+  scrollRef?: RefObject<ScrollToTopHandle | null>;
+  onResetScroll?: () => void;
+};
+
+function scrollToTop(ref?: RefObject<ScrollToTopHandle | null>) {
+  const node = ref?.current;
+  if (!node) return;
+
+  requestAnimationFrame(() => {
+    if (node.scrollToOffset) {
+      node.scrollToOffset({ offset: 0, animated: false });
+      return;
+    }
+
+    if (node.scrollTo) {
+      node.scrollTo({ x: 0, y: 0, animated: false });
+      return;
+    }
+
+    node.scrollToLocation?.({ sectionIndex: 0, itemIndex: 0, animated: false });
+  });
+}
+
+export function useEntranceAnimation({
+  itemCount = 32,
+  resetScrollOnFocus = true,
+  scrollRef,
+  onResetScroll,
+}: EntranceAnimationOptions = {}) {
   const currentUser = useAppStore((s) => s.currentUser);
 
   const heroAnim = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
   const headerAnim = useRef(new Animated.Value(0)).current;
   const itemAnims = useRef(
-    Array.from({ length: 24 }, () => new Animated.Value(0)),
+    Array.from({ length: itemCount }, () => new Animated.Value(0)),
   ).current;
 
-  const [isFocused, setIsFocused] = useState(false);
-  const hasAnimated = useRef(false);
+  const [focusCycle, setFocusCycle] = useState(0);
+  const focusedRef = useRef(false);
   const prevUser = useRef(currentUser);
-  // When true, the next animation cycle was triggered by a user switch.
-  // We keep content visible (no setValue(0)) to avoid a blank screen on web,
-  // where Supabase fetches can take noticeably longer than on native.
-  const pendingUserSwitch = useRef(false);
+  const onResetScrollRef = useRef(onResetScroll);
+
+  useEffect(() => {
+    onResetScrollRef.current = onResetScroll;
+  }, [onResetScroll]);
 
   useFocusEffect(
     useCallback(() => {
-      setIsFocused(true);
+      focusedRef.current = true;
+      if (resetScrollOnFocus) {
+        scrollToTop(scrollRef);
+        onResetScrollRef.current?.();
+      }
+      setFocusCycle((cycle) => cycle + 1);
+
       return () => {
-        setIsFocused(false);
+        focusedRef.current = false;
       };
-    }, []),
+    }, [resetScrollOnFocus, scrollRef]),
   );
 
   useEffect(() => {
-    if (prevUser.current !== currentUser) {
-      prevUser.current = currentUser;
-      hasAnimated.current = false;
-      pendingUserSwitch.current = true;
-    }
-
     let anim: Animated.CompositeAnimation | null = null;
+    const userChanged = prevUser.current !== currentUser;
+    prevUser.current = currentUser;
 
-    if (isFocused) {
-      if (!hasAnimated.current) {
-        hasAnimated.current = true;
-        const isSwitch = pendingUserSwitch.current;
-        pendingUserSwitch.current = false;
+    heroAnim.stopAnimation();
+    contentAnim.stopAnimation();
+    headerAnim.stopAnimation();
+    itemAnims.forEach((itemAnim) => itemAnim.stopAnimation());
 
-        // User switch: content is already visible — don't flash to 0.
-        // Initial load: start from 0 so the entrance animation is meaningful.
-        if (!isSwitch) {
-          heroAnim.setValue(0);
-          contentAnim.setValue(0);
-          headerAnim.setValue(0);
-          itemAnims.forEach((a) => a.setValue(0));
-        }
-
-        // All animations must share the same useNativeDriver value to avoid
-        // mixing drivers inside Animated.parallel, which can throw on web.
-        anim = Animated.parallel([
-          Animated.timing(heroAnim, {
-            toValue: 1,
-            duration: isSwitch ? 200 : 320,
-            delay: 0,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(contentAnim, {
-            toValue: 1,
-            duration: isSwitch ? 200 : 420,
-            delay: isSwitch ? 0 : 120,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(headerAnim, {
-            toValue: 1,
-            duration: isSwitch ? 200 : 260,
-            delay: isSwitch ? 0 : 360,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          ...itemAnims.map((itemAnim, i) =>
-            Animated.timing(itemAnim, {
-              toValue: 1,
-              duration: 220,
-              delay: isSwitch ? 0 : 450 + i * 60,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-          ),
-        ]);
-
-        anim.start();
-      }
-    } else if (!hasAnimated.current && !pendingUserSwitch.current) {
-      // Screen not focused yet and no user switch pending:
-      // keep at 0 during the initial app load to avoid a content flash.
+    if (focusCycle === 0 || !focusedRef.current) {
       heroAnim.setValue(0);
       contentAnim.setValue(0);
       headerAnim.setValue(0);
-      itemAnims.forEach((a) => a.setValue(0));
+      itemAnims.forEach((itemAnim) => itemAnim.setValue(0));
+      return undefined;
     }
 
+    const isUserSwitch = userChanged && focusCycle > 1;
+    if (!isUserSwitch) {
+      heroAnim.setValue(0);
+      contentAnim.setValue(0);
+      headerAnim.setValue(0);
+      itemAnims.forEach((itemAnim) => itemAnim.setValue(0));
+    }
+
+    anim = Animated.parallel([
+      Animated.timing(heroAnim, {
+        toValue: 1,
+        duration: isUserSwitch ? 180 : 240,
+        delay: 0,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(contentAnim, {
+        toValue: 1,
+        duration: isUserSwitch ? 180 : 300,
+        delay: isUserSwitch ? 0 : 45,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(headerAnim, {
+        toValue: 1,
+        duration: isUserSwitch ? 180 : 260,
+        delay: isUserSwitch ? 0 : 100,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      ...itemAnims.map((itemAnim, i) =>
+        Animated.timing(itemAnim, {
+          toValue: 1,
+          duration: 210,
+          delay: isUserSwitch ? 0 : 130 + Math.min(i, 14) * 24,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ),
+    ]);
+
+    anim.start();
+
     return () => {
-      if (anim) {
-        anim.stop();
-      }
+      anim?.stop();
     };
-  }, [isFocused, currentUser]);
+  }, [contentAnim, currentUser, focusCycle, headerAnim, heroAnim, itemAnims]);
 
   return { heroAnim, contentAnim, headerAnim, itemAnims };
 }

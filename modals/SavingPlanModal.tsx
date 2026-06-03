@@ -26,6 +26,8 @@ import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 
 const SAVINGS_ACCENT = '#7C3AED';
 
+type SaveType = 'free' | 'goal';
+
 interface SavingPlanModalProps {
   visible: boolean;
   plan?: SavingPlan | null;
@@ -41,6 +43,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [step, setStep] = useState(0);
+  const [saveType, setSaveType] = useState<SaveType>('goal');
   const [title, setTitle] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [months, setMonths] = useState('');
@@ -55,9 +58,12 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
   const targetNumber = useMemo(() => parseAmt(targetAmount), [targetAmount]);
   const monthsNumber = Number.parseInt(months, 10);
   const monthlyPreview =
-    Number.isFinite(targetNumber) && targetNumber > 0 && Number.isFinite(monthsNumber) && monthsNumber > 0
+    saveType === 'goal' &&
+    Number.isFinite(targetNumber) && targetNumber > 0 &&
+    Number.isFinite(monthsNumber) && monthsNumber > 0
       ? savingPlanMonthlyAmount({
           id: plan?.id ?? 0,
+          saveType: 'goal',
           type: planType,
           uid: planType === 'personal' ? (plan?.uid ?? currentUser) : undefined,
           icon,
@@ -72,9 +78,16 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
 
   const editing = !!plan;
 
+  // Total steps: step 0 = datos, step 1 = personalizar, step 2 = extra (solo para goal)
+  const totalSteps = saveType === 'goal' ? 3 : 2;
+  const breadcrumbs = saveType === 'goal'
+    ? ['Tipo y datos', 'Personalizar', 'Extra']
+    : ['Tipo y datos', 'Personalizar'];
+
   useEffect(() => {
     if (!visible) return;
     setStep(0);
+    setSaveType((plan?.saveType as SaveType) ?? 'goal');
     setTitle(plan?.title ?? '');
     setTargetAmount(plan ? String(plan.targetAmount) : '');
     setMonths(plan?.months ? String(plan.months) : '');
@@ -90,16 +103,11 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
       Alert.alert('Falta el título', 'Ponle un nombre a tu ahorro.');
       return false;
     }
-    if (!Number.isFinite(targetNumber) || targetNumber <= 0) {
-      Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
+    if (saveType === 'goal' && (!Number.isFinite(targetNumber) || targetNumber <= 0)) {
+      Alert.alert('Monto inválido', 'Escribe un monto mayor a cero.');
       return false;
     }
     return true;
-  };
-
-  const continueFromData = () => {
-    if (!validateDataStep()) return;
-    setStep(1);
   };
 
   const save = () => {
@@ -110,14 +118,15 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
 
     const next: SavingPlan = {
       id: plan?.id ?? Date.now(),
+      saveType,
       type: planType,
       uid: planType === 'personal' ? (plan?.uid ?? currentUser) : undefined,
       icon,
       iconColor,
       title: title.trim(),
-      targetAmount: targetNumber,
-      months: monthsNumber > 0 ? monthsNumber : undefined,
-      link: link.trim() || undefined,
+      targetAmount: saveType === 'goal' ? targetNumber : 0,
+      months: saveType === 'goal' && monthsNumber > 0 ? monthsNumber : undefined,
+      link: saveType === 'goal' ? (link.trim() || undefined) : undefined,
       notes: notes.trim() || undefined,
       date: plan?.date ?? todayStr(),
       history: plan?.history ?? [],
@@ -129,9 +138,12 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
   };
 
   const handlePrimaryPress = () => {
-    if (step === 0) runAfterKeyboardDismiss(continueFromData);
-    else if (step === 1) runAfterKeyboardDismiss(() => setStep(2));
-    else runAfterKeyboardDismiss(save);
+    if (step < totalSteps - 1) {
+      if (step === 0) runAfterKeyboardDismiss(() => { if (validateDataStep()) setStep(1); });
+      else runAfterKeyboardDismiss(() => setStep(step + 1));
+    } else {
+      runAfterKeyboardDismiss(save);
+    }
   };
 
   const handleSecondaryPress = () => {
@@ -150,7 +162,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleBack}>
       <ModalScreen
         title={editing ? 'Editar ahorro' : 'Nuevo ahorro'}
-        breadcrumbs={['Datos', 'Personalizar', 'Extra']}
+        breadcrumbs={breadcrumbs}
         activeBreadcrumb={step}
         canPressBreadcrumb={(index) => index < step}
         onBreadcrumbPress={setStep}
@@ -162,7 +174,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
               <Text style={styles.secondaryText}>{step === 0 ? 'Cancelar' : 'Atrás'}</Text>
             </Pressable>
             <Pressable onPress={handlePrimaryPress} style={styles.primaryButton}>
-              <Text style={styles.primaryText}>{step < 2 ? 'Continuar' : 'Guardar'}</Text>
+              <Text style={styles.primaryText}>{step < totalSteps - 1 ? 'Continuar' : 'Guardar'}</Text>
             </Pressable>
           </>
         )}
@@ -179,34 +191,67 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
           onScrollBeginDrag={dismissKeyboardAndBlur}
           showsVerticalScrollIndicator={false}
         >
+          {/* ── Paso 0: Tipo + Datos ── */}
           {step === 0 && (
             <View style={styles.block}>
+              {/* Selector de tipo */}
+              <View style={styles.field}>
+                <Text style={styles.label}>Tipo de ahorro</Text>
+                <View style={styles.typeRow}>
+                  <TypeCard
+                    icon="wallet-outline"
+                    title="Ahorro libre"
+                    description="Guarda sin meta fija"
+                    active={saveType === 'free'}
+                    onPress={() => { setSaveType('free'); setTargetAmount(''); setMonths(''); }}
+                  />
+                  <TypeCard
+                    icon="flag-outline"
+                    title="Para algo"
+                    description="Con monto objetivo"
+                    active={saveType === 'goal'}
+                    onPress={() => setSaveType('goal')}
+                  />
+                </View>
+              </View>
+
+              {/* Título */}
               <LabeledInput
                 label="Título"
                 value={title}
                 onChangeText={setTitle}
-                placeholder="Ej. Auriculares"
+                placeholder={saveType === 'free' ? 'Ej. Mis ahorros' : 'Ej. Viaje a Roma'}
                 autoFocus
               />
-              <View style={styles.field}>
-                <Text style={styles.label}>Monto a ahorrar</Text>
-                <TextInput
-                  value={targetAmount}
-                  onChangeText={setTargetAmount}
-                  placeholder="0"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="decimal-pad"
-                  selectTextOnFocus
-                  style={styles.amountInput}
+
+              {/* Monto objetivo — solo para goal */}
+              {saveType === 'goal' && (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Monto objetivo</Text>
+                  <TextInput
+                    value={targetAmount}
+                    onChangeText={setTargetAmount}
+                    placeholder="0"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="decimal-pad"
+                    selectTextOnFocus
+                    style={styles.amountInput}
+                  />
+                </View>
+              )}
+
+              {/* Plazo en meses — solo para goal */}
+              {saveType === 'goal' && (
+                <LabeledInput
+                  label="Plazo en meses (opcional)"
+                  value={months}
+                  onChangeText={setMonths}
+                  placeholder="Ej. 6"
+                  keyboardType="number-pad"
                 />
-              </View>
-              <LabeledInput
-                label="Plazo en meses (opcional)"
-                value={months}
-                onChangeText={setMonths}
-                placeholder="Ej. 6"
-                keyboardType="number-pad"
-              />
+              )}
+
+              {/* Preview mensual */}
               {monthlyPreview !== null && (() => {
                 const parts = splitAmount(monthlyPreview, currency);
                 return (
@@ -221,6 +266,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
             </View>
           )}
 
+          {/* ── Paso 1: Personalizar ── */}
           {step === 1 && (
             <View style={styles.block}>
               <View style={styles.field}>
@@ -238,7 +284,7 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
                 <ColorPicker value={iconColor} onChange={setIconColor} />
               </View>
               <View style={styles.field}>
-                <Text style={styles.label}>Tipo de ahorro</Text>
+                <Text style={styles.label}>Privacidad</Text>
                 <View style={styles.choiceRow}>
                   <ChoiceButton
                     label="En conjunto"
@@ -257,7 +303,8 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
             </View>
           )}
 
-          {step === 2 && (
+          {/* ── Paso 2: Extra (solo goal) ── */}
+          {step === 2 && saveType === 'goal' && (
             <View style={styles.block}>
               <LabeledInput
                 label="Link del producto (opcional)"
@@ -278,11 +325,56 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
               />
             </View>
           )}
+
+          {/* ── Paso 1 para free: notas ── */}
+          {step === 1 && saveType === 'free' && (
+            <View style={styles.block}>
+              {/* Personalizar ya está en step 1, notas van aquí en el mismo paso */}
+            </View>
+          )}
         </ScrollView>
       </ModalScreen>
     </Modal>
   );
 }
+
+// ── TypeCard ─────────────────────────────────────────────────────────────────
+
+function TypeCard({
+  icon,
+  title,
+  description,
+  active,
+  onPress,
+}: {
+  icon: ComponentProps<typeof Ionicons>['name'];
+  title: string;
+  description: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.typeCard,
+        active && styles.typeCardActive,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.typeCardIcon, active && styles.typeCardIconActive]}>
+        <Ionicons name={icon} size={20} color={active ? '#FFFFFF' : theme.textSecondary} />
+      </View>
+      <Text style={[styles.typeCardTitle, active && styles.typeCardTitleActive]}>{title}</Text>
+      <Text style={[styles.typeCardDesc, active && styles.typeCardDescActive]}>{description}</Text>
+    </Pressable>
+  );
+}
+
+// ── LabeledInput ─────────────────────────────────────────────────────────────
 
 function LabeledInput({
   label,
@@ -304,6 +396,8 @@ function LabeledInput({
     </View>
   );
 }
+
+// ── ChoiceButton ─────────────────────────────────────────────────────────────
 
 function ChoiceButton({
   label,
@@ -334,7 +428,95 @@ function ChoiceButton({
   );
 }
 
+// ── Styles ───────────────────────────────────────────────────────────────────
+
 const makeStyles = (t: AppTheme) => StyleSheet.create({
+  scroller: {
+    flex: 1,
+  },
+  content: {
+    padding: 18,
+    paddingBottom: 28,
+  },
+  block: {
+    gap: 16,
+  },
+  // -- Type selector --
+  typeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  typeCard: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    flex: 1,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 14,
+  },
+  typeCardActive: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+    borderColor: SAVINGS_ACCENT,
+  },
+  typeCardIcon: {
+    alignItems: 'center',
+    backgroundColor: t.background,
+    borderRadius: 10,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  typeCardIconActive: {
+    backgroundColor: SAVINGS_ACCENT,
+  },
+  typeCardTitle: {
+    color: t.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  typeCardTitleActive: {
+    color: SAVINGS_ACCENT,
+  },
+  typeCardDesc: {
+    color: t.textMuted,
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  typeCardDescActive: {
+    color: SAVINGS_ACCENT,
+    opacity: 0.8,
+  },
+  // -- Fields --
+  field: {
+    gap: 7,
+  },
+  label: {
+    color: t.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  input: {
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: t.textPrimary,
+    fontSize: 15,
+    fontWeight: '400',
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    textAlignVertical: 'center',
+  },
+  textarea: {
+    minHeight: 86,
+    textAlignVertical: 'top',
+  },
   amountInput: {
     backgroundColor: t.surface,
     borderColor: t.border,
@@ -348,8 +530,36 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     padding: 12,
     textAlign: 'center',
   },
-  block: {
-    gap: 16,
+  // -- Monthly preview --
+  preview: {
+    backgroundColor: t.background,
+    borderColor: t.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+    padding: 14,
+  },
+  previewLabel: {
+    color: t.textSecondary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  previewAmount: {
+    color: t.textPrimary,
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 22,
+    letterSpacing: -0.5,
+  },
+  previewDecimals: {
+    color: t.textMuted,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    letterSpacing: -0.3,
+  },
+  // -- Choice buttons --
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   choiceBtn: {
     alignItems: 'center',
@@ -376,63 +586,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   choiceBtnTextActive: {
     color: '#FFFFFF',
   },
-  choiceRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  content: {
-    padding: 18,
-    paddingBottom: 28,
-  },
-  field: {
-    gap: 7,
-  },
-  input: {
-    backgroundColor: t.surface,
-    borderColor: t.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    color: t.textPrimary,
-    fontSize: 15,
-    fontWeight: '400',
-    minHeight: 46,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    textAlignVertical: 'center',
-  },
-  label: {
-    color: t.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  pressed: {
-    opacity: 0.72,
-  },
-  preview: {
-    backgroundColor: t.background,
-    borderColor: t.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 4,
-    padding: 14,
-  },
-  previewAmount: {
-    color: t.textPrimary,
-    fontFamily: 'Poppins_700Bold',
-    fontSize: 22,
-    letterSpacing: -0.5,
-  },
-  previewDecimals: {
-    color: t.textMuted,
-    fontFamily: 'Poppins_600SemiBold',
-    fontSize: 14,
-    letterSpacing: -0.3,
-  },
-  previewLabel: {
-    color: t.textSecondary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
+  // -- Footer buttons --
   primaryButton: {
     alignItems: 'center',
     backgroundColor: SAVINGS_ACCENT,
@@ -445,9 +599,6 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '400',
-  },
-  scroller: {
-    flex: 1,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -463,8 +614,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
   },
-  textarea: {
-    minHeight: 86,
-    textAlignVertical: 'top',
+  pressed: {
+    opacity: 0.72,
   },
 });

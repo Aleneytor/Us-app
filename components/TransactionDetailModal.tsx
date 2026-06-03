@@ -35,6 +35,7 @@ export function TransactionDetailModal({
   const { height, width } = useWindowDimensions();
   const currency = useAppStore((s) => s.currency);
   const users = useAppStore((s) => s.users);
+  const budgetCategories = useAppStore((s) => s.payload.budgetCategories);
   const updateTransaction = useAppStore((s) => s.updateTransaction);
   const metrics = getResponsiveMetrics(width, height, insets.top, insets.bottom);
 
@@ -59,11 +60,15 @@ export function TransactionDetailModal({
     orange: '#F97316',
   };
 
-  const category = CATEGORIES[transaction.cat] ?? CATEGORIES.other;
+  const budgetCategory = (budgetCategories ?? []).find(
+    (bc) => String(bc.id) === String(transaction.budgetCatId),
+  );
+  const category = resolveTransactionCategory(transaction.cat, budgetCategory?.icon);
+  const categoryLabel = budgetCategory?.name ?? category.label;
   const user = getUserData(users, transaction.uid);
   const isIncome = transaction.kind === 'income';
   const amountColor = DETAIL_COLORS.text;
-  const titleText = transaction.desc || category.label;
+  const titleText = transaction.desc || categoryLabel;
   const currentNote = transaction.notes?.trim();
 
   const openNoteEditor = () => {
@@ -282,7 +287,7 @@ export function TransactionDetailModal({
                 <View style={styles.detailCopy}>
                   <Text style={[styles.detailLabel, { fontSize: metrics.detailLabel, lineHeight: metrics.detailLabelLine }]}>Categoría</Text>
                   <Text style={[styles.detailValue, { fontSize: metrics.detailValue - 1, lineHeight: metrics.detailValueLine }]}>
-                    {formatCategoryDetailLabel(category.label)}
+                    {formatCategoryDetailLabel(categoryLabel)}
                   </Text>
                 </View>
               </View>
@@ -348,6 +353,28 @@ export function TransactionDetailModal({
           ]}
         >
           <Pressable
+            onPress={() => onDelete(transaction)}
+            style={({ pressed }) => [
+              styles.deleteButton,
+              {
+                borderRadius: metrics.actionRadius,
+                gap: metrics.actionGap,
+                height: metrics.actionHeight,
+                paddingHorizontal: metrics.actionPadX,
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <MaterialCommunityIcons name="trash-can-outline" size={metrics.actionIcon} color={DETAIL_COLORS.actionText} />
+            <Text
+              style={[styles.deleteText, { fontSize: metrics.actionText }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              Eliminar
+            </Text>
+          </Pressable>
+          <Pressable
             onPress={() => onEdit(transaction)}
             style={({ pressed }) => [
               styles.actionButton,
@@ -360,32 +387,9 @@ export function TransactionDetailModal({
               pressed && styles.pressed,
             ]}
           >
-            <MaterialCommunityIcons name="square-edit-outline" size={metrics.actionIcon} color={DETAIL_COLORS.actionText} />
+            <MaterialCommunityIcons name="square-edit-outline" size={metrics.actionIcon} color="#FFFFFF" />
             <Text style={[styles.actionText, { fontSize: metrics.actionText }]} numberOfLines={1} adjustsFontSizeToFit>
               Editar
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => onDelete(transaction)}
-            style={({ pressed }) => [
-              styles.actionButton,
-              styles.deleteButton,
-              {
-                borderRadius: metrics.actionRadius,
-                gap: metrics.actionGap,
-                height: metrics.actionHeight,
-                paddingHorizontal: metrics.actionPadX,
-              },
-              pressed && styles.pressed,
-            ]}
-          >
-            <MaterialCommunityIcons name="trash-can-outline" size={metrics.actionIcon} color={DETAIL_COLORS.expense} />
-            <Text
-              style={[styles.actionText, styles.deleteText, { fontSize: metrics.actionText }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              Eliminar
             </Text>
           </Pressable>
         </View>
@@ -484,6 +488,15 @@ function getTransactionTypeIcon(type: Transaction['type']) {
   return 'radio-button-on-outline';
 }
 
+function resolveTransactionCategory(transactionCat: string, budgetCategoryIcon?: string) {
+  const categoryKey = budgetCategoryIcon ?? transactionCat;
+  const category = CATEGORIES[categoryKey];
+  if (category) return category;
+
+  const categoryFromIconName = Object.values(CATEGORIES).find((item) => item.icon === categoryKey);
+  return categoryFromIconName ?? CATEGORIES.other;
+}
+
 function formatCategoryDetailLabel(label: string): string {
   const accents: Record<string, string> = {
     Inversion: 'Inversión',
@@ -580,10 +593,8 @@ const makeStyles = (theme: AppTheme) => {
   return StyleSheet.create({
   actionButton: {
     alignItems: 'center',
-    backgroundColor: DETAIL_COLORS.actionBg,
-    borderColor: DETAIL_COLORS.cardBorder,
+    backgroundColor: '#7C3AED',
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: 'row',
     flex: 1,
     gap: 11,
@@ -593,10 +604,10 @@ const makeStyles = (theme: AppTheme) => {
     paddingHorizontal: 10,
   },
   actionText: {
-    color: DETAIL_COLORS.actionText,
+    color: '#FFFFFF',
     flexShrink: 1,
     fontSize: 16,
-    fontWeight: '400',
+    fontWeight: '700',
   },
   amount: {
     fontFamily: 'Poppins_600SemiBold',
@@ -661,12 +672,22 @@ const makeStyles = (theme: AppTheme) => {
     fontWeight: '600',
   },
   deleteButton: {
-    backgroundColor: 'rgba(255, 89, 104, 0.12)',
-    borderColor: 'rgba(255, 89, 104, 0.24)',
-    borderWidth: 1,
+    alignItems: 'center',
+    backgroundColor: DETAIL_COLORS.actionBg,
+    borderRadius: 14,
+    flexDirection: 'row',
+    flex: 1,
+    gap: 11,
+    height: 54,
+    justifyContent: 'center',
+    minWidth: 0,
+    paddingHorizontal: 10,
   },
   deleteText: {
-    color: DETAIL_COLORS.expense,
+    color: DETAIL_COLORS.actionText,
+    flexShrink: 1,
+    fontSize: 16,
+    fontWeight: '600',
   },
   detailCopy: {
     flex: 1,

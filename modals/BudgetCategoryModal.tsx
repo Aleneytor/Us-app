@@ -29,9 +29,10 @@ interface BudgetCategoryModalProps {
   category?: BudgetCategory | null;
   onClose: () => void;
   onSaved?: (category: BudgetCategory) => void;
+  hideBreadcrumbs?: boolean;
 }
 
-export function BudgetCategoryModal({ visible, category, onClose, onSaved }: BudgetCategoryModalProps) {
+export function BudgetCategoryModal({ visible, category, onClose, onSaved, hideBreadcrumbs = false }: BudgetCategoryModalProps) {
   const currentUser = useAppStore((s) => s.currentUser);
   const addBudgetCategory = useAppStore((s) => s.addBudgetCategory);
   const updateBudgetCategory = useAppStore((s) => s.updateBudgetCategory);
@@ -166,7 +167,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved }: Bud
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleBack}>
       <ModalScreen
           title={editing ? 'Editar categoría' : 'Nueva categoría'}
-          breadcrumbs={editing ? ['Detalles'] : ['Elegir', 'Detalles']}
+          breadcrumbs={hideBreadcrumbs ? [] : editing ? ['Detalles'] : ['Elegir', 'Detalles']}
           activeBreadcrumb={editing ? 0 : step}
           canPressBreadcrumb={(index) => !editing && index < step}
           onBreadcrumbPress={(index) => {

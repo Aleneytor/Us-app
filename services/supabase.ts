@@ -13,6 +13,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
 
+let realtimeChannelCounter = 0;
+
 function isValidPayload(p: unknown): boolean {
   return isPayloadLike(p);
 }
@@ -37,10 +39,17 @@ export async function pushSnapshot(
   payload: AppPayload,
   clientId: string,
 ): Promise<boolean> {
+  // Include 'wishlist' as an alias for 'savings' for backwards compatibility with the
+  // legacy DB check constraint: jsonb_typeof(payload->'wishlist') = 'array'.
+  // The updated constraint (migration 4_update_payload_constraint.sql) makes wishlist
+  // optional, but including it here is safe and ensures pushes succeed even if the
+  // migration hasn't been run yet.
+  const payloadForDB = { ...payload, wishlist: payload.savings };
+
   const { error } = await supabase.from('shared_state').upsert(
     {
       room_id: roomId,
-      payload,
+      payload: payloadForDB,
       updated_by: clientId,
       updated_at: new Date().toISOString(),
     },
@@ -69,8 +78,13 @@ export function subscribeToRoom(
   onUpdate: (payload: AppPayload) => void,
   onStatusChange?: (status: string) => void,
 ): RealtimeChannel {
+  // Use a collision-resistant topic per connection attempt to prevent Supabase from
+  // reusing a stale channel that already has subscribe() called — which would
+  // cause "cannot add postgres_changes callbacks after subscribe()" errors.
+  realtimeChannelCounter = (realtimeChannelCounter + 1) % Number.MAX_SAFE_INTEGER;
+  const channelName = `room:${roomId}:${Date.now()}:${realtimeChannelCounter}:${Math.random().toString(36).slice(2)}`;
   return supabase
-    .channel(`room:${roomId}`)
+    .channel(channelName)
     .on(
       'postgres_changes',
       {

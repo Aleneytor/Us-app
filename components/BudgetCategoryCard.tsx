@@ -42,7 +42,7 @@ export function BudgetCategoryCard({
   const iconInfo = CATEGORIES[category.icon] ?? CATEGORIES.other;
   const primaryTextColor = tinted ? '#FFFFFF' : theme.textPrimary;
   const secondaryTextColor = tinted ? 'rgba(255, 255, 255, 0.86)' : theme.textSecondary;
-  const barColor = tinted ? 'rgba(255, 255, 255, 0.9)' : isOver ? '#DC2626' : pct >= 0.75 ? '#EA580C' : iconColorSet.color;
+  const barColor = tinted ? 'rgba(255, 255, 255, 0.9)' : iconColorSet.color;
 
   if (tinted) {
     const ringSize = 72;
@@ -85,6 +85,11 @@ export function BudgetCategoryCard({
           <View style={[styles.homeCategoryIcon, { backgroundColor: iconColorSet.color }]}>
             <Ionicons name={iconInfo.icon} size={24} color="#FFFFFF" />
           </View>
+          {isOver && (
+            <View style={styles.alertBadge}>
+              <Ionicons name="alert-circle" size={18} color="#DC2626" />
+            </View>
+          )}
         </View>
 
         <Text style={styles.homeCategoryName} numberOfLines={1}>
@@ -158,6 +163,11 @@ export function BudgetCategoryCard({
           </View>
         )}
       </View>
+      {isOver && (
+        <View style={styles.cardAlertBadge}>
+          <Ionicons name="alert-circle" size={18} color="#DC2626" />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -216,6 +226,7 @@ const makeStyles = (theme: AppTheme) => StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: theme.mode === 'light' ? 0.08 : 0.10,
     shadowRadius: 8,
+    overflow: 'visible',
   },
   cardTinted: {
     backgroundColor: 'transparent',
@@ -316,5 +327,17 @@ const makeStyles = (theme: AppTheme) => StyleSheet.create({
     flexShrink: 0,
     fontSize: 12,
     fontWeight: '600',
+  },
+  alertBadge: {
+    position: 'absolute',
+    right: -5,
+    top: -5,
+    zIndex: 10,
+  },
+  cardAlertBadge: {
+    position: 'absolute',
+    right: -7,
+    top: -7,
+    zIndex: 10,
   },
 });

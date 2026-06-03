@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nosotros — Flujo de Usuario</title>
+<style>
+  :root {
+    --navy: #0D0D2B;
+    --purple: #7C3AED;
+    --purple-light: #EDE9FE;
+    --purple-mid: #A78BFA;
+    --green: #00D158;
+    --blue: #2563EB;
+    --red: #EC1147;
+    --bg: #F4F3FF;
+    --surface: #FFFFFF;
+    --border: #E5E7EB;
+    --text: #1F2937;
+    --muted: #6B7280;
+    --shadow: 0 2px 12px rgba(124,58,237,0.10);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--navy);
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 2px solid var(--purple);
+  }
+  .header-title { color: #fff; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-title span { color: var(--purple-mid); }
+  .header-meta { color: var(--muted); font-size: 13px; }
+
+  /* ── LEGEND ── */
+  .legend {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 40px;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .legend-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+  .legend-chip { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .chip-accion    { background: var(--navy); color: var(--purple-mid); }
+  .chip-pantalla  { background: #fff; color: var(--navy); border: 2px solid var(--navy); }
+  .chip-boton     { background: #fff; color: var(--purple); border: 2px solid var(--purple); }
+  .chip-modal     { background: var(--purple); color: #fff; }
+  .chip-decision  { background: #FEF3C7; color: #92400E; border: 2px solid #F59E0B; }
+
+  /* ── MAIN CANVAS ── */
+  .canvas {
+    padding: 40px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── FLOW ROW ── */
+  .flow-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    margin-bottom: 0;
+    flex-wrap: wrap;
+  }
+
+  /* ── NODE BASE ── */
+  .node {
+    position: relative;
+    border-radius: 14px;
+    padding: 14px 18px;
+    min-width: 160px;
+    max-width: 240px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    user-select: none;
+  }
+  .node:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(124,58,237,0.18); }
+  .node-title { font-size: 14px; font-weight: 700; line-height: 1.3; }
+  .node-sub { font-size: 11px; margin-top: 4px; opacity: 0.75; line-height: 1.4; }
+
+  /* node variants */
+  .node-accion    { background: var(--navy); color: #fff; }
+  .node-accion .node-title { color: var(--purple-mid); }
+  .node-pantalla  { background: #fff; color: var(--navy); border: 2.5px solid var(--navy); box-shadow: var(--shadow); }
+  .node-boton     { background: #fff; color: var(--purple); border: 2.5px solid var(--purple); box-shadow: var(--shadow); }
+  .node-modal     { background: var(--purple); color: #fff; box-shadow: 0 4px 16px rgba(124,58,237,0.3); }
+  .node-decision  { background: #FEF3C7; color: #78350F; border: 2.5px solid #F59E0B; }
+
+  /* ── ARROW ── */
+  .arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    color: var(--muted);
+    font-size: 18px;
+    align-self: center;
+    margin-top: 0;
+  }
+  .arrow-down {
+    display: flex;
+    justify-content: center;
+    margin: 6px 0;
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .arrow-label {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* ── CONNECTOR ── */
+  .connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* ── FLOW COLUMN ── */
+  .flow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── BRANCH ── */
+  .branch-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 16px 0;
+  }
+
+  /* ── DETAIL PANEL ── */
+  .detail-panel {
+    display: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    box-shadow: var(--shadow);
+    max-width: 340px;
+  }
+  .detail-panel.open { display: block; }
+  .detail-panel h4 { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 6px; }
+  .detail-panel h4:first-child { margin-top: 0; }
+  .detail-panel ul { padding-left: 16px; }
+  .detail-panel li { margin-bottom: 3px; }
+  .detail-panel .action-chip {
+    display: inline-block;
+    background: var(--purple-light);
+    color: var(--purple);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 2px 2px 2px 0;
+  }
+  .detail-panel .opens-chip {
+    display: inline-block;
+    background: #EFF6FF;
+    color: var(--blue);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 2px 2px 2px 0;
+  }
+
+  /* ── BIG DIAGRAM ── */
+  .diagram-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 40px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: visible;
+  }
+  .diagram-block-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .diagram-block-title .tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--purple-light);
+    color: var(--purple);
+  }
+
+  /* ── TAB GRID ── */
+  .tab-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .tab-card {
+    background: #fff;
+    border: 2.5px solid var(--navy);
+    border-radius: 14px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab-card:hover { border-color: var(--purple); box-shadow: 0 4px 16px rgba(124,58,237,0.15); }
+  .tab-card.active { border-color: var(--purple); background: var(--purple-light); }
+  .tab-icon { font-size: 22px; margin-bottom: 8px; }
+  .tab-name { font-size: 15px; font-weight: 700; color: var(--navy); }
+  .tab-desc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+
+  /* ── SCREEN DETAIL ── */
+  .screen-detail {
+    display: none;
+    grid-column: 1 / -1;
+    background: #F8F7FF;
+    border: 1.5px solid var(--purple);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-top: 4px;
+  }
+  .screen-detail.open { display: block; }
+  .screen-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-top: 12px;
+  }
+  @media (max-width: 900px) {
+    .screen-detail-grid { grid-template-columns: 1fr 1fr; }
+    .tab-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .detail-col h4 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .detail-col ul { list-style: none; padding: 0; }
+  .detail-col li {
+    font-size: 13px;
+    color: var(--text);
+    padding: 3px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.4;
+  }
+  .detail-col li::before { content: '•'; color: var(--purple); font-size: 14px; flex-shrink: 0; margin-top: -1px; }
+  .opens-to {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .opens-to .chip { padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.1s; }
+  .opens-to .chip:hover { opacity: 0.8; }
+  .chip-screen { background: #EFF6FF; color: #1D4ED8; }
+  .chip-modal-sm { background: #EDE9FE; color: #6D28D9; }
+  .chip-action-sm { background: #F0FDF4; color: #16A34A; }
+
+  /* ── MODAL GRID ── */
+  .modal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 16px;
+  }
+  @media (max-width: 900px) { .modal-grid { grid-template-columns: 1fr 1fr; } }
+  .modal-card {
+    background: var(--purple);
+    border-radius: 14px;
+    padding: 16px;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .modal-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(124,58,237,0.35); }
+  .modal-card.expanded { border-radius: 14px 14px 0 0; }
+  .modal-card-title { font-size: 14px; font-weight: 700; }
+  .modal-card-sub { font-size: 12px; opacity: 0.8; margin-top: 3px; }
+  .modal-expand {
+    display: none;
+    background: #F3F0FF;
+    border: 1.5px solid var(--purple);
+    border-top: none;
+    border-radius: 0 0 14px 14px;
+    padding: 14px 16px;
+    grid-column: span 1;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .modal-expand.open { display: block; }
+  .modal-expand h4 { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 5px; }
+  .modal-expand h4:first-child { margin-top: 0; }
+  .modal-expand ul { padding-left: 14px; }
+  .modal-expand li { margin-bottom: 3px; }
+
+  /* ── FAB SECTION ── */
+  .fab-section {
+    background: linear-gradient(135deg, #1E1B4B, #312E81);
+    border-radius: 16px;
+    padding: 24px;
+    color: #fff;
+    margin-bottom: 40px;
+  }
+  .fab-section h3 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .fab-section p { font-size: 13px; opacity: 0.75; margin-bottom: 16px; }
+  .fab-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+  @media (max-width: 700px) { .fab-menu-grid { grid-template-columns: 1fr 1fr; } }
+  .fab-menu-item {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+  }
+  .fab-menu-item .fab-icon { font-size: 20px; margin-bottom: 6px; }
+  .fab-menu-item .fab-label { font-size: 12px; font-weight: 600; color: #E0E7FF; }
+  .fab-menu-item .fab-sub { font-size: 11px; opacity: 0.6; margin-top: 2px; }
+
+  /* ── AUTH/ONBOARDING FLOW ── */
+  .auth-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    align-items: flex-start;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .flow-step-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* ── TREE DIAGRAM ── */
+  .tree {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-left: 24px;
+  }
+  .tree-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 4px 0;
+    flex-wrap: wrap;
+  }
+  .tree-indent {
+    display: flex;
+    flex-direction: column;
+    padding-left: 40px;
+    border-left: 2px dashed var(--border);
+    margin-left: 20px;
+    gap: 4px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  /* ── FULL FLOW DIAGRAM ── */
+  .full-flow {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .flow-phase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 180px;
+  }
+  .flow-phase-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .flow-phase-arrow {
+    display: flex;
+    align-items: center;
+    padding-top: 36px;
+    color: var(--muted);
+    font-size: 20px;
+  }
+
+  /* ── INTERACTIONS TABLE ── */
+  .interactions-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  .interactions-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+    padding: 8px 12px;
+    background: var(--bg);
+  }
+  .interactions-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .interactions-table tr:last-child td { border-bottom: none; }
+  .interactions-table tr:hover td { background: #FAFAFA; }
+  .tag-screen { background: #EFF6FF; color: #1D4ED8; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .tag-modal  { background: #EDE9FE; color: #6D28D9; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .tag-nav    { background: #F0FDF4; color: #15803D; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+
+  /* ── BADGE ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--purple);
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  /* ── DIVIDER ── */
+  .divider { height: 1px; background: var(--border); margin: 32px 0; }
+
+  /* ── VOICE SECTION ── */
+  .voice-section {
+    background: linear-gradient(135deg, #064E3B, #065F46);
+    border-radius: 16px;
+    padding: 24px;
+    color: #fff;
+    margin-bottom: 40px;
+  }
+  .voice-commands {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .voice-cmd {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .voice-cmd .cmd-text { font-size: 13px; font-style: italic; color: #A7F3D0; font-weight: 500; }
+  .voice-cmd .cmd-result { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+
+  /* ── SCROLL TO TOP ── */
+  .back-top {
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    background: var(--navy);
+    color: var(--purple-mid);
+    border: none;
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    z-index: 50;
+    transition: opacity 0.2s;
+  }
+  .back-top:hover { opacity: 0.85; }
+
+  /* ── PRINT ── */
+  @media print {
+    .header { position: static; }
+    .back-top { display: none; }
+    .diagram-block { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-title">Nosotros — <span>Flujo de Usuario Completo</span></div>
+  <div class="header-meta">Versión 2.0 · Junio 2026 · Haz clic en cualquier nodo para ver detalles</div>
+</header>
+
+<!-- LEGEND -->
+<div class="legend">
+  <span class="legend-label">Leyenda:</span>
+  <div class="legend-item"><span class="legend-chip chip-accion">Acción</span> Decisión del sistema</div>
+  <div class="legend-item"><span class="legend-chip chip-pantalla">Pantalla</span> Vista principal</div>
+  <div class="legend-item"><span class="legend-chip chip-boton">Botón</span> Interacción del usuario</div>
+  <div class="legend-item"><span class="legend-chip chip-modal">Modal</span> Overlay / hoja inferior</div>
+  <div class="legend-item"><span class="legend-chip chip-decision">¿Decisión?</span> Bifurcación lógica</div>
+</div>
+
+<div class="canvas">
+
+  <!-- ═══════════════════════════════════════════════════
+       1. FLUJO DE ENTRADA
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">1 · Flujo de Entrada</div>
+  <div class="diagram-block">
+    <div class="diagram-block-title">App Launch → Auth → App Principal <span class="tag">Estado actual: sin auth real</span></div>
+
+    <div style="display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding-bottom:8px;">
+
+      <!-- FASE 1 -->
+      <div class="flow-phase">
+        <div class="flow-phase-label">Apertura</div>
+        <div class="node node-accion" onclick="toggleDetail('d-launch')">
+          <div class="node-title">App Abre</div>
+          <div class="node-sub">_layout.tsx monta<br>SafeArea → Theme → Shell</div>
+        </div>
+        <div class="detail-panel" id="d-launch">
+          <h4>initialize() hace</h4>
+          <ul>
+            <li>Carga usuario desde AsyncStorage</li>
+            <li>Si no hay usuario → usa demo_a</li>
+            <li>Conecta a Supabase Realtime</li>
+            <li>Carga payload del room</li>
+          </ul>
+          <h4>AsyncStorage keys</h4>
+          <ul>
+            <li>nosotros_user</li>
+            <li>nosotros_onboarding_done</li>
+            <li>nosotros_currency</li>
+            <li>nosotros_hint_voice_seen</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="flow-phase-arrow">→</div>
+
+      <!-- FASE 2: DECISIÓN -->
+      <div class="flow-phase">
+        <div class="flow-phase-label">¿Primera vez?</div>
+        <div class="node node-decision" onclick="toggleDetail('d-firsttime')">
+          <div class="node-title">¿onboarding_done = "1"?</div>
+          <div class="node-sub">Lee AsyncStorage</div>
+        </div>
+        <div class="detail-panel" id="d-firsttime">
+          <p><strong>SÍ:</strong> va directo a la app principal (tabs)</p>
+          <p style="margin-top:8px"><strong>NO:</strong> redirige a /onboarding con animación slide_from_bottom</p>
+        </div>
+        <div style="margin-top:12px; font-size:11px; color:var(--muted); font-weight:600;">NO ↓ &nbsp;&nbsp;&nbsp;&nbsp; SÍ →</div>
+      </div>
+
+      <div class="flow-phase-arrow" style="padding-top:0; align-items:flex-start; padding-top:80px;">→</div>
+
+      <!-- FASE 3A: ONBOARDING (abajo izq) + APP PRINCIPAL (derecha) -->
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <!-- Onboarding -->
+        <div class="flow-phase" style="align-items:flex-start;">
+          <div class="flow-phase-label">Onboarding</div>
+          <div class="node node-pantalla" onclick="toggleDetail('d-onboarding')" style="max-width:200px;">
+            <div class="node-title">🫶 Pantalla de Bienvenida</div>
+            <div class="node-sub">/onboarding/index.tsx</div>
+          </div>
+          <div class="detail-panel" id="d-onboarding" style="max-width:280px;">
+            <h4>Muestra</h4>
+            <ul>
+              <li>Logo "Juntos" + corazón</li>
+              <li>Tagline: "Finanzas en pareja"</li>
+              <li>3 features: Balance compartido, Presupuestos, Ahorra juntos</li>
+            </ul>
+            <h4>Acción</h4>
+            <ul><li>Botón "Empezar" →<br>guarda onboarding_done='1'<br>→ router.replace('/(tabs)')</li></ul>
+            <h4>Animación</h4>
+            <ul><li>Fade in 600ms al montar</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-phase-arrow" style="padding-top:80px;">→</div>
+
+      <!-- FASE FINAL: APP PRINCIPAL -->
+      <div class="flow-phase">
+        <div class="flow-phase-label">App Principal</div>
+        <div class="node node-pantalla" style="background: linear-gradient(135deg, #1E1B4B, #312E81); color:#fff; border:none; min-width:180px;" onclick="toggleDetail('d-tabs')">
+          <div class="node-title" style="color:#A5B4FC;">App con Tabs</div>
+          <div class="node-sub" style="color:#C4B5FD;">4 pestañas + FAB<br>Sync Supabase Realtime</div>
+        </div>
+        <div class="detail-panel" id="d-tabs">
+          <h4>Tabs visibles</h4>
+          <ul>
+            <li>🏠 Inicio</li>
+            <li>↕️ Movimientos</li>
+            <li>🥧 Categorías</li>
+            <li>✦ Extras</li>
+          </ul>
+          <h4>Rutas ocultas</h4>
+          <ul>
+            <li>/perfil (slide desde derecha)</li>
+            <li>/(tabs)/ahorros</li>
+            <li>/(tabs)/ahorro (planes)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTA AUTH FUTURA -->
+    <div style="margin-top:24px; background:#FEF3C7; border:1px solid #F59E0B; border-radius:10px; padding:14px 18px; font-size:13px; color:#78350F;">
+      <strong>🔐 Auth pendiente de implementar (SPEC_AUTH_SISTEMA.md):</strong>
+      App abre → ¿Sesión JWT guardada? → NO: /login (email+pass o Google) → OTP 6 dígitos → ¿Perfil completo? → NO: /onboarding (nombre + invitar pareja + categorías) → SÍ: conecta room → tabs
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       2. TABS PRINCIPALES
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">2 · Pantallas Principales (Tabs)</div>
+
+  <!-- TAB: INICIO -->
+  <div class="diagram-block">
+    <div class="diagram-block-title">🏠 Inicio (Home Dashboard) <span class="tag">index.tsx</span></div>
+    <div class="tab-grid" style="grid-template-columns: repeat(3,1fr);">
+
+      <div class="tab-card" onclick="toggleScreenDetail('sd-inicio-ui')">
+        <div class="tab-icon">🖥</div>
+        <div class="tab-name">UI Principal</div>
+        <div class="tab-desc">Qué ve el usuario al abrir la app</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-inicio-actions')">
+        <div class="tab-icon">👆</div>
+        <div class="tab-name">Interacciones</div>
+        <div class="tab-desc">Botones, gestos y acciones</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-inicio-states')">
+        <div class="tab-icon">📊</div>
+        <div class="tab-name">Estados</div>
+        <div class="tab-desc">Vacío, carga, datos</div>
+      </div>
+
+      <div class="screen-detail" id="sd-inicio-ui">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Hero (gradiente verde)</h4>
+            <ul>
+              <li>"¡Hola {nombre}!" · subtítulo saldo/gasto</li>
+              <li>Avatar en esquina → va a /perfil</li>
+            </ul>
+            <h4>Balance Card (swipeable)</h4>
+            <ul>
+              <li>Pill toggle: Saldo Actual ↔ Saldo Proyectado</li>
+              <li>Muestra gastos actuales vs proyectados</li>
+              <li>Swipe izq/der para cambiar estado</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Quick Actions</h4>
+            <ul>
+              <li>"Añadir Ingreso" → TransactionModal (income)</li>
+              <li>"Añadir Gasto" → TransactionModal (expense)</li>
+            </ul>
+            <h4>FinanceTrendCard</h4>
+            <ul>
+              <li>Gráfica tendencia del mes</li>
+              <li>Toggle ingreso/gasto</li>
+              <li>"Ver detalles" → FinanceDetailModal</li>
+            </ul>
+            <h4>Categories Pager</h4>
+            <ul>
+              <li>Scroll horizontal, 3 por página</li>
+              <li>Dots indicador</li>
+              <li>Tap tarjeta → BudgetCategoryDetailModal</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Getting Started Card</h4>
+            <ul>
+              <li>Solo si no todas las tareas completadas</li>
+              <li>Checklist dinámico (basado en datos reales):</li>
+              <li>✓ Primer movimiento registrado</li>
+              <li>✓ Categoría de presupuesto creada</li>
+              <li>✓ Primera meta de ahorro creada</li>
+              <li>Botón ✕ para descartar permanentemente</li>
+            </ul>
+            <h4>Movimientos Recientes</h4>
+            <ul>
+              <li>ActivityTile list, hasta 8 items</li>
+              <li>Ordenados por fecha desc</li>
+              <li>Tap → modal de detalle según tipo</li>
+              <li>Long press → menú Editar/Eliminar</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-detail" id="sd-inicio-actions">
+        <table class="interactions-table">
+          <thead><tr><th>Elemento</th><th>Acción</th><th>Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>Avatar usuario (header)</td><td>Tap</td><td><span class="tag-nav">navega</span> /perfil</td></tr>
+            <tr><td>Balance Card</td><td>Swipe izq/der</td><td>Toggle saldo/gastos actuales↔proyectados</td></tr>
+            <tr><td>Pill "Saldo Actual"</td><td>Tap</td><td>Cambia vista de la card</td></tr>
+            <tr><td>Botón "Añadir Ingreso"</td><td>Tap</td><td><span class="tag-modal">TransactionModal</span> tipo=income</td></tr>
+            <tr><td>Botón "Añadir Gasto"</td><td>Tap</td><td><span class="tag-modal">TransactionModal</span> tipo=expense</td></tr>
+            <tr><td>"Ver detalles" (trend card)</td><td>Tap</td><td><span class="tag-modal">FinanceDetailModal</span></td></tr>
+            <tr><td>Tarjeta de categoría</td><td>Tap</td><td><span class="tag-modal">BudgetCategoryDetailModal</span></td></tr>
+            <tr><td>Pager indicadores (dots)</td><td>Tap</td><td>Salta a página de categorías</td></tr>
+            <tr><td>ActivityTile</td><td>Tap</td><td><span class="tag-modal">TransactionDetailModal</span> o <span class="tag-modal">PlanDetailModal</span> según tipo</td></tr>
+            <tr><td>ActivityTile (transacción)</td><td>Long press</td><td>Alert contextual: Editar / Eliminar</td></tr>
+            <tr><td>Getting Started Card</td><td>Tap ✕</td><td>Guarda dismissed=1, desaparece permanentemente</td></tr>
+            <tr><td>Pull to refresh</td><td>Arrastrar hacia abajo</td><td>refreshCurrentRoom() → re-fetch Supabase</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="screen-detail" id="sd-inicio-states">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Sin categorías</h4>
+            <ul>
+              <li>Muestra "Sin categorías" con botón crear</li>
+              <li>Pager no aparece</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Sin movimientos</h4>
+            <ul>
+              <li>Lista vacía, Getting Started Card visible</li>
+              <li>Balance card muestra $0</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Cargando</h4>
+            <ul>
+              <li>Spinner en sync status (tab bar)</li>
+              <li>Pull-to-refresh muestra indicador</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TAB: MOVIMIENTOS -->
+  <div class="diagram-block">
+    <div class="diagram-block-title">↕️ Movimientos <span class="tag">movimientos.tsx</span></div>
+    <div class="tab-grid" style="grid-template-columns: repeat(3,1fr);">
+
+      <div class="tab-card" onclick="toggleScreenDetail('sd-mov-ui')">
+        <div class="tab-icon">🖥</div>
+        <div class="tab-name">UI Principal</div>
+        <div class="tab-desc">Lista completa de movimientos con filtros</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-mov-actions')">
+        <div class="tab-icon">👆</div>
+        <div class="tab-name">Interacciones</div>
+        <div class="tab-desc">Filtros, búsqueda, acciones</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-mov-filters')">
+        <div class="tab-icon">🔽</div>
+        <div class="tab-name">Filtros disponibles</div>
+        <div class="tab-desc">Todas las opciones de filtrado</div>
+      </div>
+
+      <div class="screen-detail" id="sd-mov-ui">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Hero (gradiente morado)</h4>
+            <ul>
+              <li>Saludo + subtítulo del mes</li>
+              <li>Pills resumen: Ingresos | Gastos | Balance</li>
+              <li>Avatar → /perfil</li>
+            </ul>
+            <h4>Selector de Mes</h4>
+            <ul>
+              <li>"Mes de {nombre}" → tap expande picker</li>
+              <li>Picker: año ± botones + grilla 12 meses</li>
+              <li>Tap mes → filtra lista</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Buscador</h4>
+            <ul>
+              <li>Placeholder: "Buscar movimiento"</li>
+              <li>Al buscar: filtra TODOS los meses</li>
+              <li>Búsqueda en tiempo real</li>
+            </ul>
+            <h4>Panel de Filtros (colapsable)</h4>
+            <ul>
+              <li>Fila 1: Categoría (multi) + Autor (yo/pareja/todos)</li>
+              <li>Fila 2: Tipo (all/ingreso/gasto) + Frecuencia</li>
+              <li>Toggle muestra badge con nº filtros activos</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Lista de Actividades</h4>
+            <ul>
+              <li>FlatList de ActivityTile</li>
+              <li>Agrupados por fecha</li>
+              <li>Animación de entrada al filtrar</li>
+              <li>Pull-to-refresh</li>
+            </ul>
+            <h4>Barra flotante (scroll)</h4>
+            <ul>
+              <li>Aparece al pasar el hero</li>
+              <li>Muestra ingresos + gastos del mes</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-detail" id="sd-mov-actions">
+        <table class="interactions-table">
+          <thead><tr><th>Elemento</th><th>Acción</th><th>Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>"Mes de {nombre}"</td><td>Tap</td><td>Expande/colapsa month picker</td></tr>
+            <tr><td>Grilla de meses</td><td>Tap mes</td><td>Filtra lista a ese mes, actualiza pills resumen</td></tr>
+            <tr><td>Año +/-</td><td>Tap</td><td>Cambia año en el picker</td></tr>
+            <tr><td>Search bar</td><td>Escribir</td><td>Filtra en tiempo real por descripción/categoría</td></tr>
+            <tr><td>Botón Filtros</td><td>Tap</td><td>Muestra/oculta panel de filtros</td></tr>
+            <tr><td>Filtro Categoría</td><td>Tap chip</td><td>Toggle categoría en filtro activo</td></tr>
+            <tr><td>Filtro Autor</td><td>Tap avatar</td><td>Toggle yo/pareja/todos</td></tr>
+            <tr><td>Filtro Tipo</td><td>Tap chip</td><td>Filtra all/income/expense</td></tr>
+            <tr><td>Filtro Frecuencia</td><td>Tap chip</td><td>Filtra by frequency</td></tr>
+            <tr><td>ActivityTile (transacción)</td><td>Tap</td><td><span class="tag-modal">TransactionDetailModal</span></td></tr>
+            <tr><td>ActivityTile (gasto de plan)</td><td>Tap</td><td><span class="tag-modal">PlanDetailModal</span> tab Gastos</td></tr>
+            <tr><td>ActivityTile</td><td>Long press</td><td>Alert: Editar → <span class="tag-modal">TransactionModal</span> / Eliminar</td></tr>
+            <tr><td>Pull to refresh</td><td>Arrastrar</td><td>refreshCurrentRoom()</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="screen-detail" id="sd-mov-filters">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Categoría</h4>
+            <ul>
+              <li>Multi-select de todas las categorías activas</li>
+              <li>Chips coloreados con icono</li>
+              <li>"Todas" cuando ninguna seleccionada</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Autor</h4>
+            <ul>
+              <li>Todos (default)</li>
+              <li>Solo mis movimientos</li>
+              <li>Solo movimientos de pareja</li>
+              <li>Muestra avatar + nombre</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Tipo + Frecuencia</h4>
+            <ul>
+              <li>Tipo: todos / ingresos / gastos</li>
+              <li>Frecuencia: todas / mensual / quincenal / semanal / único</li>
+              <li>Se combinan (AND lógico con otros filtros)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TAB: CATEGORÍAS -->
+  <div class="diagram-block">
+    <div class="diagram-block-title">🥧 Categorías <span class="tag">categorias.tsx</span></div>
+    <div class="tab-grid" style="grid-template-columns: repeat(2,1fr);">
+
+      <div class="tab-card" onclick="toggleScreenDetail('sd-cat-ui')">
+        <div class="tab-icon">🖥</div>
+        <div class="tab-name">UI + Gráfica</div>
+        <div class="tab-desc">Ring chart + lista de categorías</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-cat-actions')">
+        <div class="tab-icon">👆</div>
+        <div class="tab-name">Interacciones</div>
+        <div class="tab-desc">Navegación y acciones</div>
+      </div>
+
+      <div class="screen-detail" id="sd-cat-ui">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Hero Card (morado)</h4>
+            <ul>
+              <li>"Consulta tus gastos y presupuesto restante"</li>
+              <li>Avatar → /perfil</li>
+              <li>Botón "Crear categoría" → BudgetCategoryModal</li>
+            </ul>
+            <h4>Chart Navigator</h4>
+            <ul>
+              <li>← Mes anterior | Chart | Mes siguiente →</li>
+              <li>CategoryRingChart (donut chart)</li>
+              <li>Total al centro del donut</li>
+              <li>Toggle gastos/ingresos dentro de la gráfica</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Legend Pills</h4>
+            <ul>
+              <li>Scroll horizontal</li>
+              <li>Dot de color + nombre de categoría</li>
+              <li>Corresponde a slices del ring chart</li>
+            </ul>
+            <h4>Lista de Categorías</h4>
+            <ul>
+              <li>Ordenadas: mayor gasto primero</li>
+              <li>Cada card: icono + nombre + gastado + presupuesto + barra %</li>
+              <li>Barra roja si se pasó del presupuesto</li>
+              <li>Tap → BudgetCategoryDetailModal</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Estado vacío</h4>
+            <ul>
+              <li>"Sin categorías" con botón crear</li>
+              <li>No se muestra la gráfica</li>
+            </ul>
+            <h4>Navegación de meses</h4>
+            <ul>
+              <li>Las flechas ← → cambian el mes visualizado</li>
+              <li>Independiente del mes seleccionado en Movimientos</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-detail" id="sd-cat-actions">
+        <table class="interactions-table">
+          <thead><tr><th>Elemento</th><th>Acción</th><th>Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>"Crear categoría"</td><td>Tap</td><td><span class="tag-modal">BudgetCategoryModal</span> (nueva)</td></tr>
+            <tr><td>Flecha ← mes</td><td>Tap</td><td>Retrocede un mes en la gráfica</td></tr>
+            <tr><td>Flecha → mes</td><td>Tap</td><td>Avanza un mes en la gráfica</td></tr>
+            <tr><td>Toggle gastos/ingresos</td><td>Tap</td><td>Cambia modo del ring chart + lista</td></tr>
+            <tr><td>Legend pill</td><td>Tap</td><td>Resalta slice en gráfica</td></tr>
+            <tr><td>Budget category card</td><td>Tap</td><td><span class="tag-modal">BudgetCategoryDetailModal</span></td></tr>
+            <tr><td>Avatar usuario</td><td>Tap</td><td><span class="tag-nav">navega</span> /perfil</td></tr>
+            <tr><td>Pull to refresh</td><td>Arrastrar</td><td>refreshCurrentRoom()</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TAB: EXTRAS -->
+  <div class="diagram-block">
+    <div class="diagram-block-title">✦ Extras <span class="tag">extras.tsx</span></div>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:16px;">Pantalla hub de navegación hacia Ahorros y Planes. Sin datos propios.</p>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:220px; background: linear-gradient(135deg, #4C1D95, #7C3AED); border-radius:14px; padding:20px; color:#fff; cursor:pointer;" onclick="alert('→ navega a /(tabs)/ahorros')">
+        <div style="font-size:24px; margin-bottom:8px;">👛</div>
+        <div style="font-size:16px; font-weight:700;">Ahorros</div>
+        <div style="font-size:12px; opacity:0.8; margin-top:4px;">Metas & planes de ahorro</div>
+        <div style="font-size:12px; opacity:0.65; margin-top:6px;">Registra aportes, visualiza tu progreso y alcanza tus metas financieras</div>
+        <div style="margin-top:14px; background:rgba(255,255,255,0.15); border-radius:8px; padding:8px 14px; text-align:center; font-size:13px; font-weight:600;">Abrir → /(tabs)/ahorros</div>
+      </div>
+      <div style="flex:1; min-width:220px; background: linear-gradient(135deg, #1E3A8A, #2563EB); border-radius:14px; padding:20px; color:#fff; cursor:pointer;" onclick="alert('→ navega a /(tabs)/ahorro (planes)')">
+        <div style="font-size:24px; margin-bottom:8px;">🗺️</div>
+        <div style="font-size:16px; font-weight:700;">Planes</div>
+        <div style="font-size:12px; opacity:0.8; margin-top:4px;">Gastos compartidos</div>
+        <div style="font-size:12px; opacity:0.65; margin-top:6px;">Organiza viajes, eventos y proyectos con tu pareja o amigos</div>
+        <div style="margin-top:14px; background:rgba(255,255,255,0.15); border-radius:8px; padding:8px 14px; text-align:center; font-size:13px; font-weight:600;">Abrir → /(tabs)/ahorro</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       3. PANTALLAS SECUNDARIAS
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">3 · Pantallas Secundarias (desde Extras)</div>
+
+  <!-- AHORROS -->
+  <div class="diagram-block">
+    <div class="diagram-block-title">💰 Ahorros <span class="tag">ahorros.tsx · Acceso: Extras → Ahorros</span></div>
+    <div class="tab-grid" style="grid-template-columns: repeat(3,1fr);">
+      <div class="tab-card" onclick="toggleScreenDetail('sd-ahorros-ui')">
+        <div class="tab-icon">🖥</div><div class="tab-name">UI Principal</div>
+        <div class="tab-desc">SavingsCard + lista ahorros + metas</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-ahorros-actions')">
+        <div class="tab-icon">👆</div><div class="tab-name">Interacciones</div>
+        <div class="tab-desc">Crear, editar, aportar</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-ahorros-perms')">
+        <div class="tab-icon">🔐</div><div class="tab-name">Permisos</div>
+        <div class="tab-desc">Personal vs compartido</div>
+      </div>
+
+      <div class="screen-detail" id="sd-ahorros-ui">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Hero (gradiente morado/azul)</h4>
+            <ul>
+              <li>Botón ← atrás (a Extras)</li>
+              <li>"Ahorros y metas hasta hoy"</li>
+              <li>SavingsCard: total ahorrado vs objetivo</li>
+              <li>Botón "Crear Ahorro" → SavingPlanModal</li>
+            </ul>
+            <h4>Buscador</h4>
+            <ul><li>Placeholder: "Buscar ahorro"</li></ul>
+          </div>
+          <div class="detail-col">
+            <h4>Filtro Owner</h4>
+            <ul>
+              <li>Chip dropdown: Todos / Mis ahorros / Pareja</li>
+            </ul>
+            <h4>Sección Ahorros (SavingPlans)</h4>
+            <ul>
+              <li>SavingPlanPreviewCard por cada plan</li>
+              <li>Muestra: título, objetivo, ahorrado, barra, icono</li>
+              <li>Tap → SavingPlanDetailModal</li>
+              <li>Tap ícono editar → SavingPlanModal</li>
+              <li>Read-only si es plan personal de la pareja</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Sección Metas (Goals)</h4>
+            <ul>
+              <li>GoalCard por cada meta</li>
+              <li>Nombre, objetivo, contribuido, % progreso</li>
+              <li>Botón "Aportar" → ContributionModal</li>
+              <li>Botón "Editar" → GoalModal</li>
+              <li>Botón "Eliminar" → Alert confirmación</li>
+              <li>Tap card → GoalDetailModal</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-detail" id="sd-ahorros-actions">
+        <table class="interactions-table">
+          <thead><tr><th>Elemento</th><th>Acción</th><th>Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>← atrás</td><td>Tap</td><td><span class="tag-nav">navega</span> a Extras</td></tr>
+            <tr><td>"Crear Ahorro"</td><td>Tap</td><td><span class="tag-modal">SavingPlanModal</span> (nuevo)</td></tr>
+            <tr><td>Filtro owner</td><td>Tap chip</td><td>Filtra lista por dueño del ahorro</td></tr>
+            <tr><td>Search bar</td><td>Escribir</td><td>Filtra en tiempo real por nombre</td></tr>
+            <tr><td>SavingPlanPreviewCard</td><td>Tap</td><td><span class="tag-modal">SavingPlanDetailModal</span></td></tr>
+            <tr><td>Ícono editar (saving plan)</td><td>Tap</td><td><span class="tag-modal">SavingPlanModal</span> (editar)</td></tr>
+            <tr><td>GoalCard</td><td>Tap</td><td><span class="tag-modal">GoalDetailModal</span></td></tr>
+            <tr><td>Botón "Aportar"</td><td>Tap</td><td><span class="tag-modal">ContributionModal</span></td></tr>
+            <tr><td>Botón "Editar" (meta)</td><td>Tap</td><td><span class="tag-modal">GoalModal</span></td></tr>
+            <tr><td>Botón "Eliminar" (meta)</td><td>Tap</td><td>Alert confirmación → elimina de store</td></tr>
+            <tr><td>Pull to refresh</td><td>Arrastrar</td><td>refreshCurrentRoom()</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="screen-detail" id="sd-ahorros-perms">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Planes personales propios</h4>
+            <ul><li>Acceso completo: ver, editar, aportar, eliminar</li></ul>
+            <h4>Planes personales de la pareja</h4>
+            <ul><li>Solo lectura (read-only)</li><li>No se puede editar ni aportar</li></ul>
+          </div>
+          <div class="detail-col">
+            <h4>Planes conjuntos (joint)</h4>
+            <ul><li>Ambos pueden ver, aportar y editar</li><li>Aparece a ambos en la lista</li></ul>
+            <h4>Metas (Goals)</h4>
+            <ul><li>Personales: solo el dueño puede modificar</li><li>Conjuntas: ambos pueden aportar</li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLANES -->
+  <div class="diagram-block">
+    <div class="diagram-block-title">🗺️ Planes (Gastos Compartidos) <span class="tag">ahorro.tsx · Acceso: Extras → Planes</span></div>
+    <div class="tab-grid" style="grid-template-columns: repeat(2,1fr);">
+      <div class="tab-card" onclick="toggleScreenDetail('sd-planes-ui')">
+        <div class="tab-icon">🖥</div><div class="tab-name">UI + Lista de Planes</div>
+        <div class="tab-desc">Lista de planes compartidos</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-planes-actions')">
+        <div class="tab-icon">👆</div><div class="tab-name">Interacciones</div>
+        <div class="tab-desc">Crear, ver detalles, gastos</div>
+      </div>
+
+      <div class="screen-detail" id="sd-planes-ui">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Header</h4>
+            <ul>
+              <li>← atrás a Extras</li>
+              <li>Título "Planes"</li>
+              <li>Resumen: total planes, total gasto compartido</li>
+            </ul>
+            <h4>Lista de Planes</h4>
+            <ul>
+              <li>Plan card: icono, título, descripción, miembros, gasto total</li>
+              <li>Badge de miembros con avatares</li>
+              <li>Tap → PlanDetailModal (3 tabs)</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Botón Crear</h4>
+            <ul><li>"Nuevo plan" → PlanModal</li></ul>
+            <h4>Estado vacío</h4>
+            <ul><li>"Sin planes aún" + sugerencia</li><li>Botón crear visible</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-detail" id="sd-planes-actions">
+        <table class="interactions-table">
+          <thead><tr><th>Elemento</th><th>Acción</th><th>Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>← atrás</td><td>Tap</td><td><span class="tag-nav">navega</span> a Extras</td></tr>
+            <tr><td>"Nuevo plan"</td><td>Tap</td><td><span class="tag-modal">PlanModal</span> (nuevo)</td></tr>
+            <tr><td>Plan card</td><td>Tap</td><td><span class="tag-modal">PlanDetailModal</span> tab Detalles</td></tr>
+            <tr><td>Pull to refresh</td><td>Arrastrar</td><td>refreshCurrentRoom()</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       4. PERFIL
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">4 · Pantalla de Perfil</div>
+  <div class="diagram-block">
+    <div class="diagram-block-title">👤 Perfil <span class="tag">perfil.tsx · Acceso: avatar en cualquier tab</span></div>
+    <div class="tab-grid" style="grid-template-columns: repeat(3,1fr);">
+      <div class="tab-card" onclick="toggleScreenDetail('sd-perfil-ui')">
+        <div class="tab-icon">🖥</div><div class="tab-name">UI + Secciones</div>
+        <div class="tab-desc">Avatar, usuarios, prefs, sync</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-perfil-actions')">
+        <div class="tab-icon">👆</div><div class="tab-name">Interacciones</div>
+        <div class="tab-desc">Cambios de configuración</div>
+      </div>
+      <div class="tab-card" onclick="toggleScreenDetail('sd-perfil-dev')">
+        <div class="tab-icon">🛠</div><div class="tab-name">Sección Desarrollo</div>
+        <div class="tab-desc">Herramientas de testing</div>
+      </div>
+
+      <div class="screen-detail" id="sd-perfil-ui">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>Hero</h4>
+            <ul>
+              <li>← atrás</li>
+              <li>Avatar grande (tap → image picker)</li>
+              <li>Badge cámara sobre el avatar</li>
+              <li>Nombre + "Usuario activo"</li>
+            </ul>
+            <h4>Sección Usuarios</h4>
+            <ul>
+              <li>Lista de todos los usuarios</li>
+              <li>Usuario activo: checkmark verde</li>
+              <li>Tap fila → cambia usuario activo</li>
+              <li>Botón eliminar (no activos)</li>
+              <li>"Agregar usuario" → formulario expansible</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Formulario agregar usuario</h4>
+            <ul>
+              <li>Sección 1er integrante: Nombre + paleta colores</li>
+              <li>Sección 2do integrante: Nombre + paleta colores</li>
+              <li>Preview de avatares en tiempo real</li>
+              <li>Botones: Cancelar | Agregar</li>
+            </ul>
+            <h4>Preferencias</h4>
+            <ul>
+              <li>Moneda: EUR / USD / BS / COP (radio buttons)</li>
+              <li>Tema: light/dark (switch)</li>
+            </ul>
+          </div>
+          <div class="detail-col">
+            <h4>Sincronización</h4>
+            <ul>
+              <li>Indicador: "En vivo" / "Conectando" / "Error"</li>
+              <li>Botón refresh manual</li>
+            </ul>
+            <h4>Acerca de</h4>
+            <ul><li>Número de versión de la app</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen-detail" id="sd-perfil-actions">
+        <table class="interactions-table">
+          <thead><tr><th>Elemento</th><th>Acción</th><th>Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>Avatar grande</td><td>Tap</td><td>Abre image picker → sube foto a Supabase (opcional)</td></tr>
+            <tr><td>Fila de usuario</td><td>Tap</td><td>Cambia currentUser en store, guarda en AsyncStorage</td></tr>
+            <tr><td>Botón ✕ usuario</td><td>Tap</td><td>Alert confirmación → elimina usuario del store</td></tr>
+            <tr><td>"Agregar usuario"</td><td>Tap</td><td>Expande formulario de creación</td></tr>
+            <tr><td>Paleta de color (usuario)</td><td>Tap color</td><td>Actualiza color del usuario en preview</td></tr>
+            <tr><td>Botón "Agregar" (form)</td><td>Tap</td><td>Crea usuarios en store + Supabase, colapsa form</td></tr>
+            <tr><td>Radio moneda</td><td>Tap</td><td>Actualiza currency en store y AsyncStorage</td></tr>
+            <tr><td>Switch tema</td><td>Toggle</td><td>Cambia light/dark en ThemeContext</td></tr>
+            <tr><td>Botón refresh sync</td><td>Tap</td><td>refreshCurrentRoom() manual</td></tr>
+            <tr><td>Pull to refresh</td><td>Arrastrar</td><td>Verifica estado sync</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="screen-detail" id="sd-perfil-dev">
+        <div class="screen-detail-grid">
+          <div class="detail-col">
+            <h4>"Ver flujo de onboarding"</h4>
+            <ul><li>Tap → navega a /onboarding (sin resetear AsyncStorage)</li></ul>
+          </div>
+          <div class="detail-col">
+            <h4>"Crear perfil de demo"</h4>
+            <ul>
+              <li>Tap → Alert de confirmación</li>
+              <li>Confirmar → seed datos demo en el store</li>
+              <li>Crea usuarios demo_a y demo_b con movimientos, categorías y planes de ejemplo</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       5. FAB + VOZ
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">5 · FAB Flotante + Acciones Rápidas + Voz</div>
+
+  <div class="fab-section">
+    <h3>🔵 Botón FAB Central (Tab Bar)</h3>
+    <p>Presente en todas las tabs. Dos modos de activación:</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:16px;">
+      <div>
+        <div style="font-size:12px; font-weight:700; color:#A5B4FC; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Tap corto → Menú desplegable</div>
+        <div class="fab-menu-grid">
+          <div class="fab-menu-item">
+            <div class="fab-icon">💚</div>
+            <div class="fab-label">Nuevo movimiento</div>
+            <div class="fab-sub">→ TransactionModal</div>
+          </div>
+          <div class="fab-menu-item">
+            <div class="fab-icon">🔴</div>
+            <div class="fab-label">Nueva categoría</div>
+            <div class="fab-sub">→ BudgetCategoryModal</div>
+          </div>
+          <div class="fab-menu-item">
+            <div class="fab-icon">🟣</div>
+            <div class="fab-label">Nuevo ahorro</div>
+            <div class="fab-sub">→ SavingPlanModal</div>
+          </div>
+          <div class="fab-menu-item">
+            <div class="fab-icon">🔵</div>
+            <div class="fab-label">Nuevo plan</div>
+            <div class="fab-sub">→ PlanModal</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px; font-weight:700; color:#A5B4FC; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Long press (280ms) → Modo Voz</div>
+        <div style="background:rgba(255,255,255,0.06); border-radius:12px; padding:16px;">
+          <div style="font-size:13px; opacity:0.8; margin-bottom:8px;">Se activa el micrófono. La app escucha comandos en español y crea registros automáticamente.</div>
+          <div style="font-size:11px; opacity:0.5; font-style:italic;">Primera vez: muestra bubble hint "Mantén para voz" por 7.5 segundos. Luego guarda hint_voice_seen='1'.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VOICE COMMANDS -->
+  <div class="voice-section">
+    <h3 style="margin-bottom:4px;">🎙 Comandos de Voz reconocidos</h3>
+    <p style="font-size:13px; opacity:0.7; margin-bottom:0;">Long press FAB → reconocimiento de voz en español → parseo automático → crea registro en store</p>
+    <div class="voice-commands">
+      <div class="voice-cmd">
+        <div class="cmd-text">"gasté 25 en supermercado"</div>
+        <div class="cmd-result">→ Crea gasto de $25, categoría supermercado</div>
+      </div>
+      <div class="voice-cmd">
+        <div class="cmd-text">"ingreso de 1200"</div>
+        <div class="cmd-result">→ Crea ingreso de $1200</div>
+      </div>
+      <div class="voice-cmd">
+        <div class="cmd-text">"ahorrar 500 para vacaciones"</div>
+        <div class="cmd-result">→ Crea o actualiza saving plan "vacaciones"</div>
+      </div>
+      <div class="voice-cmd">
+        <div class="cmd-text">"crear plan viaje con {pareja}"</div>
+        <div class="cmd-result">→ Crea plan compartido con miembros</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       6. MODALES
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">6 · Modales (Hojas Inferiores)</div>
+
+  <div class="diagram-block">
+    <div class="diagram-block-title">Todos los Modales de la App</div>
+    <div class="modal-grid">
+
+      <!-- TRANSACTION MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-transaction')">
+          <div class="modal-card-title">💸 TransactionModal</div>
+          <div class="modal-card-sub">Crear / editar movimiento</div>
+        </div>
+        <div class="modal-expand" id="me-transaction">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>FAB → "Nuevo movimiento"</li>
+            <li>Inicio → "Añadir Ingreso/Gasto"</li>
+            <li>BudgetCategoryDetailModal → "Añadir movimiento"</li>
+            <li>Long press ActivityTile → Editar</li>
+          </ul>
+          <h4>Campos</h4>
+          <ul>
+            <li>Selector tipo: Ingreso / Gasto</li>
+            <li>Monto (decimal, símbolo moneda)</li>
+            <li>Categoría (dropdown de BudgetCategories)</li>
+            <li>Descripción / notas</li>
+            <li>Fecha (default: hoy)</li>
+            <li>Frecuencia: Única / Semanal / Quincenal / Mensual</li>
+            <li>Cuenta (texto libre)</li>
+            <li>Tags</li>
+          </ul>
+          <h4>Acciones</h4>
+          <ul>
+            <li>Guardar/Actualizar → store.addExpense o updateExpense</li>
+            <li>Eliminar (si editando) → con confirmación</li>
+          </ul>
+          <h4>Validaciones</h4>
+          <ul>
+            <li>Monto requerido y > 0</li>
+            <li>Fecha requerida</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- BUDGET CATEGORY MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-budgetcat')">
+          <div class="modal-card-title">🥧 BudgetCategoryModal</div>
+          <div class="modal-card-sub">Crear / editar categoría</div>
+        </div>
+        <div class="modal-expand" id="me-budgetcat">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>FAB → "Nueva categoría"</li>
+            <li>Categorías → "Crear categoría"</li>
+            <li>BudgetCategoryDetailModal → editar</li>
+          </ul>
+          <h4>Paso 0 — Presets (solo nuevo)</h4>
+          <ul>
+            <li>Cards de categorías predefinidas (Alimentación, Transporte, etc.)</li>
+            <li>Multi-select</li>
+            <li>"Continuar" o "Crear a medida"</li>
+          </ul>
+          <h4>Paso 1 — Detalles</h4>
+          <ul>
+            <li>Nombre (requerido)</li>
+            <li>Selector de icono (23 opciones)</li>
+            <li>Selector de color (12 colores)</li>
+            <li>Presupuesto mensual (opcional)</li>
+            <li>Toggle Personal vs Compartida</li>
+            <li>Notas (opcional)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- BUDGET CATEGORY DETAIL MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-budgetcatdetail')">
+          <div class="modal-card-title">📊 BudgetCategoryDetailModal</div>
+          <div class="modal-card-sub">Ver detalle de categoría</div>
+        </div>
+        <div class="modal-expand" id="me-budgetcatdetail">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>Inicio → tap tarjeta categoría en pager</li>
+            <li>Categorías → tap card de categoría</li>
+          </ul>
+          <h4>Muestra</h4>
+          <ul>
+            <li>Nombre + icono + color</li>
+            <li>Barra progreso presupuesto (rojo si sobrepasado)</li>
+            <li>Pills: Ahorrado | Presupuesto | Disponible</li>
+            <li>Lista de transacciones de esa categoría + mes</li>
+            <li>Filtro ingreso/gasto</li>
+          </ul>
+          <h4>Acciones</h4>
+          <ul>
+            <li>Botón editar → BudgetCategoryModal</li>
+            <li>"Añadir movimiento" → TransactionModal (categoría pre-llenada)</li>
+            <li>Tap transacción → TransactionDetailModal</li>
+            <li>Eliminar categoría → Alert confirmación</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SAVING PLAN MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-savingplan')">
+          <div class="modal-card-title">💰 SavingPlanModal</div>
+          <div class="modal-card-sub">Crear / editar ahorro</div>
+        </div>
+        <div class="modal-expand" id="me-savingplan">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>FAB → "Nuevo ahorro"</li>
+            <li>Ahorros → "Crear Ahorro"</li>
+            <li>Ahorros → ícono editar en card</li>
+            <li>SavingPlanDetailModal → editar</li>
+          </ul>
+          <h4>Campos</h4>
+          <ul>
+            <li>Tipo ahorro: Libre / Con objetivo</li>
+            <li>Título</li>
+            <li>Objetivo (si tipo=objetivo)</li>
+            <li>Meses a ahorrar → calcula cuota mensual</li>
+            <li>Selector icono + color</li>
+            <li>Tipo: Personal / Conjunto (joint)</li>
+            <li>Link (URL opcional)</li>
+            <li>Notas</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SAVING PLAN DETAIL MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-savingplandetail')">
+          <div class="modal-card-title">📈 SavingPlanDetailModal</div>
+          <div class="modal-card-sub">Ver detalle + aportes</div>
+        </div>
+        <div class="modal-expand" id="me-savingplandetail">
+          <h4>Apertura desde</h4>
+          <ul><li>Ahorros → tap SavingPlanPreviewCard</li></ul>
+          <h4>Muestra</h4>
+          <ul>
+            <li>Icono + título + color</li>
+            <li>Barra progreso objetivo</li>
+            <li>Pills: Ahorrado | Objetivo | Falta</li>
+            <li>Botón compartir (si joint)</li>
+          </ul>
+          <h4>Formulario de aporte</h4>
+          <ul>
+            <li>Monto + fecha + nota</li>
+            <li>Toggle: Desde balance (descuenta) / Desde existente</li>
+            <li>Botón "Añadir aporte"</li>
+          </ul>
+          <h4>Historial</h4>
+          <ul>
+            <li>Lista desc por fecha</li>
+            <li>Monto, fecha, usuario, nota</li>
+            <li>Botón eliminar aporte</li>
+          </ul>
+          <h4>Acciones</h4>
+          <ul>
+            <li>Editar plan → SavingPlanModal</li>
+            <li>Eliminar plan → Alert → elimina del store</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PLAN MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-plan')">
+          <div class="modal-card-title">🗺️ PlanModal</div>
+          <div class="modal-card-sub">Crear / editar plan compartido</div>
+        </div>
+        <div class="modal-expand" id="me-plan">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>FAB → "Nuevo plan"</li>
+            <li>Planes → "Nuevo plan"</li>
+            <li>PlanDetailModal → editar</li>
+          </ul>
+          <h4>Paso 0 — Info básica</h4>
+          <ul>
+            <li>Título</li>
+            <li>Descripción</li>
+            <li>Selector icono</li>
+            <li>Selector color</li>
+          </ul>
+          <h4>Paso 1 — Miembros</h4>
+          <ul>
+            <li>Toggle: incluir pareja automáticamente</li>
+            <li>Lista miembros actuales</li>
+            <li>Formulario agregar externo: nombre + email</li>
+            <li>Botón eliminar miembro</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PLAN DETAIL MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-plandetail')">
+          <div class="modal-card-title">📋 PlanDetailModal</div>
+          <div class="modal-card-sub">3 tabs: detalles / gastos / saldos</div>
+        </div>
+        <div class="modal-expand" id="me-plandetail">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>Planes → tap plan card</li>
+            <li>Movimientos → tap gasto de plan</li>
+          </ul>
+          <h4>Tab 1 — Detalles</h4>
+          <ul>
+            <li>Título + descripción + icono</li>
+            <li>Lista miembros con avatares</li>
+            <li>Presupuesto total | Gasto total | Balance</li>
+            <li>Editar plan → PlanModal</li>
+            <li>Eliminar plan → Alert</li>
+          </ul>
+          <h4>Tab 2 — Gastos</h4>
+          <ul>
+            <li>Agrupados por fecha (Hoy, Ayer, etc.)</li>
+            <li>Descripción, monto, pagador, categoría</li>
+            <li>Tap → PlanExpenseModal (editar)</li>
+            <li>"Añadir gasto" → PlanExpenseModal (nuevo)</li>
+            <li>Filtro por miembro/categoría</li>
+          </ul>
+          <h4>Tab 3 — Saldos</h4>
+          <ul>
+            <li>Tabla: Miembro | Contribuyó | Debe | Saldo</li>
+            <li>Algoritmo resolveDebts() (mínimo pagos)</li>
+            <li>"Registrar pago" → PlanSettlementModal</li>
+            <li>Historial de pagos registrados</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PLAN EXPENSE MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-planexpense')">
+          <div class="modal-card-title">🧾 PlanExpenseModal</div>
+          <div class="modal-card-sub">Agregar gasto a un plan</div>
+        </div>
+        <div class="modal-expand" id="me-planexpense">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>PlanDetailModal Tab Gastos → "Añadir gasto"</li>
+            <li>PlanDetailModal Tab Gastos → tap gasto existente</li>
+          </ul>
+          <h4>Campos</h4>
+          <ul>
+            <li>Descripción (requerido)</li>
+            <li>Monto (requerido)</li>
+            <li>Categoría (lista del plan o nueva)</li>
+            <li>Pagador (dropdown miembros del plan)</li>
+            <li>Fecha</li>
+            <li>Nota opcional</li>
+          </ul>
+          <h4>Acciones</h4>
+          <ul>
+            <li>Guardar / Actualizar</li>
+            <li>Eliminar (si editando)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- PLAN SETTLEMENT MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-settlement')">
+          <div class="modal-card-title">💳 PlanSettlementModal</div>
+          <div class="modal-card-sub">Registrar pago entre miembros</div>
+        </div>
+        <div class="modal-expand" id="me-settlement">
+          <h4>Apertura desde</h4>
+          <ul><li>PlanDetailModal Tab Saldos → "Registrar pago"</li></ul>
+          <h4>Campos</h4>
+          <ul>
+            <li>De: dropdown miembro pagador</li>
+            <li>A: dropdown miembro receptor</li>
+            <li>Monto</li>
+            <li>Fecha</li>
+            <li>Nota opcional</li>
+          </ul>
+          <h4>Efecto</h4>
+          <ul>
+            <li>Actualiza saldos en Tab Saldos</li>
+            <li>Aparece en historial de settlements</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- TRANSACTION DETAIL MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-txdetail')">
+          <div class="modal-card-title">🔍 TransactionDetailModal</div>
+          <div class="modal-card-sub">Ver detalle de transacción</div>
+        </div>
+        <div class="modal-expand" id="me-txdetail">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>Inicio → tap ActivityTile (transacción)</li>
+            <li>Movimientos → tap ActivityTile</li>
+            <li>BudgetCategoryDetailModal → tap transacción</li>
+          </ul>
+          <h4>Muestra</h4>
+          <ul>
+            <li>Monto destacado + tipo (ingreso/gasto)</li>
+            <li>Categoría con color e icono</li>
+            <li>Descripción, fecha, frecuencia</li>
+            <li>Usuario que lo registró</li>
+            <li>Notas si existen</li>
+          </ul>
+          <h4>Acciones</h4>
+          <ul>
+            <li>Editar → TransactionModal</li>
+            <li>Eliminar → Alert confirmación</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- GOAL MODAL -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-goal')">
+          <div class="modal-card-title">🎯 GoalModal</div>
+          <div class="modal-card-sub">Crear / editar meta de ahorro</div>
+        </div>
+        <div class="modal-expand" id="me-goal">
+          <h4>Apertura desde</h4>
+          <ul>
+            <li>Ahorros → botón "Editar" en GoalCard</li>
+            <li>GoalDetailModal → editar</li>
+          </ul>
+          <h4>Campos</h4>
+          <ul>
+            <li>Nombre</li>
+            <li>Monto objetivo</li>
+            <li>Tipo: Personal / Conjunto</li>
+            <li>Selector icono + color</li>
+            <li>Notas</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- GOAL DETAIL + CONTRIBUTION MODALS -->
+      <div>
+        <div class="modal-card" onclick="toggleModalExpand('me-goaldetail')">
+          <div class="modal-card-title">📜 GoalDetailModal + ContributionModal</div>
+          <div class="modal-card-sub">Ver aportes + registrar contribución</div>
+        </div>
+        <div class="modal-expand" id="me-goaldetail">
+          <h4>GoalDetailModal — Apertura</h4>
+          <ul><li>Ahorros → tap GoalCard</li></ul>
+          <h4>GoalDetailModal — Muestra</h4>
+          <ul>
+            <li>Nombre + breadcrumbs (Ahorros > Meta > Historial)</li>
+            <li>Pills: Ahorrado | Objetivo | Falta</li>
+            <li>Lista aportes: monto, usuario, fecha, nota</li>
+            <li>Estado vacío: "Todavía no hay aportes"</li>
+          </ul>
+          <h4>ContributionModal — Apertura</h4>
+          <ul><li>Ahorros → botón "Aportar" en GoalCard</li></ul>
+          <h4>ContributionModal — Campos</h4>
+          <ul>
+            <li>Monto del aporte</li>
+            <li>Fecha</li>
+            <li>Nota opcional</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       7. FLUJO DE DATOS
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">7 · Flujo de Datos y Estado</div>
+  <div class="diagram-block">
+    <div class="diagram-block-title">Estado Global y Sincronización</div>
+    <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:20px;">
+
+      <div style="background:var(--bg); border-radius:12px; padding:16px;">
+        <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Zustand Store (useAppStore)</div>
+        <ul style="list-style:none; padding:0; font-size:13px; line-height:1.8;">
+          <li>📦 <strong>payload.expenses</strong> — Transacciones</li>
+          <li>📦 <strong>payload.budgetCategories</strong> — Categorías</li>
+          <li>📦 <strong>payload.savings</strong> — Planes de ahorro</li>
+          <li>📦 <strong>payload.plans</strong> — Planes compartidos</li>
+          <li>📦 <strong>payload.goals</strong> — Metas</li>
+          <li>📦 <strong>payload.contribs</strong> — Contribuciones</li>
+          <li>👤 <strong>currentUser</strong> — ID usuario activo</li>
+          <li>📅 <strong>selectedYM</strong> — Mes/año filtro (YYYY-MM)</li>
+          <li>💱 <strong>currency</strong> — EUR / USD / BS / COP</li>
+          <li>👥 <strong>users</strong> — Map UserData</li>
+        </ul>
+      </div>
+
+      <div style="background:var(--bg); border-radius:12px; padding:16px;">
+        <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Supabase Sync</div>
+        <ul style="list-style:none; padding:0; font-size:13px; line-height:1.8;">
+          <li>🔴 Canal Realtime por <strong>room_id</strong></li>
+          <li>🔄 Auto-refresh cuando cambia <strong>shared_state</strong></li>
+          <li>📡 Estado: <strong>En vivo / Conectando / Error</strong></li>
+          <li>🔃 refreshCurrentRoom() → re-fetch manual</li>
+          <li>📤 Toda escritura → update shared_state → broadcast</li>
+          <li>📥 Toda lectura → desde payload en memoria</li>
+        </ul>
+        <div style="margin-top:12px; background:#FEF3C7; border-radius:8px; padding:10px 12px; font-size:12px; color:#78350F;">
+          ⚠️ Auth futura: cada room_id protegido por RLS — solo su usuario y pareja pueden leer/escribir
+        </div>
+      </div>
+
+      <div style="background:var(--bg); border-radius:12px; padding:16px;">
+        <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">AsyncStorage (local)</div>
+        <ul style="list-style:none; padding:0; font-size:13px; line-height:1.8;">
+          <li>🔑 <strong>nosotros_user</strong> — ID usuario activo</li>
+          <li>🔑 <strong>nosotros_currency</strong> — Moneda preferida</li>
+          <li>🔑 <strong>nosotros_onboarding_done</strong> — '1' si completado</li>
+          <li>🔑 <strong>nosotros_hint_voice_seen</strong> — '1' si visto FAB hint</li>
+          <li>🔑 <strong>nosotros_getting_started_dismissed</strong> — '1' si cerrado</li>
+        </ul>
+        <div style="margin-top:12px; font-size:12px; color:var(--muted);">Persisten entre sesiones. Se cargan en initialize() al abrir la app.</div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:20px; background:var(--bg); border-radius:12px; padding:16px;">
+      <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">Cálculos Principales (utils/calculations.ts)</div>
+      <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:12px; font-size:12px;">
+        <div><strong>calcSaldoActual</strong><br><span style="color:var(--muted)">Suma ingresos - gastos del mes en curso</span></div>
+        <div><strong>calcSaldoProyectado</strong><br><span style="color:var(--muted)">Incluye recurrentes hasta fin de mes</span></div>
+        <div><strong>calcGastosActual</strong><br><span style="color:var(--muted)">Total gastos registrados del mes</span></div>
+        <div><strong>calcBudgetCategorySpending</strong><br><span style="color:var(--muted)">Suma gastos en categoría × mes</span></div>
+        <div><strong>resolveDebts()</strong><br><span style="color:var(--muted)">Algoritmo mínimo de pagos en planes</span></div>
+        <div><strong>planMemberSummary</strong><br><span style="color:var(--muted)">Contribución por miembro en plan</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       8. RESUMEN NAVEGACIÓN COMPLETA
+  ════════════════════════════════════════════════════ -->
+  <div class="section-title">8 · Mapa de Navegación Completo</div>
+  <div class="diagram-block">
+    <div class="diagram-block-title">Todas las rutas y quién abre qué</div>
+    <table class="interactions-table">
+      <thead>
+        <tr>
+          <th>Desde</th>
+          <th>Elemento / Acción</th>
+          <th>Destino</th>
+          <th>Tipo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>App abre (1ra vez)</td><td>initialize() → onboarding_done=null</td><td>/onboarding</td><td><span class="tag-nav">navega</span></td></tr>
+        <tr><td>Onboarding</td><td>Tap "Empezar"</td><td>/(tabs)</td><td><span class="tag-nav">replace</span></td></tr>
+        <tr><td>Cualquier tab</td><td>Tap avatar header</td><td>/perfil</td><td><span class="tag-nav">push</span></td></tr>
+        <tr><td>Extras</td><td>Tap "Abrir" Ahorros</td><td>/(tabs)/ahorros</td><td><span class="tag-nav">navega</span></td></tr>
+        <tr><td>Extras</td><td>Tap "Abrir" Planes</td><td>/(tabs)/ahorro</td><td><span class="tag-nav">navega</span></td></tr>
+        <tr><td>Ahorros / Planes</td><td>Tap ← atrás</td><td>/(tabs)/extras</td><td><span class="tag-nav">back</span></td></tr>
+        <tr><td>Perfil</td><td>Tap ← atrás</td><td>tab anterior</td><td><span class="tag-nav">back</span></td></tr>
+        <tr><td>Perfil (dev)</td><td>"Ver flujo de onboarding"</td><td>/onboarding</td><td><span class="tag-nav">push</span></td></tr>
+        <tr><td>FAB (cualquier tab)</td><td>Tap corto</td><td>Dropup menu</td><td><span class="tag-modal">overlay</span></td></tr>
+        <tr><td>FAB dropup</td><td>"Nuevo movimiento"</td><td>TransactionModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>FAB dropup</td><td>"Nueva categoría"</td><td>BudgetCategoryModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>FAB dropup</td><td>"Nuevo ahorro"</td><td>SavingPlanModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>FAB dropup</td><td>"Nuevo plan"</td><td>PlanModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Inicio</td><td>Tap Quick Action Ingreso</td><td>TransactionModal (income)</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Inicio</td><td>Tap Quick Action Gasto</td><td>TransactionModal (expense)</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Inicio</td><td>Tap tarjeta categoría</td><td>BudgetCategoryDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Inicio</td><td>Tap ActivityTile transacción</td><td>TransactionDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Inicio</td><td>Tap "Ver detalles" (trend)</td><td>FinanceDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Movimientos</td><td>Tap ActivityTile transacción</td><td>TransactionDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Movimientos</td><td>Tap ActivityTile plan expense</td><td>PlanDetailModal tab Gastos</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Categorías</td><td>Tap "Crear categoría"</td><td>BudgetCategoryModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Categorías</td><td>Tap budget card</td><td>BudgetCategoryDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Ahorros</td><td>Tap "Crear Ahorro"</td><td>SavingPlanModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Ahorros</td><td>Tap SavingPlanPreviewCard</td><td>SavingPlanDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Ahorros</td><td>Tap GoalCard</td><td>GoalDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Ahorros</td><td>Tap "Aportar" (goal)</td><td>ContributionModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Ahorros</td><td>Tap "Editar" (goal)</td><td>GoalModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>Planes</td><td>Tap plan card</td><td>PlanDetailModal tab Detalles</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>BudgetCategoryDetailModal</td><td>Tap editar</td><td>BudgetCategoryModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>BudgetCategoryDetailModal</td><td>"Añadir movimiento"</td><td>TransactionModal (cat pre-fill)</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>BudgetCategoryDetailModal</td><td>Tap transacción</td><td>TransactionDetailModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>TransactionDetailModal</td><td>Tap editar</td><td>TransactionModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>SavingPlanDetailModal</td><td>Tap editar plan</td><td>SavingPlanModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>PlanDetailModal tab Gastos</td><td>"Añadir gasto"</td><td>PlanExpenseModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>PlanDetailModal tab Gastos</td><td>Tap gasto</td><td>PlanExpenseModal (editar)</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>PlanDetailModal tab Saldos</td><td>"Registrar pago"</td><td>PlanSettlementModal</td><td><span class="tag-modal">modal</span></td></tr>
+        <tr><td>PlanDetailModal</td><td>Tap editar plan</td><td>PlanModal</td><td><span class="tag-modal">modal</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /canvas -->
+
+<button class="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+function toggleDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('open');
+}
+
+function toggleScreenDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  // close all sibling screen-details in the same tab-grid
+  const grid = el.closest('.tab-grid') || el.parentElement;
+  if (grid) {
+    grid.querySelectorAll('.screen-detail').forEach(d => d.classList.remove('open'));
+    grid.querySelectorAll('.tab-card').forEach(c => c.classList.remove('active'));
+  }
+  if (!isOpen) {
+    el.classList.add('open');
+    // find the card that triggered it
+    const allCards = grid ? grid.querySelectorAll('.tab-card') : [];
+    allCards.forEach((card, i) => {
+      if (card.getAttribute('onclick') && card.getAttribute('onclick').includes(id)) {
+        card.classList.add('active');
+      }
+    });
+  }
+}
+
+function toggleModalExpand(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  // close all modal expands
+  document.querySelectorAll('.modal-expand').forEach(e => e.classList.remove('open'));
+  document.querySelectorAll('.modal-card').forEach(c => c.classList.remove('expanded'));
+  if (!isOpen) {
+    el.classList.add('open');
+    const card = el.previousElementSibling;
+    if (card) card.classList.add('expanded');
+  }
+}
+</script>
+
+</body>
+</html>

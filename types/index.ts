@@ -70,17 +70,19 @@ export interface SavingPlanHistoryEntry {
   amount: number;
   date: string;            // 'YYYY-MM-DD'
   note?: string;
+  source?: 'balance' | 'existing'; // 'balance' = descuenta del saldo; 'existing' = ahorros previos; undefined = no descuenta (compat)
 }
 
 export interface SavingPlan {
   id: number;
+  saveType?: 'free' | 'goal'; // 'free' = sin meta; 'goal' = monto objetivo; undefined = legacy 'goal'
   type?: 'joint' | 'personal';
   uid?: UserId;            // only when type === 'personal'
   icon?: string;            // CATEGORIES key, e.g. 'savings'
   iconColor?: string;
   title: string;
-  targetAmount: number;
-  months?: number;          // integer - how many months to save (optional)
+  targetAmount: number;    // 0 when saveType === 'free'
+  months?: number;          // integer - how many months to save (optional, only for 'goal')
   link?: string;
   notes?: string;
   date: string;            // 'YYYY-MM-DD' - date added
@@ -169,6 +171,8 @@ export interface Plan {
   expenses: PlanExpense[];
   settlements: PlanSettlement[];
   splitMode: 'equal' | 'parts' | 'percentage';
+  budget?: number;
+  finalizedAt?: string;   // 'YYYY-MM-DD' when the plan is closed
 }
 
 // Colors for external plan members (cycles through these)

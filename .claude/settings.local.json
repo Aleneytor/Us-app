@@ -4,7 +4,12 @@
       "Bash(npm install *)",
       "Bash(tasklist)",
       "Bash(netstat -ano)",
-      "Bash(grep -v \"^--$\")"
+      "Bash(grep -v \"^--$\")",
+      "Bash(del \"c:\\\\Users\\\\arios\\\\OneDrive\\\\Documents\\\\Apps\\\\nosotros\\\\app\\\\onboarding\\\\apariencia.tsx\")",
+      "Bash(Remove-Item -Force \"app/onboarding/_layout.tsx\",\"app/onboarding/nombre.tsx\",\"app/onboarding/categorias.tsx\",\"app/onboarding/pareja.tsx\",\"app/onboarding/listo.tsx\",\"contexts/OnboardingContext.tsx\",\"contexts/TutorialContext.tsx\",\"components/TutorialOverlay.tsx\",\"components/TutorialSection.tsx\",\"SPEC_ONBOARDING_TUTORIAL.md\" -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Force -Recurse \"app/onboarding\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Output \"DONE\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('expo-router:', p.dependencies['expo-router']\\); console.log\\('@react-navigation/native:', p.dependencies['@react-navigation/native']\\);\")"
     ]
   }
 }

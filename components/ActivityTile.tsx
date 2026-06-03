@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CATEGORIES } from '../constants/categories';
@@ -44,11 +44,21 @@ export function ActivityTile({
 
   const category = CATEGORIES[activity.iconKey] ?? CATEGORIES.other;
   const iconColor = getIconColor(activity.iconColor);
-  const isPlanActivity = activity.source === 'plan_created' || activity.source === 'plan_expense';
-  const typeIndicator = isPlanActivity
-    ? { icon: 'map-outline' as const, color: '#2563EB' }
-    : { icon: 'wallet-outline' as const, color: '#7C3AED' };
-  const dateText = activity.source === 'saving_created' ||
+  const isPlanExpense = activity.source === 'plan_expense';
+  const isPlanSettlement = activity.source === 'plan_settlement';
+  const isPlanActivity = activity.source === 'plan_created' || activity.source === 'plan_expense' || activity.source === 'plan_settlement';
+  const typeIndicator = isPlanExpense || isPlanSettlement
+    ? {
+        icon: activity.kind === 'income' ? 'arrow-top-right' as const : 'arrow-bottom-left' as const,
+        color: activity.kind === 'income' ? '#00D158' : '#FF0B4F',
+        library: 'material' as const,
+      }
+    : isPlanActivity
+      ? { icon: 'map-outline' as const, color: '#2563EB', library: 'ion' as const }
+      : { icon: 'wallet-outline' as const, color: '#7C3AED', library: 'ion' as const };
+  const dateText = activity.source === 'plan_expense' || activity.source === 'plan_settlement'
+    ? activity.subtitle
+    : activity.source === 'saving_created' ||
     activity.source === 'goal_created' ||
     activity.source === 'plan_created'
     ? formatDateShort(activity.date)
@@ -117,7 +127,11 @@ export function ActivityTile({
           {amountText}
         </Text>
         <View style={[styles.kindIndicator, { backgroundColor: typeIndicator.color }]}>
-          <Ionicons name={typeIndicator.icon} size={15} color="#FFFFFF" />
+          {typeIndicator.library === 'material' ? (
+            <MaterialCommunityIcons name={typeIndicator.icon} size={15} color="#FFFFFF" />
+          ) : (
+            <Ionicons name={typeIndicator.icon} size={15} color="#FFFFFF" />
+          )}
         </View>
       </View>
     </Pressable>

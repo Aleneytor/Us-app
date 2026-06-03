@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { SearchBar } from '../../components/SearchBar';
 import { UserHeaderButton } from '../../components/UserHeaderButton';
 import { CATEGORIES } from '../../constants/categories';
 import { type AppTheme, getIconColor } from '../../constants/colors';
@@ -55,11 +54,14 @@ export default function PlanesScreen() {
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [planFilter, setPlanFilter] = useState<PlanFilter>('todos');
-  const [planSearchText, setPlanSearchText] = useState('');
   const [planFilterDropdown, setPlanFilterDropdown] = useState<{ rightEdge: number; y: number; width: number } | null>(null);
+  const listRef = useRef<FlatList<Plan>>(null);
   const planFilterBtnRef = useRef<View>(null);
 
-  const { heroAnim, contentAnim: contentEntranceAnim, headerAnim, itemAnims } = useEntranceAnimation();
+  const { heroAnim, contentAnim: contentEntranceAnim, headerAnim, itemAnims } = useEntranceAnimation({
+    scrollRef: listRef,
+    onResetScroll: () => reportFabScroll(0),
+  });
   const openPlanFilterDropdown = () => {
     planFilterBtnRef.current?.measure((_, __, w, h, pageX, pageY) => {
       setPlanFilterDropdown({ rightEdge: pageX + w, y: pageY + h + 6, width: 140 });
@@ -71,16 +73,16 @@ export default function PlanesScreen() {
     [plans],
   );
 
+  const activePlans = useMemo(() => plans.filter((p) => !p.finalizedAt), [plans]);
+  const finalizedPlans = useMemo(() => plans.filter((p) => !!p.finalizedAt), [plans]);
+
   const filteredPlans = useMemo<Plan[]>(() => {
-    const query = planSearchText.trim().toLowerCase();
-    let result = plans;
-    if (query) result = result.filter((p) => p.title.toLowerCase().includes(query));
-    if (planFilter === 'todos') return result;
-    return result.filter((p) => {
+    if (planFilter === 'todos') return activePlans;
+    return activePlans.filter((p) => {
       const settled = p.expenses.length > 0 && resolveDebts(computeMemberBalances(p)).length === 0;
       return planFilter === 'saldados' ? settled : !settled;
     });
-  }, [plans, planFilter, planSearchText]);
+  }, [activePlans, planFilter]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -112,13 +114,6 @@ export default function PlanesScreen() {
           <Text style={styles.actionBtnText}>Crear plan</Text>
         </Pressable>
       </View>
-
-      <SearchBar
-        value={planSearchText}
-        onChangeText={setPlanSearchText}
-        placeholder="Buscar plan"
-        style={styles.searchBar}
-      />
 
       <View style={styles.filterSectionHead}>
         <Text style={styles.filterSectionTitle}>Planes</Text>
@@ -193,6 +188,7 @@ export default function PlanesScreen() {
       {/* -- Lista de planes -- */}
       <Animated.View style={[styles.contentWrap, contentAnimStyle]}>
         <FlatList<Plan>
+          ref={listRef}
           data={filteredPlans}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -208,11 +204,39 @@ export default function PlanesScreen() {
           ListEmptyComponent={
             <Animated.View style={[styles.emptyState, { opacity: headerAnim }]}>
               <Ionicons name="map-outline" size={36} color={theme.textMuted} />
-              <Text style={styles.emptyTitle}>Sin planes aún</Text>
+              <Text style={styles.emptyTitle}>
+                {plans.length === 0 ? 'Sin planes aún' : 'Sin planes activos'}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Crea tu primer plan para organizar un viaje o evento con amigos.
+                {plans.length === 0
+                  ? 'Crea tu primer plan para organizar un viaje o evento con amigos.'
+                  : 'Tus planes finalizados quedan guardados debajo.'}
               </Text>
             </Animated.View>
+          }
+          ListFooterComponent={
+            finalizedPlans.length > 0 ? (
+              <Animated.View style={[styles.finalizedSection, { opacity: headerAnim }]}>
+                <Text style={styles.finalizedTitle}>Planes Finalizados</Text>
+                <View style={styles.finalizedList}>
+                  {finalizedPlans.map((plan, index) => (
+                    <View
+                      key={`finalized-plan-${plan.id}`}
+                      style={[
+                        styles.planListRow,
+                        index === finalizedPlans.length - 1 && styles.planListRowLast,
+                      ]}
+                    >
+                      <PlanTileRow
+                        plan={plan}
+                        currency={currency}
+                        onPress={() => setDetailPlanId(plan.id)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </Animated.View>
+            ) : null
           }
           renderItem={({ item: plan, index }) => {
             const itemAnim = itemAnims[index] ?? headerAnim;
@@ -659,11 +683,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 16,
   },
 
-  // -- Search & filters --
-  searchBar: {
-    marginHorizontal: 16,
-    marginTop: 18,
-  },
+  // -- Filters --
   filterSectionHead: {
     gap: 2,
     marginTop: 18,
@@ -672,7 +692,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   filterSectionTitle: {
     color: t.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   filterSectionSubtitle: {
     color: t.textMuted,
@@ -749,7 +769,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   filterDropOptionTextActive: {
     color: '#7C3AED',
-    fontWeight: '700',
+    fontWeight: '600',
   },
 
   // -- Tile icon --
@@ -800,7 +820,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     flexShrink: 1,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   planCardBudgetText: {
     color: t.textSecondary,
@@ -817,15 +837,15 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     width: '100%',
   },
   planStatusBadge: {
-    backgroundColor: 'rgba(22, 163, 74, 0.18)',
+    backgroundColor: t.income + '2E',
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   planStatusText: {
-    color: '#16A34A',
+    color: t.income,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   planCardAmountRow: {
     alignItems: 'center',
@@ -838,19 +858,32 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textMuted,
     flexShrink: 1,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'right',
   },
   planCardSpent: {
     flexShrink: 1,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   planCardPrompt: {
     color: t.textMuted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     marginTop: 7,
+  },
+  finalizedSection: {
+    paddingTop: 12,
+  },
+  finalizedTitle: {
+    color: t.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 10,
+    paddingHorizontal: 20,
+  },
+  finalizedList: {
+    gap: 0,
   },
 
   // -- Empty --

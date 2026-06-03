@@ -124,18 +124,14 @@ export function TransactionModal({
   const finalStepLabel = budgetCategoryLocked ? 'Confirmar' : 'Categoría';
   const breadcrumbs = kindPreset
     ? ['Título', 'Fecha', finalStepLabel]
-    : ['Tipo', 'Monto', finalStepLabel];
+    : ['Tipo', 'Fecha', finalStepLabel];
 
   const goNext = () => {
     if (step === 0 && !desc.trim()) {
       Alert.alert('Falta título', 'Ponle un título al movimiento.');
       return;
     }
-    if (kindPreset && step === 0 && (!Number.isFinite(amountNumber) || amountNumber <= 0)) {
-      Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
-      return;
-    }
-    if (!kindPreset && step === 1 && (!Number.isFinite(amountNumber) || amountNumber <= 0)) {
+    if (step === 0 && (!Number.isFinite(amountNumber) || amountNumber <= 0)) {
       Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
       return;
     }
@@ -286,6 +282,11 @@ export function TransactionModal({
                   <Choice label="Ingreso" active={kind === 'income'} tone="income" onPress={() => setKind('income')} />
                 </View>
                 <Field label="Título del movimiento" value={desc} onChangeText={setDesc} placeholder="Ej. Supermercado" />
+                <AmountField
+                  value={amt}
+                  onChangeText={setAmt}
+                  currencyLabel={CURRENCY_NAMES[currency] ?? CURRENCIES[currency].code}
+                />
               </View>
             ) : null}
 
@@ -302,13 +303,6 @@ export function TransactionModal({
 
             {step === 1 ? (
               <View style={styles.block}>
-                {!kindPreset ? (
-                  <AmountField
-                    value={amt}
-                    onChangeText={setAmt}
-                    currencyLabel={CURRENCY_NAMES[currency] ?? CURRENCIES[currency].code}
-                  />
-                ) : null}
                 <DatePickerField
                   value={date}
                   calendarYM={calendarYM}

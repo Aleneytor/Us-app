@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -51,7 +52,7 @@ const DROPUP_OPTIONS: Array<{ label: string; description: string; icon: IoniconN
   { key: 'movimiento', label: 'Nuevo movimiento', description: 'Registra un ingreso o gasto en tu cuenta', icon: 'add-circle-outline' },
   { key: 'categoria', label: 'Nueva categoría', description: 'Agrupa gastos y establece un presupuesto mensual', icon: 'pie-chart-outline' },
   { key: 'ahorro', label: 'Nuevo ahorro', description: 'Define una meta y sigue tu progreso de ahorro', icon: 'wallet-outline' },
-  { key: 'plan', label: 'Nuevo plan', description: 'Organiza gastos compartidos con tu pareja', icon: 'map-outline' },
+  { key: 'plan', label: 'Nuevo plan', description: 'Organiza gastos compartidos con tu pareja o amigos', icon: 'map-outline' },
 ];
 
 const OPTION_THEMES: Record<string, { bg: string; iconColor: string }> = {
@@ -75,6 +76,8 @@ export default function TabLayout() {
   const voiceTranscriptRef = useRef('');
   const voiceActiveRef = useRef(false);
   const ignoreNextPressRef = useRef(false);
+  const [showVoiceHint, setShowVoiceHint] = useState(false);
+  const voiceHintAnim = useRef(new Animated.Value(0)).current;
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -91,7 +94,7 @@ export default function TabLayout() {
 
   useEffect(() => {
     if (isSpeechRecognitionSupported) {
-      ExpoSpeechRecognitionModule.requestPermissionsAsync().catch(() => {});
+      ExpoSpeechRecognitionModule.requestPermissionsAsync().catch(() => { });
     }
   }, []);
 
@@ -143,7 +146,31 @@ export default function TabLayout() {
   const tabBottom = Math.max(insets.bottom, 12);
   const fabBottom = tabBottom + 2;
 
+  const dismissVoiceHint = () => {
+    Animated.timing(voiceHintAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setShowVoiceHint(false);
+    });
+    void AsyncStorage.setItem('nosotros_hint_voice_seen', '1');
+  };
+
+  useEffect(() => {
+    AsyncStorage.getItem('nosotros_hint_voice_seen').then((v) => {
+      if (v !== '1') {
+        const showTimer = setTimeout(() => {
+          setShowVoiceHint(true);
+          Animated.spring(voiceHintAnim, {
+            toValue: 1, useNativeDriver: true, damping: 18, stiffness: 220,
+          }).start();
+        }, 1500);
+        const hideTimer = setTimeout(() => dismissVoiceHint(), 7500);
+        return () => { clearTimeout(showTimer); clearTimeout(hideTimer); };
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleCreatePress = () => {
+    dismissVoiceHint();
     if (ignoreNextPressRef.current) {
       ignoreNextPressRef.current = false;
       return;
@@ -153,6 +180,7 @@ export default function TabLayout() {
   };
 
   const startVoiceAction = async () => {
+    dismissVoiceHint();
     ignoreNextPressRef.current = true;
     voiceActiveRef.current = true;
     voiceTranscriptRef.current = '';
@@ -173,7 +201,7 @@ export default function TabLayout() {
         if (!canAskAgain) {
           Alert.alert(
             'Permiso de micrófono bloqueado',
-            'Para usar la voz ve a Ajustes y activa el micrófono para Nosotros.',
+            'Para usar la voz ve a Ajustes y activa el micrófono para Juntos.',
             [
               { text: 'Cancelar', style: 'cancel' },
               { text: 'Abrir Ajustes', onPress: () => Linking.openSettings() },
@@ -369,6 +397,27 @@ export default function TabLayout() {
       <BudgetCategoryModal visible={newCategoryOpen} onClose={() => setNewCategoryOpen(false)} />
       <SavingPlanModal visible={savingPlanCreateOpen} onClose={() => setSavingPlanCreateOpen(false)} />
       <PlanModal visible={newPlanOpen} onClose={() => setNewPlanOpen(false)} />
+
+      {showVoiceHint && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.voiceHintBubble,
+            {
+              bottom: fabBottom + fabSize + 12,
+              right: 14,
+              opacity: voiceHintAnim,
+              transform: [{ scale: voiceHintAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
+            },
+          ]}
+        >
+          <View style={styles.voiceHintInner}>
+            <Ionicons name="mic-outline" size={14} color="#7C3AED" />
+            <Text style={styles.voiceHintText}>Mantén pulsado para crear con voz</Text>
+          </View>
+          <View style={styles.voiceHintArrow} />
+        </Animated.View>
+      )}
     </>
   );
 }
@@ -843,5 +892,39 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 19,
+  },
+  voiceHintBubble: {
+    position: 'absolute',
+    alignItems: 'flex-end',
+  },
+  voiceHintInner: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 8,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+  },
+  voiceHintText: {
+    color: t.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  voiceHintArrow: {
+    borderLeftColor: 'transparent',
+    borderLeftWidth: 7,
+    borderRightColor: 'transparent',
+    borderRightWidth: 7,
+    borderTopColor: t.border,
+    borderTopWidth: 7,
+    marginRight: 20,
   },
 });

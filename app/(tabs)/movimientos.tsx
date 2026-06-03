@@ -15,17 +15,19 @@ import {
   type StyleProp,
   Text,
   type TextStyle,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { TransactionDetailModal } from '../../components/TransactionDetailModal';
 import { ActivityTile } from '../../components/ActivityTile';
 import { SearchBar } from '../../components/SearchBar';
 import { TransactionModal } from '../../modals/TransactionModal';
+import { PlanDetailModal } from '../../modals/PlanDetailModal';
+import { PlanModal } from '../../modals/PlanModal';
 import { UserHeaderButton } from '../../components/UserHeaderButton';
-import { CATEGORIES } from '../../constants/categories';
 import { type AppTheme } from '../../constants/colors';
 import { SURFACE_SHADOW } from '../../constants/shadows';
-import type { CurrencyCode, Transaction, UserData } from '../../types';
+import type { CurrencyCode, Plan, Transaction, UserData } from '../../types';
 import { getTransactionAmountForMonth } from '../../utils/filters';
 import { MONTHS_ES, fmt, splitAmount } from '../../utils/format';
 import { MonthNavigator } from '../../components/MonthNavigator';
@@ -53,6 +55,7 @@ const PURPLE_SHIFT_PALETTE: HeroPalette = {
 
 type KindFilter = 'all' | 'expense' | 'income';
 type OwnerFilter = 'mine' | 'partner' | 'both';
+type FrequencyFilter = 'all' | 'monthly' | 'biweekly' | 'weekly' | 'once';
 
 interface Option<T extends string> {
   label: string;
@@ -73,7 +76,9 @@ type CategoryDropdownInfo = {
   type: 'category';
   x: number;
   y: number;
+  direction: 'up' | 'down';
   width: number;
+  maxHeight: number;
   options: Array<Option<string>>;
   selectedValues: string[];
   onToggle: (v: string) => void;
@@ -94,18 +99,24 @@ export default function MovimientosScreen() {
   const partnerForUser = useAppStore((s) => s.partnerForUser);
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
-  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('mine');
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [frequencyFilter, setFrequencyFilter] = useState<FrequencyFilter>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersAnim = useRef(new Animated.Value(0)).current;
   const [searchText, setSearchText] = useState('');
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [selectedPlanInitialTab, setSelectedPlanInitialTab] = useState<'detalles' | 'gastos' | 'saldos'>('detalles');
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
+  const [editPlan, setEditPlan] = useState<Plan | null>(null);
   const [dropdown, setDropdown] = useState<DropdownInfo | null>(null);
   const [monthPickerY, setMonthPickerY] = useState<number | null>(null);
   const [showFloating, setShowFloating] = useState(false);
+  const listRef = useRef<FlatList<ActivityItem>>(null);
   const scrolledPastHeroRef = useRef(false);
   const isSearchingRef = useRef(false);
   const user = getUserData(users, currentUser);
@@ -116,20 +127,44 @@ export default function MovimientosScreen() {
   const isSearching = searchText.trim().length > 0;
 
   const headerAnim = useRef(new Animated.Value(1)).current;
-  const { heroAnim, contentAnim } = useEntranceAnimation();
+  const { heroAnim, contentAnim } = useEntranceAnimation({
+    scrollRef: listRef,
+    onResetScroll: () => {
+      reportFabScroll(0);
+      scrolledPastHeroRef.current = false;
+      setShowFloating(isSearchingRef.current);
+    },
+  });
 
   const categoryOptions = useMemo<Array<Option<string>>>(() => {
-    const keys = Array.from(
-      new Set(payload.expenses.filter((t) => !t.del).map((t) => t.cat).filter(Boolean)),
+    const visibleCategories = new Map(
+      (payload.budgetCategories ?? [])
+        .filter((category) => category.uid === undefined || category.uid === currentUser)
+        .map((category) => [String(category.id), category.name]),
+    );
+    const ids = Array.from(
+      new Set(
+        payload.expenses
+          .filter((t) => !t.del && t.budgetCatId !== undefined && visibleCategories.has(String(t.budgetCatId)))
+          .map((t) => String(t.budgetCatId)),
+      ),
     );
 
-    return keys
-      .map((key) => ({
-        value: key,
-        label: CATEGORIES[key]?.label ?? key,
+    return ids
+      .map((id) => ({
+        value: id,
+        label: visibleCategories.get(id) ?? id,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [payload.expenses]);
+  }, [currentUser, payload.budgetCategories, payload.expenses]);
+
+  useEffect(() => {
+    const validCategoryValues = new Set(categoryOptions.map((option) => option.value));
+    setCategoryFilter((current) => {
+      const next = current.filter((value) => validCategoryValues.has(value));
+      return next.length === current.length ? current : next;
+    });
+  }, [categoryOptions]);
 
   const toggleCategoryFilter = (value: string) => {
     setCategoryFilter((current) => (
@@ -153,6 +188,26 @@ export default function MovimientosScreen() {
     setShowFloating(isSearching || scrolledPastHeroRef.current);
   }, [isSearching]);
 
+  const toggleFilters = () => {
+    const next = !filtersOpen;
+    setFiltersOpen(next);
+    void Haptics.selectionAsync();
+    Animated.spring(filtersAnim, {
+      toValue: next ? 1 : 0,
+      useNativeDriver: false,
+      damping: 18,
+      stiffness: 280,
+      mass: 0.75,
+    }).start();
+  };
+
+  const activeFilterCount = [
+    kindFilter !== 'all',
+    ownerFilter !== 'mine',
+    categoryFilter.length > 0,
+    frequencyFilter !== 'all',
+  ].filter(Boolean).length;
+
   const filtered = useMemo<ActivityItem[]>(() => {
     const query = searchText.trim().toLowerCase();
     const activities = buildActivityFeed(payload, {
@@ -168,17 +223,23 @@ export default function MovimientosScreen() {
           ownerFilter === 'both' ||
           item.ownerId === targetOwner;
         const categoryMatches = categoryFilter.length === 0 ||
-          (item.source === 'transaction' && categoryFilter.includes(item.categoryKey ?? ''));
+          (
+            item.source === 'transaction' &&
+            item.transaction.budgetCatId !== undefined &&
+            categoryFilter.includes(String(item.transaction.budgetCatId))
+          );
         const kindMatches = kindFilter === 'all' || item.kind === kindFilter;
+        const frequencyMatches = frequencyFilter === 'all' ||
+          (item.source === 'transaction' && item.transaction.type === frequencyFilter);
         const searchMatches = query === '' || item.searchText.includes(query);
 
-        return ownerMatches && categoryMatches && kindMatches && searchMatches;
+        return ownerMatches && categoryMatches && kindMatches && frequencyMatches && searchMatches;
       })
       .sort((a, b) => {
         const byDate = b.date.localeCompare(a.date);
         return byDate !== 0 ? byDate : b.sortId - a.sortId;
       });
-  }, [categoryFilter, currentUser, kindFilter, ownerFilter, partner, payload, searchText, selectedYM]);
+  }, [categoryFilter, currentUser, frequencyFilter, kindFilter, ownerFilter, partner, payload, searchText, selectedYM]);
 
   const totals = useMemo(() => {
     const expenses = filtered
@@ -190,6 +251,9 @@ export default function MovimientosScreen() {
         if (item.source === 'plan_expense') {
           return sum + item.amount;
         }
+        if (item.source === 'plan_settlement' && item.kind === 'expense') {
+          return sum + item.amount;
+        }
         return sum;
       }, 0);
     const income = filtered
@@ -197,7 +261,9 @@ export default function MovimientosScreen() {
       .reduce((sum, item) => (
         sum + (item.source === 'transaction'
           ? getTransactionAmountForMonth(item.transaction, selectedYM)
-          : 0)
+          : item.source === 'plan_settlement' && item.kind === 'income'
+            ? item.amount
+            : 0)
       ), 0);
     return { expenses, income, balance: income - expenses };
   }, [filtered, selectedYM]);
@@ -207,11 +273,12 @@ export default function MovimientosScreen() {
       selectedYM,
       kindFilter,
       ownerFilter,
+      frequencyFilter,
       categoryFilter.join(','),
       searchText.trim().toLowerCase(),
       filtered.map((t) => t.id).join(','),
     ].join('|'),
-    [categoryFilter, filtered, kindFilter, ownerFilter, searchText, selectedYM],
+    [categoryFilter, filtered, frequencyFilter, kindFilter, ownerFilter, searchText, selectedYM],
   );
 
   const handleRefresh = async () => {
@@ -269,6 +336,7 @@ export default function MovimientosScreen() {
   return (
     <View style={styles.screen}>
       <FlatList
+        ref={listRef}
         data={filtered}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
@@ -284,42 +352,44 @@ export default function MovimientosScreen() {
         ListHeaderComponent={
           <>
             <Animated.View style={{ opacity: heroAnim, transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }}>
-              <Animated.View
-                style={{
-                  maxHeight: headerAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 300],
-                  }),
-                  opacity: headerAnim.interpolate({
-                    inputRange: [0, 0.45, 1],
-                    outputRange: [0, 0, 1],
-                  }),
-                  overflow: 'hidden',
-                }}
-              >
-                <View style={styles.heroHeader}>
-                <HeroGradient />
-                <View style={styles.heroTop}>
-                  <View style={styles.heroTextWrap}>
-                    <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
-                    <Text style={styles.heroSubtitle}>
-                      Este son todos tus movimientos{'\n'}
-                      y saldos del <Text style={styles.heroMonth}>Mes de {monthName}</Text>
-                    </Text>
+                <Animated.View
+                  style={{
+                    maxHeight: headerAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 300],
+                    }),
+                    opacity: headerAnim.interpolate({
+                      inputRange: [0, 0.45, 1],
+                      outputRange: [0, 0, 1],
+                    }),
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View style={styles.heroHeader}>
+                  <HeroGradient />
+                  <View style={styles.heroTop}>
+                    <View style={styles.heroTextWrap}>
+                      <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
+                      <Text style={styles.heroSubtitle}>
+                        Este son todos tus movimientos{'\n'}
+                        y saldos del <Text style={styles.heroMonth}>Mes de {monthName}</Text>
+                      </Text>
+                    </View>
+                    <UserHeaderButton variant="light" tintColor="#A78BFA" />
                   </View>
-                  <UserHeaderButton variant="light" tintColor="#A78BFA" />
-                </View>
 
-                <HeroSummary
-                  kindFilter={kindFilter}
-                  income={totals.income}
-                  expenses={totals.expenses}
-                  balance={totals.balance}
-                  currency={currency}
-                />
-              </View>
+                  <View>
+                    <HeroSummary
+                      kindFilter={kindFilter}
+                      income={totals.income}
+                      expenses={totals.expenses}
+                      balance={totals.balance}
+                      currency={currency}
+                    />
+                  </View>
+                </View>
+                </Animated.View>
               </Animated.View>
-            </Animated.View>
 
             <Animated.View style={[styles.controls, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
               <MonthNavigator ym={selectedYM} onChange={setSelectedYM} onOpen={setMonthPickerY} />
@@ -334,51 +404,31 @@ export default function MovimientosScreen() {
                   Buscando en todos los meses
                 </Text>
               )}
-
               <View style={styles.filterSectionHead}>
                 <Text style={styles.filterSectionTitle}>Movimientos</Text>
-                <Text style={styles.filterSectionSubtitle}>Toca los filtros para explorar</Text>
+                <FiltersToggleButton
+                  open={filtersOpen}
+                  onPress={toggleFilters}
+                  activeCount={activeFilterCount}
+                />
               </View>
 
-              <View style={styles.filtersBar}>
-                <CategoryFilterChip
-                  selectedValues={categoryFilter}
-                  options={categoryOptions}
-                  onToggle={toggleCategoryFilter}
-                  onClear={() => setCategoryFilter([])}
-                  onOpen={setDropdown}
-                />
-                <FilterChip
-                  label="Autor"
-                  options={[
-                    { label: 'Ambos', value: 'both' },
-                    { label: 'Yo', value: 'mine' },
-                    { label: partnerUser ? partnerUser.name : 'Pareja', value: 'partner' },
-                  ]}
-                  value={ownerFilter}
-                  onChange={setOwnerFilter}
-                  customIcon={(isFiltered) => (
-                    <AutorFilterIcon
-                      value={ownerFilter}
-                      user={user}
-                      partnerUser={partnerUser}
-                      isFiltered={isFiltered}
-                    />
-                  )}
-                />
-                <FilterChip
-                  icon="swap-vertical-outline"
-                  label="Tipo"
-                  options={[
-                    { label: 'Todos', value: 'all' },
-                    { label: 'Gastos', value: 'expense' },
-                    { label: 'Ingresos', value: 'income' },
-                  ]}
-                  value={kindFilter}
-                  onChange={setKindFilter}
-                  activeColor={kindFilter === 'income' ? theme.income : kindFilter === 'expense' ? theme.expense : undefined}
-                />
-              </View>
+              <CollapsibleFiltersPanel
+                anim={filtersAnim}
+                categoryFilter={categoryFilter}
+                categoryOptions={categoryOptions}
+                onToggleCategory={toggleCategoryFilter}
+                onClearCategory={() => setCategoryFilter([])}
+                onOpenDropdown={setDropdown}
+                ownerFilter={ownerFilter}
+                onOwnerChange={setOwnerFilter}
+                user={user}
+                partnerUser={partnerUser}
+                kindFilter={kindFilter}
+                onKindChange={setKindFilter}
+                frequencyFilter={frequencyFilter}
+                onFrequencyChange={setFrequencyFilter}
+              />
             </Animated.View>
 
             <View style={styles.filterSection} />
@@ -398,6 +448,18 @@ export default function MovimientosScreen() {
             animationKey={listAnimationKey}
             onPress={() => {
               if (item.source === 'transaction') setSelectedTransaction(item.transaction);
+              if (item.source === 'plan_expense') {
+                setSelectedPlanInitialTab('gastos');
+                setSelectedPlanId(item.planId);
+              }
+              if (item.source === 'plan_settlement') {
+                setSelectedPlanInitialTab('saldos');
+                setSelectedPlanId(item.planId);
+              }
+              if (item.source === 'plan_created') {
+                setSelectedPlanInitialTab('detalles');
+                setSelectedPlanId(item.planId);
+              }
             }}
             onLongPress={() => {
               if (item.source === 'transaction') showActions(item.transaction);
@@ -422,6 +484,21 @@ export default function MovimientosScreen() {
         visible={!!editTransaction}
         transaction={editTransaction}
         onClose={() => setEditTransaction(null)}
+      />
+      <PlanDetailModal
+        plan={(payload.plans ?? []).find((plan) => plan.id === selectedPlanId) ?? null}
+        initialTab={selectedPlanInitialTab}
+        onClose={() => setSelectedPlanId(null)}
+        onEdit={() => {
+          const plan = (payload.plans ?? []).find((item) => item.id === selectedPlanId) ?? null;
+          setSelectedPlanId(null);
+          setTimeout(() => setEditPlan(plan), 120);
+        }}
+      />
+      <PlanModal
+        visible={!!editPlan}
+        plan={editPlan}
+        onClose={() => setEditPlan(null)}
       />
 
       {dropdown && (
@@ -454,6 +531,7 @@ function FilterChip<T extends string>({
   onChange,
   customIcon,
   activeColor,
+  onOpenDropdown,
 }: {
   icon?: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
@@ -462,24 +540,54 @@ function FilterChip<T extends string>({
   onChange: (value: T) => void;
   customIcon?: (isFiltered: boolean) => React.ReactNode;
   activeColor?: string;
+  onOpenDropdown?: (info: DropdownInfo) => void;
 }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const chipRef = useRef<View>(null);
+  const { height: screenHeight } = useWindowDimensions();
   const activeLabel = options.find((o) => o.value === value)?.label ?? label;
   const isFiltered = value !== options[0].value;
   const chipActiveColor = activeColor ?? '#7C3AED';
 
   const handlePress = () => {
     void Haptics.selectionAsync();
+    if (onOpenDropdown) {
+      chipRef.current?.measure((_, __, width, height, pageX, pageY) => {
+        const gap = 6;
+        const estimatedDropdownHeight = Math.min(320, options.length * 47);
+        const spaceBelow = screenHeight - (pageY + height);
+        const spaceAbove = pageY;
+        const direction = spaceBelow >= estimatedDropdownHeight + gap || spaceBelow >= spaceAbove
+          ? 'down'
+          : 'up';
+        const dropdownY = direction === 'down'
+          ? pageY + height + gap
+          : Math.max(8, pageY - estimatedDropdownHeight - gap);
+        onOpenDropdown({
+          type: 'single',
+          x: pageX,
+          y: dropdownY,
+          width,
+          options: options as Array<Option<string>>,
+          value,
+          onChange: (v) => onChange(v as T),
+        });
+      });
+      return;
+    }
     const currentIndex = options.findIndex((o) => o.value === value);
     onChange(options[(currentIndex + 1) % options.length].value);
   };
 
   return (
-    <View style={[
-      styles.filterChipWrapper,
-      isFiltered && { backgroundColor: chipActiveColor, borderColor: chipActiveColor }
-    ]}>
+    <View
+      ref={chipRef}
+      style={[
+        styles.filterChipWrapper,
+        isFiltered && { backgroundColor: chipActiveColor, borderColor: chipActiveColor }
+      ]}
+    >
       <Pressable
         onPress={handlePress}
         style={({ pressed }) => [
@@ -495,6 +603,9 @@ function FilterChip<T extends string>({
         <Text style={[styles.filterChipText, isFiltered && styles.filterChipTextActive]}>
           {activeLabel}
         </Text>
+        {onOpenDropdown && (
+          <Ionicons name="chevron-down" size={12} color={isFiltered ? '#FFFFFF' : theme.textMuted} />
+        )}
       </Pressable>
     </View>
   );
@@ -516,21 +627,48 @@ function CategoryFilterChip({
   const chipRef = useRef<View>(null);
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { height: screenHeight } = useWindowDimensions();
   const isFiltered = selectedValues.length > 0;
+  const selectedLabels = selectedValues
+    .map((value) => options.find((option) => option.value === value)?.label)
+    .filter((label): label is string => Boolean(label));
   const label = selectedValues.length === 0
     ? 'Todas'
     : selectedValues.length === 1
       ? (options.find((o) => o.value === selectedValues[0])?.label ?? 'Categoría')
       : `${selectedValues.length} categorías`;
 
+  const displayLabel = selectedValues.length === 0
+    ? 'Todas'
+    : selectedValues.length === 1
+      ? (selectedLabels[0] ?? 'Categoria')
+      : selectedLabels.length === selectedValues.length
+        ? selectedLabels.join(', ')
+        : `${selectedValues.length} categorias`;
+
   const handlePress = () => {
     void Haptics.selectionAsync();
     chipRef.current?.measure((_, __, width, height, pageX, pageY) => {
+      const gap = 6;
+      const estimatedDropdownHeight = Math.min(320, (options.length + 1) * 47);
+      const spaceAbove = pageY;
+      const spaceBelow = screenHeight - (pageY + height);
+      const direction = spaceBelow >= estimatedDropdownHeight + gap || spaceBelow >= spaceAbove
+        ? 'down'
+        : 'up';
+      const availableSpace = direction === 'down' ? spaceBelow : spaceAbove;
+      const maxHeight = Math.max(120, Math.min(320, availableSpace - gap - 8));
+      const dropdownHeight = Math.min(estimatedDropdownHeight, maxHeight);
+
       onOpen({
         type: 'category',
         x: pageX,
-        y: pageY + height + 6,
+        y: direction === 'down'
+          ? pageY + height + gap
+          : Math.max(8, pageY - dropdownHeight - gap),
+        direction,
         width,
+        maxHeight,
         options,
         selectedValues,
         onToggle,
@@ -557,7 +695,7 @@ function CategoryFilterChip({
       >
         <Ionicons name="pie-chart-outline" size={14} color={isFiltered ? '#FFFFFF' : theme.textSecondary} />
         <Text style={[styles.filterChipText, isFiltered && styles.filterChipTextActive]} numberOfLines={1}>
-          {label}
+          {displayLabel}
         </Text>
         <Ionicons name="chevron-down" size={12} color={isFiltered ? '#FFFFFF' : theme.textMuted} />
       </Pressable>
@@ -659,6 +797,7 @@ function DropdownOverlay({ info, onClose }: { info: DropdownInfo; onClose: () =>
   };
 
   const dropdownWidth = info.type === 'category' ? Math.max(info.width, 128) : Math.max(info.width, 120);
+  const openingUp = info.type === 'category' && info.direction === 'up';
 
   return (
     <Pressable style={StyleSheet.absoluteFill} onPress={() => animateClose()}>
@@ -670,7 +809,7 @@ function DropdownOverlay({ info, onClose }: { info: DropdownInfo; onClose: () =>
             top: info.y,
             width: dropdownWidth,
             opacity: anim,
-            transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+            transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [openingUp ? 6 : -6, 0] }) }],
           },
         ]}
       >
@@ -700,7 +839,13 @@ function DropdownOverlay({ info, onClose }: { info: DropdownInfo; onClose: () =>
               );
             })
           ) : (
-            <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={[
+                styles.dropdownScroll,
+                { maxHeight: info.maxHeight },
+              ]}
+              showsVerticalScrollIndicator={false}
+            >
               <Pressable
                 onPress={() => {
                   void Haptics.selectionAsync();
@@ -1451,7 +1596,261 @@ const HERO_STYLES = StyleSheet.create({
   },
 });
 
+// ─── FiltersToggleButton ────────────────────────────────────────────────────
+
+function FiltersToggleButton({
+  open,
+  onPress,
+  activeCount,
+}: {
+  open: boolean;
+  onPress: () => void;
+  activeCount: number;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(rotateAnim, {
+      toValue: open ? 1 : 0,
+      useNativeDriver: true,
+      damping: 14,
+      stiffness: 260,
+      mass: 0.6,
+    }).start();
+  }, [open, rotateAnim]);
+
+  const chevronRotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+
+  const hasActive = activeCount > 0;
+  const isActive = open || hasActive;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.filterToggleBtn,
+        isActive && styles.filterToggleBtnActive,
+        pressed && { opacity: 0.75 },
+      ]}
+    >
+      <Ionicons
+        name="options-outline"
+        size={14}
+        color={isActive ? '#FFFFFF' : theme.textSecondary}
+      />
+      <Text style={[styles.filterToggleLabel, isActive && styles.filterToggleLabelActive]}>
+        Filtros{hasActive ? ` (${activeCount})` : ''}
+      </Text>
+      <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+        <Ionicons
+          name="chevron-down"
+          size={12}
+          color={isActive ? '#FFFFFF' : theme.textMuted}
+        />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ─── CollapsibleFiltersPanel ─────────────────────────────────────────────────
+
+const FREQUENCY_OPTIONS: Array<Option<FrequencyFilter>> = [
+  { label: 'Todas', value: 'all' },
+  { label: 'Mensual', value: 'monthly' },
+  { label: 'Bisemanal', value: 'biweekly' },
+  { label: 'Semanal', value: 'weekly' },
+  { label: 'Único', value: 'once' },
+];
+
+function CollapsibleFiltersPanel({
+  anim,
+  categoryFilter,
+  categoryOptions,
+  onToggleCategory,
+  onClearCategory,
+  onOpenDropdown,
+  ownerFilter,
+  onOwnerChange,
+  user,
+  partnerUser,
+  kindFilter,
+  onKindChange,
+  frequencyFilter,
+  onFrequencyChange,
+}: {
+  anim: Animated.Value;
+  categoryFilter: string[];
+  categoryOptions: Array<Option<string>>;
+  onToggleCategory: (v: string) => void;
+  onClearCategory: () => void;
+  onOpenDropdown: (info: DropdownInfo) => void;
+  ownerFilter: OwnerFilter;
+  onOwnerChange: (v: OwnerFilter) => void;
+  user: UserData;
+  partnerUser?: UserData;
+  kindFilter: KindFilter;
+  onKindChange: (v: KindFilter) => void;
+  frequencyFilter: FrequencyFilter;
+  onFrequencyChange: (v: FrequencyFilter) => void;
+}) {
+  const theme = useTheme();
+
+  const maxHeight = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 280],
+  });
+  const opacity = anim.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0, 1],
+  });
+  const translateY = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-8, 0],
+  });
+  const marginTop = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 12],
+  });
+
+  const labelStyle = [PANEL_STYLES.chipLabel, { color: theme.textMuted }];
+
+  return (
+    <Animated.View
+      style={{
+        maxHeight,
+        opacity,
+        overflow: 'hidden',
+        transform: [{ translateY }],
+        marginTop,
+      }}
+    >
+      {/* Row 1: Categoría + Autor */}
+      <View style={PANEL_STYLES.row}>
+        <View style={PANEL_STYLES.cell}>
+          <Text style={labelStyle}>Categoría</Text>
+          <View style={PANEL_STYLES.chipRow}>
+            <CategoryFilterChip
+              selectedValues={categoryFilter}
+              options={categoryOptions}
+              onToggle={onToggleCategory}
+              onClear={onClearCategory}
+              onOpen={onOpenDropdown}
+            />
+          </View>
+        </View>
+        <View style={PANEL_STYLES.cell}>
+          <Text style={labelStyle}>Autor</Text>
+          <View style={PANEL_STYLES.chipRow}>
+            <FilterChip
+              label="Yo"
+              options={[
+                { label: 'Yo', value: 'mine' },
+                { label: 'Ambos', value: 'both' },
+                { label: partnerUser ? partnerUser.name : 'Pareja', value: 'partner' },
+              ]}
+              value={ownerFilter}
+              onChange={onOwnerChange}
+              customIcon={(isFiltered) => (
+                <AutorFilterIcon
+                  value={ownerFilter}
+                  user={user}
+                  partnerUser={partnerUser}
+                  isFiltered={isFiltered}
+                />
+              )}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Row 2: Tipo + Frecuencia */}
+      <View style={[PANEL_STYLES.row, { marginTop: 10 }]}>
+        <View style={PANEL_STYLES.cell}>
+          <Text style={labelStyle}>Tipo</Text>
+          <View style={PANEL_STYLES.chipRow}>
+            <FilterChip
+              icon="swap-vertical-outline"
+              label="Todos"
+              options={[
+                { label: 'Todos', value: 'all' },
+                { label: 'Gastos', value: 'expense' },
+                { label: 'Ingresos', value: 'income' },
+              ]}
+              value={kindFilter}
+              onChange={onKindChange}
+              activeColor={kindFilter === 'income' ? theme.income : kindFilter === 'expense' ? theme.expense : undefined}
+            />
+          </View>
+        </View>
+        <View style={PANEL_STYLES.cell}>
+          <Text style={labelStyle}>Frecuencia</Text>
+          <View style={PANEL_STYLES.chipRow}>
+            <FilterChip
+              icon="repeat-outline"
+              label="Todas"
+              options={FREQUENCY_OPTIONS}
+              value={frequencyFilter}
+              onChange={onFrequencyChange}
+              onOpenDropdown={onOpenDropdown}
+            />
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+const PANEL_STYLES = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cell: {
+    flex: 1,
+    gap: 6,
+  },
+  // chipRow makes chips behave like in the original filtersBar (flex:1 = full width)
+  chipRow: {
+    flexDirection: 'row',
+  },
+  chipLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginLeft: 2,
+    textTransform: 'uppercase',
+  },
+});
+
 const makeStyles = (t: AppTheme) => StyleSheet.create({
+  filterToggleBtn: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  filterToggleBtnActive: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  filterToggleLabel: {
+    color: t.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filterToggleLabelActive: {
+    color: '#FFFFFF',
+  },
   empty: {
     alignItems: 'center',
     gap: 8,
@@ -1581,18 +1980,15 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     height: 16,
   },
   filterSectionHead: {
-    gap: 2,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: 8,
   },
   filterSectionTitle: {
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '700',
-  },
-  filterSectionSubtitle: {
-    color: t.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
   },
   pressed: {
     opacity: 0.72,

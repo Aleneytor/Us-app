@@ -1,9 +1,0 @@
-[metro-file-map] Cache write error
-: Error: ENOSPC: no space left on device, write
-    at write (node:internal/fs/promises:741:8)
-    at writeFileHandle (node:internal/fs/promises:498:7)
-    at C:\Users\arios\OneDrive\Documents\Apps\nosotros\node_modules\@expo\metro\node_modules\metro-file-map\src\cache\DiskCacheManager.js:80:11 {
-  errno: -4055,
-  code: 'ENOSPC',
-  syscall: 'write'
-}

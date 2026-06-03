@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { Image } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import { fetchSnapshot, pushSnapshot, subscribeToRoom, unsubscribeFromRoom, deleteRoom, fetchRawPayload, pushRawPayload } from '../services/supabase';
 import { currentYM, todayStr } from '../utils/format';
@@ -81,11 +82,13 @@ interface AppActions {
 // ─── Module-level (not in store — not serializable) ──────────────────────────
 
 let _syncTimer: ReturnType<typeof setTimeout> | null = null;
+let _syncRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let _channel: RealtimeChannel | null = null;
 let _payloadReady = false; // true only after first successful load — prevents pushing stale/empty state
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _reconnectAttempts = 0;
 let _activeUid: string | null = null;
+let _connectionGeneration = 0;
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
@@ -157,6 +160,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       },
     };
     set({ users: newUsers });
+
+    // Warm up cache so the photo is instantly available in filter buttons
+    _prefetchUserPhotos(newUsers);
 
     const customUsers = getCustomUsers(newUsers);
     await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(customUsers));
@@ -382,6 +388,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         budgetCategories: (s.payload.budgetCategories ?? []).map((x) =>
           String(x.id) === String(bc.id) ? bc : x,
         ),
+        expenses: s.payload.expenses.map((exp) =>
+          String(exp.budgetCatId) === String(bc.id)
+            ? {
+                ...exp,
+                cat: bc.icon,
+                iconColor: bc.iconColor,
+              }
+            : exp,
+        ),
       },
     }));
     _persistCurrentPayload();
@@ -496,7 +511,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         ...s.payload,
         plans: (s.payload.plans ?? []).map((p) =>
           String(p.id) === String(planId)
-            ? { ...p, expenses: [...p.expenses, expense] }
+            ? { ...p, expenses: [...(p.expenses ?? []), expense] }
             : p,
         ),
       },
@@ -511,7 +526,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         ...s.payload,
         plans: (s.payload.plans ?? []).map((p) =>
           String(p.id) === String(planId)
-            ? { ...p, expenses: p.expenses.map((e) => String(e.id) === String(expense.id) ? expense : e) }
+            ? { ...p, expenses: (p.expenses ?? []).map((e) => String(e.id) === String(expense.id) ? expense : e) }
             : p,
         ),
       },
@@ -526,7 +541,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         ...s.payload,
         plans: (s.payload.plans ?? []).map((p) =>
           String(p.id) === String(planId)
-            ? { ...p, expenses: p.expenses.filter((e) => String(e.id) !== String(expenseId)) }
+            ? { ...p, expenses: (p.expenses ?? []).filter((e) => String(e.id) !== String(expenseId)) }
             : p,
         ),
       },
@@ -568,11 +583,35 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
+// Prefetch all user photos that have a URI so they are in the RN image cache
+// before the filter buttons try to render them, eliminating the flash/delay.
+function _prefetchUserPhotos(users: Record<string, UserData>): void {
+  for (const user of Object.values(users)) {
+    if (
+      user.photo &&
+      typeof user.photo === 'object' &&
+      'uri' in user.photo &&
+      typeof (user.photo as { uri: string }).uri === 'string'
+    ) {
+      const uri = (user.photo as { uri: string }).uri;
+      if (uri) {
+        Image.prefetch(uri).catch(() => {
+          // Silently ignore prefetch errors (offline, revoked URI, etc.)
+        });
+      }
+    }
+  }
+}
+
 function _clearReconnectTimer(): void {
   if (_reconnectTimer) {
     clearTimeout(_reconnectTimer);
     _reconnectTimer = null;
   }
+}
+
+function _isCurrentConnection(generation: number, uid: UserId): boolean {
+  return _connectionGeneration === generation && _activeUid === uid;
 }
 
 function _scheduleReconnect(): void {
@@ -616,7 +655,12 @@ function _syncCustomUsersToCloud(): void {
 function _syncToCloud(): void {
   if (!_payloadReady) return;
   if (_syncTimer) clearTimeout(_syncTimer);
+  if (_syncRetryTimer) {
+    clearTimeout(_syncRetryTimer);
+    _syncRetryTimer = null;
+  }
   _syncTimer = setTimeout(async () => {
+    _syncTimer = null;
     const { payload, currentUser, clientId, roomForUser } = useAppStore.getState();
     const roomId = roomForUser[currentUser] ?? `${currentUser}-main`;
     const ok = await pushSnapshot(roomId, payload, clientId);
@@ -624,17 +668,12 @@ function _syncToCloud(): void {
       await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(payload));
       useAppStore.setState({ syncStatus: 'live', isConnected: true });
     } else {
-      // Revert to server-side canonical state on push failure
+      // Local state is the source of truth — don't revert. Schedule a retry.
       useAppStore.getState()._setSyncStatus('error');
-      try {
-        const canonical = await fetchSnapshot(roomId);
-        if (canonical) {
-          useAppStore.getState()._setPayload(canonical);
-          await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(canonical));
-        }
-      } catch {
-        // Keep the local payload cached by _persistCurrentPayload for offline recovery.
-      }
+      _syncRetryTimer = setTimeout(() => {
+        _syncRetryTimer = null;
+        _syncToCloud();
+      }, 5000);
     }
   }, 300);
 }
@@ -649,15 +688,18 @@ function _persistCurrentPayload(): void {
 
 async function _connectToRoom(uid: UserId): Promise<void> {
   _clearReconnectTimer();
+  const connectionGeneration = ++_connectionGeneration;
   _activeUid = uid;
 
   if (_channel) {
     const oldChannel = _channel;
     _channel = null;
-    void unsubscribeFromRoom(oldChannel).catch((err) => {
+    await unsubscribeFromRoom(oldChannel).catch((err) => {
       console.warn('[store] unsubscribe old channel failed:', err);
     });
   }
+
+  if (!_isCurrentConnection(connectionGeneration, uid)) return;
 
   _payloadReady = false;
 
@@ -669,6 +711,7 @@ async function _connectToRoom(uid: UserId): Promise<void> {
   // Immediately load initial cached payload from disk to make the UI instant and responsive offline-first
   try {
     const cached = await AsyncStorage.getItem(payloadStorageKey(roomId));
+    if (!_isCurrentConnection(connectionGeneration, uid)) return;
     if (cached) {
       useAppStore.getState()._setPayload(normalizeAppPayload(JSON.parse(cached)));
     } else {
@@ -680,20 +723,28 @@ async function _connectToRoom(uid: UserId): Promise<void> {
 
   try {
     const snapshot = await fetchSnapshot(roomId);
-    if (snapshot) {
+    if (!_isCurrentConnection(connectionGeneration, uid)) return;
+    // Only apply the remote snapshot if there are no pending local changes waiting to push.
+    // If _syncRetryTimer is set, our local state is ahead of what Supabase has — don't revert it.
+    if (snapshot && !_syncRetryTimer) {
       useAppStore.getState()._setPayload(snapshot);
       await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(snapshot));
+    } else if (snapshot && _syncRetryTimer) {
+      // We have pending local changes — push them now that we're reconnected.
+      _syncToCloud();
     }
 
     _channel = subscribeToRoom(
       roomId,
       clientId,
       async (incoming) => {
+        if (!_isCurrentConnection(connectionGeneration, uid)) return;
         _reconnectAttempts = 0;
         useAppStore.getState()._setPayload(incoming);
         await AsyncStorage.setItem(payloadStorageKey(roomId), JSON.stringify(incoming));
       },
       (status) => {
+        if (!_isCurrentConnection(connectionGeneration, uid)) return;
         if (status === 'SUBSCRIBED') {
           _reconnectAttempts = 0;
           useAppStore.setState({ isConnected: true, syncStatus: 'live' });
@@ -707,11 +758,14 @@ async function _connectToRoom(uid: UserId): Promise<void> {
 
     useAppStore.setState({ isConnected: true, syncStatus: 'live' });
   } catch (err) {
+    if (!_isCurrentConnection(connectionGeneration, uid)) return;
     console.error('[store] connection error:', err);
     useAppStore.getState()._setSyncStatus('error');
     _scheduleReconnect();
   } finally {
-    _payloadReady = true;
+    if (_isCurrentConnection(connectionGeneration, uid)) {
+      _payloadReady = true;
+    }
   }
 }
 
@@ -757,6 +811,11 @@ export async function initialize(): Promise<void> {
 
   await AsyncStorage.removeItem(STORAGE_PAYLOAD_KEY);
   useAppStore.setState({ currentUser: uid, selectedYM: currentYM(), currency, themeMode, users, roomForUser, partnerForUser, deletedUserIds });
+
+  // Warm up the image cache for all user photos at startup so filter button
+  // avatars are immediately ready when the user opens the movements screen.
+  _prefetchUserPhotos(users);
+
   await _connectToRoom(uid);
 
   // Background cloud fetch and merge of custom users
@@ -793,6 +852,9 @@ export async function initialize(): Promise<void> {
           roomForUser: mergedRooms,
           partnerForUser: mergedPartners,
         });
+
+        // Prefetch any photos that came from the cloud merge
+        _prefetchUserPhotos(mergedUsers);
 
         await AsyncStorage.multiSet([
           [STORAGE_USERS_KEY, JSON.stringify(customUsersOnly)],

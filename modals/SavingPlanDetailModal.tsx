@@ -16,9 +16,8 @@ import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
 import { CATEGORIES } from '../constants/categories';
 import { type AppTheme, getIconColor } from '../constants/colors';
-import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
-import type { SavingPlan } from '../types';
-import { savingPlanProgress } from '../utils/calculations';
+import type { SavingPlan, SavingPlanHistoryEntry } from '../types';
+import { savingPlanProgress, savingPlanSavedAmount } from '../utils/calculations';
 import { fmt, formatDateShort, parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
@@ -27,7 +26,10 @@ import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
 import { useTheme } from '../contexts/ThemeContext';
 
 const SAVINGS_ACCENT = '#7C3AED';
-const SAVINGS_ACCENT_BG = 'rgba(124, 58, 237, 0.18)';
+const SAVINGS_ACCENT_BG = 'rgba(124, 58, 237, 0.10)';
+const COMPLETE_COLOR = '#16A34A';
+
+type EntrySource = 'balance' | 'existing';
 
 interface SavingPlanDetailModalProps {
   plan: SavingPlan | null;
@@ -55,6 +57,7 @@ export function SavingPlanDetailModal({
   const [entryAmount, setEntryAmount] = useState('');
   const [entryDate, setEntryDate] = useState(todayStr());
   const [entryNote, setEntryNote] = useState('');
+  const [entrySource, setEntrySource] = useState<EntrySource>('balance');
   const noteScroll = useKeyboardAwareScroll();
 
   const entryNumber = useMemo(() => parseAmt(entryAmount), [entryAmount]);
@@ -64,38 +67,38 @@ export function SavingPlanDetailModal({
     setEntryAmount('');
     setEntryDate(todayStr());
     setEntryNote('');
+    setEntrySource('balance');
   }, [plan?.id]);
 
   if (!plan) return null;
 
+  const saveType = plan.saveType ?? 'goal';
   const history = [...(plan.history ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const iconColor = getIconColor(plan.iconColor ?? 'purple');
   const iconInfo = CATEGORIES[plan.icon ?? 'savings'] ?? CATEGORIES.savings;
   const progress = savingPlanProgress(plan);
   const progressPct = Math.min(100, Math.round(progress.pct));
-  const user = plan.uid ? getUserData(users, plan.uid) : null;
+  const isComplete = progressPct >= 100;
+  const totalSaved = savingPlanSavedAmount(plan);
 
   const addHistoryEntry = () => {
     if (!Number.isFinite(entryNumber) || entryNumber <= 0) {
-      Alert.alert('Monto invalido', 'Escribe un monto mayor a cero.');
+      Alert.alert('Monto inválido', 'Escribe un monto mayor a cero.');
       return;
     }
-    updateSavingPlan({
-      ...plan,
-      history: [
-        ...(plan.history ?? []),
-        {
-          id: Date.now(),
-          uid: currentUser,
-          amount: entryNumber,
-          date: entryDate.trim() || todayStr(),
-          note: entryNote.trim() || undefined,
-        },
-      ],
-    });
+    const entry: SavingPlanHistoryEntry = {
+      id: Date.now(),
+      uid: currentUser,
+      amount: entryNumber,
+      date: entryDate.trim() || todayStr(),
+      note: entryNote.trim() || undefined,
+      source: entrySource,
+    };
+    updateSavingPlan({ ...plan, history: [...(plan.history ?? []), entry] });
     setEntryAmount('');
     setEntryDate(todayStr());
     setEntryNote('');
+    setEntrySource('balance');
   };
 
   const handleDelete = () => {
@@ -129,8 +132,7 @@ export function SavingPlanDetailModal({
 
   const shortLink = (() => {
     try {
-      const url = new URL(plan.link ?? '');
-      return url.hostname.replace(/^www\./, '');
+      return new URL(plan.link ?? '').hostname.replace(/^www\./, '');
     } catch {
       return plan.link ?? '';
     }
@@ -139,210 +141,275 @@ export function SavingPlanDetailModal({
   return (
     <Modal visible animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <ModalScreen
-        title="Detalles"
-        subtitle={plan.title}
-        breadcrumbs={['Ahorro', 'Detalle', readOnly ? 'Lectura' : 'Aportes']}
-        activeBreadcrumb={readOnly ? 1 : 2}
+        title={plan.title}
+        breadcrumbs={['Ahorro', 'Detalle']}
+        activeBreadcrumb={1}
         onBack={onClose}
         contentContainerStyle={{ padding: 0 }}
         footer={!readOnly ? (
           <>
             <Pressable
-              onPress={() => {}}
-              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
-            >
-              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
-            </Pressable>
-            <Pressable
               onPress={() => { onClose(); setTimeout(() => onEdit?.(), 120); }}
               style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
             >
-              <Ionicons name="pencil-outline" size={20} color={theme.textSecondary} />
+              <Ionicons name="pencil-outline" size={18} color={theme.textSecondary} />
+              <Text style={styles.actionBtnText}>Editar</Text>
             </Pressable>
             <Pressable
               onPress={handleDelete}
               style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
             >
-              <Ionicons name="trash-outline" size={20} color={theme.expense} />
+              <Ionicons name="trash-outline" size={18} color={theme.expense} />
+              <Text style={[styles.actionBtnText, { color: theme.expense }]}>Eliminar</Text>
             </Pressable>
           </>
         ) : undefined}
       >
-
-          {/* -- Header -- */}
-          <View style={[styles.header, { display: 'none' }]}>
-            <Text style={styles.headerTitle}>Detalles</Text>
-            <Pressable onPress={onClose} style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}>
-              <Ionicons name="close" size={20} color={theme.textSecondary} />
-            </Pressable>
-          </View>
-
-          {/* -- Meta row: owner + type badge -- */}
-          <View style={styles.metaRow}>
-            {user && (
-              <>
-                <View style={[styles.avatar, { backgroundColor: user.bg }]}>
-                  <Text style={[styles.avatarInitials, { color: user.color }]}>{user.initials}</Text>
-                </View>
-                <Text style={styles.userName}>{user.name}</Text>
-                <View style={styles.labelDivider} />
-              </>
-            )}
-            <View style={[styles.typeLabel, plan.type === 'joint' ? styles.typeLabelJoint : styles.typeLabelPersonal]}>
-              <Ionicons
-                name={plan.type === 'joint' ? 'people' : 'person'}
-                size={11}
-                color={plan.type === 'joint' ? SAVINGS_ACCENT : theme.textSecondary}
-              />
-              <Text style={[styles.typeLabelText, plan.type === 'joint' && styles.typeLabelTextJoint]}>
-                {plan.type === 'joint' ? 'EN CONJUNTO' : 'SOLO YO'}
+        <ScrollView
+          ref={noteScroll.scrollRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            noteScroll.bottomPadding !== undefined && { paddingBottom: noteScroll.bottomPadding },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={dismissKeyboardAndBlur}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Hero ── */}
+          <View style={styles.hero}>
+            <View style={[styles.heroIcon, { backgroundColor: iconColor.color }]}>
+              <Ionicons name={iconInfo.icon} size={26} color="#FFFFFF" />
+            </View>
+            <View style={styles.heroInfo}>
+              {saveType === 'free' ? (
+                <>
+                  <Text style={styles.heroAmount}>{fmt(totalSaved, currency)}</Text>
+                  <Text style={styles.heroSub}>guardados · ahorro libre</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.heroAmount}>{fmt(progress.total, currency)}</Text>
+                  <Text style={styles.heroSub}>de {fmt(plan.targetAmount, currency)}</Text>
+                </>
+              )}
+            </View>
+            {saveType === 'goal' && (
+              <Text style={[styles.heroPct, isComplete && styles.heroPctComplete]}>
+                {progressPct}%
               </Text>
-            </View>
+            )}
           </View>
 
-          {/* -- Main hero row: icon + title + amount -- */}
-          <View style={styles.mainRow}>
-            <View style={styles.mainLeft}>
-              <View style={[styles.iconWrap, { backgroundColor: iconColor.color }]}>
-                <Ionicons name={iconInfo.icon} size={24} color="#FFFFFF" />
+          {/* ── Barra de progreso (solo goal) ── */}
+          {saveType === 'goal' && (
+            <View style={styles.progressSection}>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${progressPct}%` as `${number}%` },
+                    isComplete && styles.progressFillComplete,
+                  ]}
+                />
               </View>
-              <View style={styles.mainInfo}>
-                <Text style={styles.planTitle}>{plan.title}</Text>
-                <View style={styles.dateRow}>
-                  <Ionicons name="calendar-outline" size={12} color={theme.textMuted} />
-                  <Text style={styles.dateText}>{formatDateShort(plan.date)}</Text>
+              {isComplete ? (
+                <View style={styles.completeRow}>
+                  <Ionicons name="checkmark-circle" size={13} color={COMPLETE_COLOR} />
+                  <Text style={styles.completeText}>¡Meta alcanzada!</Text>
                 </View>
-              </View>
+              ) : (
+                <Text style={styles.progressRemaining}>
+                  Falta{' '}
+                  <Text style={styles.progressRemainingAmt}>{fmt(progress.remaining, currency)}</Text>
+                </Text>
+              )}
             </View>
-            <View style={styles.mainRight}>
-              <Text style={styles.amountSaved}>{fmt(progress.total, currency)}</Text>
-              <Text style={styles.amountTarget}>de {fmt(plan.targetAmount, currency)}</Text>
-            </View>
-          </View>
+          )}
 
-          {/* -- Progress bar -- */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progressPct}%` as `${number}%` }]} />
-            </View>
-            <View style={styles.progressLabels}>
-              <Text style={styles.progressLabelLeft}>{progressPct}% completado</Text>
-              <Text style={styles.progressLabelRight}>{fmt(progress.remaining, currency)} restante</Text>
-            </View>
-          </View>
-
-          {/* -- Link compressed -- */}
-          {plan.link ? (
-            <View style={styles.linkRow}>
-              <Ionicons name="link-outline" size={15} color={SAVINGS_ACCENT} />
+          {/* ── Link (solo goal) ── */}
+          {saveType === 'goal' && plan.link ? (
+            <Pressable
+              onPress={handleShareLink}
+              style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+            >
+              <Ionicons name="link-outline" size={14} color={SAVINGS_ACCENT} />
               <Text style={styles.linkText} numberOfLines={1}>{shortLink}</Text>
-              <Pressable
-                onPress={handleShareLink}
-                hitSlop={8}
-                style={({ pressed }) => [styles.shareBtn, pressed && styles.pressed]}
-              >
-                <Ionicons name="share-outline" size={17} color={SAVINGS_ACCENT} />
-              </Pressable>
+              <Ionicons name="open-outline" size={14} color={SAVINGS_ACCENT} />
+            </Pressable>
+          ) : null}
+
+          {/* ── Notas ── */}
+          {plan.notes ? (
+            <View style={styles.notesRow}>
+              <Ionicons name="document-text-outline" size={14} color={theme.textMuted} />
+              <Text style={styles.notesText}>{plan.notes}</Text>
             </View>
           ) : null}
 
-          <ScrollView
-            ref={noteScroll.scrollRef}
-            contentContainerStyle={[
-              styles.scrollContent,
-              noteScroll.bottomPadding !== undefined && { paddingBottom: noteScroll.bottomPadding },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            onScrollBeginDrag={dismissKeyboardAndBlur}
-          >
-            {/* -- History -- */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Historial</Text>
+          {/* ── Historial ── */}
+          <Text style={styles.sectionTitle}>Historial</Text>
+          {history.length === 0 ? (
+            <View style={styles.emptyHistory}>
+              <Ionicons name="cash-outline" size={16} color={theme.textMuted} />
+              <Text style={styles.emptyText}>Todavía no hay aportes.</Text>
             </View>
-            {history.length === 0 ? (
-              <View style={styles.emptyHistory}>
-                <Ionicons name="cash-outline" size={17} color={theme.textMuted} />
-                <Text style={styles.emptyText}>Todavía no hay montos agregados.</Text>
-              </View>
-            ) : (
-              <View style={styles.historyList}>
-                {history.map((entry) => (
-                  <View key={String(entry.id)} style={styles.historyRow}>
-                    <View style={styles.historyIcon}>
-                      <Ionicons name="cash-outline" size={18} color={theme.income} />
-                    </View>
-                    <View style={styles.historyText}>
-                      <Text style={styles.historyAmount}>{fmt(entry.amount, currency)}</Text>
-                      <Text style={styles.historyMeta}>
-                        {getUserData(users, entry.uid).name} · {formatDateShort(entry.date)}
-                      </Text>
-                      {entry.note ? <Text style={styles.historyNote}>{entry.note}</Text> : null}
-                    </View>
+          ) : (
+            <View style={styles.historyList}>
+              {history.map((entry) => (
+                <HistoryRow key={String(entry.id)} entry={entry} users={users} currency={currency} styles={styles} theme={theme} />
+              ))}
+            </View>
+          )}
+
+          {/* ── Agregar aporte ── */}
+          {!readOnly && (
+            <>
+              <Text style={styles.sectionTitle}>Agregar al ahorro</Text>
+              <View style={styles.entryBox}>
+                {/* Monto */}
+                <Field
+                  label="Monto"
+                  value={entryAmount}
+                  onChangeText={setEntryAmount}
+                  placeholder="0,00"
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={() => runAfterKeyboardDismiss(addHistoryEntry)}
+                />
+
+                {/* Fuente */}
+                <View style={styles.field}>
+                  <Text style={styles.fieldLabel}>Fuente del dinero</Text>
+                  <View style={styles.sourceRow}>
+                    <SourceButton
+                      label="Del balance"
+                      description="Descuenta del saldo del mes"
+                      icon="wallet-outline"
+                      active={entrySource === 'balance'}
+                      onPress={() => setEntrySource('balance')}
+                      styles={styles}
+                      theme={theme}
+                    />
+                    <SourceButton
+                      label="Ahorros previos"
+                      description="Dinero que ya tenías antes"
+                      icon="archive-outline"
+                      active={entrySource === 'existing'}
+                      onPress={() => setEntrySource('existing')}
+                      styles={styles}
+                      theme={theme}
+                    />
                   </View>
-                ))}
-              </View>
-            )}
-
-            {/* -- Add entry -- */}
-            {!readOnly && (
-              <>
-                <Text style={styles.sectionTitle}>Agregar al ahorro</Text>
-                <View style={styles.entryBox}>
-                  <Field
-                    label="Monto"
-                    value={entryAmount}
-                    onChangeText={setEntryAmount}
-                    placeholder="0,00"
-                    keyboardType="decimal-pad"
-                    returnKeyType="done"
-                    onSubmitEditing={() => runAfterKeyboardDismiss(addHistoryEntry)}
-                  />
-                  <Field label="Fecha" value={entryDate} onChangeText={setEntryDate} placeholder="YYYY-MM-DD" />
-                  <Field
-                    label="Nota"
-                    value={entryNote}
-                    onChangeText={setEntryNote}
-                    placeholder="Opcional"
-                    multiline
-                    onFocus={noteScroll.onFocus}
-                    onBlur={noteScroll.onBlur}
-                  />
-                  <Pressable onPress={() => runAfterKeyboardDismiss(addHistoryEntry)} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                    <Text style={styles.addButtonText}>Agregar monto</Text>
-                  </Pressable>
                 </View>
-              </>
-            )}
-          </ScrollView>
 
-          {/* -- Action buttons -- */}
-          <View style={[styles.actions, { display: 'none' }]}>
-            <Pressable
-              onPress={() => {}}
-              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
-            >
-              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
-            </Pressable>
-            <Pressable
-              onPress={() => { onClose(); setTimeout(() => onEdit?.(), 120); }}
-              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
-            >
-              <Ionicons name="pencil-outline" size={20} color={theme.textSecondary} />
-            </Pressable>
-            <Pressable
-              onPress={handleDelete}
-              style={({ pressed }) => [styles.actionBtn, styles.actionBtnDelete, pressed && styles.pressed]}
-            >
-              <Ionicons name="trash-outline" size={20} color={theme.expense} />
-            </Pressable>
-          </View>
+                {/* Fecha */}
+                <Field label="Fecha" value={entryDate} onChangeText={setEntryDate} placeholder="YYYY-MM-DD" />
 
+                {/* Nota */}
+                <Field
+                  label="Nota (opcional)"
+                  value={entryNote}
+                  onChangeText={setEntryNote}
+                  placeholder="Ej. Ahorro de este mes"
+                  multiline
+                  onFocus={noteScroll.onFocus}
+                  onBlur={noteScroll.onBlur}
+                />
+
+                <Pressable
+                  onPress={() => runAfterKeyboardDismiss(addHistoryEntry)}
+                  style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="add" size={18} color="#FFFFFF" />
+                  <Text style={styles.addButtonText}>Agregar</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </ScrollView>
       </ModalScreen>
     </Modal>
   );
 }
+
+// ── HistoryRow ────────────────────────────────────────────────────────────────
+
+function HistoryRow({
+  entry,
+  users,
+  currency,
+  styles,
+  theme,
+}: {
+  entry: SavingPlanHistoryEntry;
+  users: ReturnType<typeof useAppStore.getState>['users'];
+  currency: ReturnType<typeof useAppStore.getState>['currency'];
+  styles: ReturnType<typeof makeStyles>;
+  theme: AppTheme;
+}) {
+  const isBalance = entry.source === 'balance';
+  const isPrevious = entry.source === 'existing';
+  const user = getUserData(users, entry.uid);
+
+  return (
+    <View style={styles.historyRow}>
+      <View style={styles.historyIconWrap}>
+        <Ionicons name="cash-outline" size={16} color={theme.income} />
+      </View>
+      <View style={styles.historyContent}>
+        <Text style={styles.historyAmount}>{fmt(entry.amount, currency)}</Text>
+        <View style={styles.historyMeta}>
+          <Text style={styles.historyMetaText}>{user.name} · {formatDateShort(entry.date)}</Text>
+          {isBalance && (
+            <View style={styles.sourceBadge}>
+              <Text style={styles.sourceBadgeText}>balance</Text>
+            </View>
+          )}
+          {isPrevious && (
+            <View style={[styles.sourceBadge, styles.sourceBadgePrev]}>
+              <Text style={[styles.sourceBadgeText, styles.sourceBadgeTextPrev]}>previo</Text>
+            </View>
+          )}
+        </View>
+        {entry.note ? <Text style={styles.historyNote}>{entry.note}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+// ── SourceButton ─────────────────────────────────────────────────────────────
+
+function SourceButton({
+  label,
+  description,
+  icon,
+  active,
+  onPress,
+  styles,
+  theme,
+}: {
+  label: string;
+  description: string;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  active: boolean;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  theme: AppTheme;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.sourceBtn, active && styles.sourceBtnActive, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={16} color={active ? SAVINGS_ACCENT : theme.textMuted} />
+      <Text style={[styles.sourceBtnLabel, active && styles.sourceBtnLabelActive]}>{label}</Text>
+      <Text style={[styles.sourceBtnDesc, active && styles.sourceBtnDescActive]}>{description}</Text>
+    </Pressable>
+  );
+}
+
+// ── Field ─────────────────────────────────────────────────────────────────────
 
 function Field({
   label,
@@ -353,182 +420,70 @@ function Field({
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         placeholderTextColor={theme.textMuted}
-        style={styles.input}
+        style={[styles.input, props.multiline && styles.inputMulti]}
         {...props}
       />
     </View>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const makeStyles = (t: AppTheme) => StyleSheet.create({
-  backdrop: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
+  scrollContent: {
+    gap: 14,
     paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  card: {
-    backgroundColor: t.surface,
-    borderRadius: 22,
-    maxHeight: '88%',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  cardShadow: {
-    borderRadius: 22,
-    elevation: 14,
-    maxWidth: 520,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.24,
-    shadowRadius: 30,
-    width: '100%',
-  },
-  // -- Header --
-  header: {
+  // -- Hero --
+  hero: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 14,
-    paddingHorizontal: 20,
-    paddingTop: 18,
+    gap: 14,
   },
-  headerTitle: {
-    color: t.textPrimary,
-    fontSize: 18,
-    fontWeight: MODAL_TITLE_FONT_WEIGHT,
-  },
-  closeBtn: {
-    alignItems: 'center',
-    borderRadius: 10,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  // -- Meta row --
-  metaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-  avatar: {
-    alignItems: 'center',
-    borderRadius: 14,
-    height: 26,
-    justifyContent: 'center',
-    width: 26,
-  },
-  avatarInitials: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  userName: {
-    color: t.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  labelDivider: {
-    backgroundColor: t.border,
-    borderRadius: 1,
-    height: 12,
-    width: 1,
-  },
-  typeLabel: {
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  typeLabelJoint: {
-    backgroundColor: SAVINGS_ACCENT_BG,
-    borderColor: '#C4B5FD',
-  },
-  typeLabelPersonal: {
-    backgroundColor: t.background,
-    borderColor: t.border,
-  },
-  typeLabelText: {
-    color: t.textSecondary,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  typeLabelTextJoint: {
-    color: SAVINGS_ACCENT,
-  },
-  // -- Main hero row --
-  mainRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  mainLeft: {
-    alignItems: 'center',
-    flex: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minWidth: 0,
-  },
-  iconWrap: {
+  heroIcon: {
     alignItems: 'center',
     borderRadius: 16,
+    flexShrink: 0,
     height: 52,
     justifyContent: 'center',
     width: 52,
   },
-  mainInfo: {
+  heroInfo: {
     flex: 1,
-    gap: 4,
+    gap: 2,
     minWidth: 0,
   },
-  planTitle: {
-    color: t.textPrimary,
-    fontSize: 15,
-    fontWeight: '800',
+  heroAmount: {
+    color: SAVINGS_ACCENT,
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 26,
+    letterSpacing: -0.5,
   },
-  dateRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
-  },
-  dateText: {
+  heroSub: {
     color: t.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },
-  mainRight: {
-    alignItems: 'flex-end',
-    gap: 2,
-    marginLeft: 8,
-  },
-  amountSaved: {
+  heroPct: {
     color: SAVINGS_ACCENT,
+    flexShrink: 0,
     fontFamily: 'Poppins_700Bold',
-    fontSize: 28,
+    fontSize: 18,
   },
-  amountTarget: {
-    color: t.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
+  heroPctComplete: {
+    color: COMPLETE_COLOR,
   },
   // -- Progress --
   progressSection: {
     gap: 6,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
   },
   progressTrack: {
-    backgroundColor: t.border,
+    backgroundColor: t.mode === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)',
     borderRadius: 4,
     height: 7,
     overflow: 'hidden',
@@ -538,19 +493,27 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     borderRadius: 4,
     height: '100%',
   },
-  progressLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  progressFillComplete: {
+    backgroundColor: COMPLETE_COLOR,
   },
-  progressLabelLeft: {
+  completeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  completeText: {
+    color: COMPLETE_COLOR,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  progressRemaining: {
     color: t.textMuted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
-  progressLabelRight: {
+  progressRemainingAmt: {
     color: SAVINGS_ACCENT,
-    fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   // -- Link --
   linkRow: {
@@ -559,8 +522,6 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     borderRadius: 10,
     flexDirection: 'row',
     gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 12,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
@@ -570,28 +531,29 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  shareBtn: {
-    alignItems: 'center',
-    borderRadius: 8,
-    height: 30,
-    justifyContent: 'center',
-    width: 30,
+  // -- Notes --
+  notesRow: {
+    alignItems: 'flex-start',
+    backgroundColor: t.background,
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 8,
+    padding: 10,
   },
-  // -- Scroll content --
-  scrollContent: {
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 8,
+  notesText: {
+    color: t.textSecondary,
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
   },
-  sectionHeader: {
-    marginTop: 4,
-  },
+  // -- Section title --
   sectionTitle: {
     color: t.textPrimary,
     fontSize: 14,
     fontWeight: '800',
+    marginTop: 2,
   },
+  // -- History --
   emptyHistory: {
     alignItems: 'center',
     backgroundColor: t.background,
@@ -603,31 +565,31 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   emptyText: {
     color: t.textSecondary,
     fontSize: 13,
-    lineHeight: 19,
   },
   historyList: {
     borderTopColor: t.border,
     borderTopWidth: 1,
   },
   historyRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderBottomColor: t.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     gap: 10,
     paddingVertical: 11,
   },
-  historyIcon: {
+  historyIconWrap: {
     alignItems: 'center',
-    backgroundColor: 'rgba(22, 163, 74, 0.18)',
+    backgroundColor: 'rgba(22,163,74,0.12)',
     borderRadius: 10,
-    height: 36,
+    flexShrink: 0,
+    height: 34,
     justifyContent: 'center',
-    width: 36,
+    width: 34,
   },
-  historyText: {
+  historyContent: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   historyAmount: {
     color: t.textPrimary,
@@ -635,30 +597,51 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontWeight: '800',
   },
   historyMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  historyMetaText: {
     color: t.textSecondary,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  sourceBadge: {
+    backgroundColor: SAVINGS_ACCENT_BG,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  sourceBadgeText: {
+    color: SAVINGS_ACCENT,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  sourceBadgePrev: {
+    backgroundColor: t.mode === 'light' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.07)',
+  },
+  sourceBadgeTextPrev: {
+    color: t.textMuted,
   },
   historyNote: {
     color: t.textSecondary,
     fontSize: 12,
     lineHeight: 17,
-    marginTop: 2,
   },
-  // -- Add entry --
+  // -- Entry form --
   entryBox: {
     backgroundColor: t.background,
     borderRadius: 14,
     gap: 12,
-    padding: 12,
+    padding: 14,
   },
   field: {
-    gap: 7,
+    gap: 6,
   },
-  label: {
+  fieldLabel: {
     color: t.textSecondary,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     textTransform: 'uppercase',
   },
   input: {
@@ -674,36 +657,82 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     paddingVertical: 10,
     textAlignVertical: 'center',
   },
+  inputMulti: {
+    minHeight: 70,
+    textAlignVertical: 'top',
+  },
+  // -- Source selector --
+  sourceRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sourceBtn: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    flex: 1,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+  sourceBtnActive: {
+    backgroundColor: SAVINGS_ACCENT_BG,
+    borderColor: SAVINGS_ACCENT,
+  },
+  sourceBtnLabel: {
+    color: t.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  sourceBtnLabelActive: {
+    color: SAVINGS_ACCENT,
+  },
+  sourceBtnDesc: {
+    color: t.textMuted,
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  sourceBtnDescActive: {
+    color: SAVINGS_ACCENT,
+    opacity: 0.75,
+  },
+  // -- Add button --
   addButton: {
     alignItems: 'center',
     backgroundColor: SAVINGS_ACCENT,
     borderRadius: 12,
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     height: 46,
     justifyContent: 'center',
   },
   addButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '700',
   },
-  // -- Actions --
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 16,
-  },
+  // -- Footer actions --
   actionBtn: {
     alignItems: 'center',
     backgroundColor: t.softSurface,
     borderRadius: 12,
     flex: 1,
+    flexDirection: 'row',
+    gap: 6,
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: 13,
   },
   actionBtnDelete: {
-    backgroundColor: '#FFF1F2',
+    backgroundColor: t.mode === 'light' ? '#FFF1F2' : 'rgba(239,68,68,0.10)',
+  },
+  actionBtnText: {
+    color: t.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.65,

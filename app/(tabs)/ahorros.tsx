@@ -89,11 +89,15 @@ export default function AhorrosScreen() {
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('both');
   const [searchText, setSearchText] = useState('');
   const [dropdown, setDropdown] = useState<DropdownInfo | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const insets = useSafeAreaInsets();
-  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation();
+  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation({
+    scrollRef,
+    onResetScroll: () => reportFabScroll(0),
+  });
 
   const partner = getPartnerId(partnerForUser, currentUser);
   const currentUserData = getUserData(users, currentUser);
@@ -144,6 +148,7 @@ export default function AhorrosScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         bounces={false}

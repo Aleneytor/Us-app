@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "nosotros",
+    "name": "Juntos",
     "slug": "nosotros",
     "scheme": "nosotros",
     "version": "1.0.0",
@@ -42,16 +42,16 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Permite que Nosotros use el microfono para crear movimientos por voz.",
-          "speechRecognitionPermission": "Permite que Nosotros use reconocimiento de voz para entender tus acciones."
+          "microphonePermission": "Permite que Juntos use el microfono para crear movimientos por voz.",
+          "speechRecognitionPermission": "Permite que Juntos use reconocimiento de voz para entender tus acciones."
         }
       ]
     ],
     "web": {
       "bundler": "metro",
       "output": "single",
-      "name": "Nosotros",
-      "shortName": "Nosotros",
+      "name": "Juntos",
+      "shortName": "Juntos",
       "description": "Tu app de finanzas compartidas",
       "themeColor": "#23C55E",
       "backgroundColor": "#0a0a0a",

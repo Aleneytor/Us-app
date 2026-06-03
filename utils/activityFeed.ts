@@ -5,6 +5,7 @@ import type {
   Goal,
   Plan,
   PlanExpense,
+  PlanSettlement,
   SavingPlan,
   SavingPlanHistoryEntry,
   Transaction,
@@ -40,6 +41,22 @@ export type ActivityItem =
       sortId: number;
       planId: number;
       expenseId: number;
+    }
+  | {
+      source: 'plan_settlement';
+      id: string;
+      date: string;
+      ownerId?: UserId;
+      kind: 'expense' | 'income';
+      title: string;
+      subtitle: string;
+      iconKey: string;
+      iconColor: string;
+      amount: number;
+      searchText: string;
+      sortId: number;
+      planId: number;
+      settlementId: number;
     }
   | {
       source: 'plan_created';
@@ -134,6 +151,14 @@ function planOwnerId(plan: Plan): UserId | undefined {
 function planExpenseOwnerId(plan: Plan, expense: PlanExpense): UserId | undefined {
   const member = plan.members.find((m) => m.id === expense.memberId);
   return member?.uid ?? member?.id;
+}
+
+function memberOwnerId(member?: Plan['members'][0]): UserId | undefined {
+  return member?.uid ?? member?.id;
+}
+
+function isCurrentMember(member: Plan['members'][0] | undefined, currentUser: UserId): boolean {
+  return member?.uid === currentUser || member?.id === currentUser;
 }
 
 function canSeeSaving(plan: SavingPlan, currentUser: UserId): boolean {
@@ -301,7 +326,7 @@ export function buildActivityFeed(
 
     for (const expense of plan.expenses ?? []) {
       if (!matchesMonth(expense.date, selectedYM, includeAllMonths)) continue;
-      const subtitle = `${plan.title} - pagado por ${expense.memberName}`;
+      const subtitle = plan.title;
       items.push({
         source: 'plan_expense',
         id: `plan-${plan.id}-expense-${expense.id}`,
@@ -313,10 +338,39 @@ export function buildActivityFeed(
         iconKey: plan.icon ?? 'map',
         iconColor: plan.iconColor ?? 'blue',
         amount: expense.amount,
-        searchText: [expense.title, subtitle, expense.note ?? ''].join(' ').toLowerCase(),
+        searchText: [expense.title, subtitle, expense.memberName, expense.note ?? ''].join(' ').toLowerCase(),
         sortId: Number(expense.id) || 0,
         planId: plan.id,
         expenseId: expense.id,
+      });
+    }
+
+    for (const settlement of plan.settlements ?? []) {
+      if (!matchesMonth(settlement.date, selectedYM, includeAllMonths)) continue;
+      const fromMember = plan.members.find((member) => member.id === settlement.fromMemberId);
+      const toMember = plan.members.find((member) => member.id === settlement.toMemberId);
+      const paidByCurrentUser = isCurrentMember(fromMember, currentUser);
+      const paidToCurrentUser = isCurrentMember(toMember, currentUser);
+      if (!paidByCurrentUser && !paidToCurrentUser) continue;
+
+      const title = paidToCurrentUser
+        ? `${fromMember?.name ?? 'Alguien'} te pagó`
+        : `Pagaste a ${toMember?.name ?? 'alguien'}`;
+      items.push({
+        source: 'plan_settlement',
+        id: `plan-${plan.id}-settlement-${settlement.id}-${paidToCurrentUser ? 'in' : 'out'}`,
+        date: settlement.date,
+        ownerId: paidToCurrentUser ? memberOwnerId(toMember) : memberOwnerId(fromMember),
+        kind: paidToCurrentUser ? 'income' : 'expense',
+        title,
+        subtitle: plan.title,
+        iconKey: plan.icon ?? 'map',
+        iconColor: plan.iconColor ?? 'blue',
+        amount: settlement.amount,
+        searchText: [title, plan.title, fromMember?.name ?? '', toMember?.name ?? '', settlement.note ?? ''].join(' ').toLowerCase(),
+        sortId: Number(settlement.id) || 0,
+        planId: plan.id,
+        settlementId: settlement.id,
       });
     }
   }

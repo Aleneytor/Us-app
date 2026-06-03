@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "build:web": "expo export --platform web && node inject-pwa-meta.js"
+    "start": "expo start --max-workers 1",
+    "android": "expo start --android --max-workers 1",
+    "ios": "expo start --ios --max-workers 1",
+    "web": "expo start --web --max-workers 1",
+    "build:web": "expo export --platform web && node inject-pwa-meta.js",
+    "tunnel": "expo start --tunnel --max-workers 1"
   },
   "dependencies": {
     "@expo-google-fonts/dm-serif-display": "^0.4.2",

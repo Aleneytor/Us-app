@@ -74,7 +74,7 @@ export interface MemberBalance {
   totalOwed: number;    // sum of splits assigned to this member
   settledIn: number;    // settlements received (toMemberId === member.id)
   settledOut: number;   // settlements sent (fromMemberId === member.id)
-  netBalance: number;   // (totalPaid + settledIn) - (totalOwed + settledOut)
+  netBalance: number;   // (totalPaid + settledOut) - (totalOwed + settledIn)
                         // positive = others owe this member
                         // negative = this member owes others
 }
@@ -102,7 +102,7 @@ export function computeMemberBalances(plan: Plan): MemberBalance[] {
       .filter((st) => st.fromMemberId === member.id)
       .reduce((s, st) => s + st.amount, 0);
 
-    const netBalance = round2((totalPaid + settledIn) - (totalOwed + settledOut));
+    const netBalance = round2((totalPaid + settledOut) - (totalOwed + settledIn));
 
     return { member, totalPaid, totalOwed, settledIn, settledOut, netBalance };
   });
@@ -161,8 +161,9 @@ export function planTotalSpent(plan: Plan): number {
   return round2(plan.expenses.reduce((s, e) => s + e.amount, 0));
 }
 
-/** Total budget of a plan (sum of all category budgets). */
+/** Total budget of a plan (plan budget or sum of category budgets). */
 export function planTotalBudget(plan: Plan): number {
+  if (plan.budget != null) return plan.budget;
   return round2(plan.categories.reduce((s, c) => s + c.totalAmount, 0));
 }
 

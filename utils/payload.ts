@@ -184,6 +184,7 @@ function normalizePlan(value: unknown): Plan | null {
     rawSplitMode === 'parts' || rawSplitMode === 'percentage'
       ? rawSplitMode
       : 'equal';
+  const budget = asNumber(r.budget);
 
   return {
     id: asNumber(r.id) || Date.now(),
@@ -197,6 +198,8 @@ function normalizePlan(value: unknown): Plan | null {
     expenses,
     settlements,
     splitMode,
+    budget: budget > 0 ? budget : undefined,
+    finalizedAt: typeof r.finalizedAt === 'string' && r.finalizedAt ? r.finalizedAt : undefined,
   };
 }
 

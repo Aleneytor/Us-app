@@ -1,15 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { TransactionTile } from '../components/TransactionTile';
 import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
@@ -59,6 +66,10 @@ export function BudgetCategoryDetailModal({
   const [editCategoryOpen, setEditCategoryOpen] = useState(false);
   const [noteEditing, setNoteEditing] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [budgetEditing, setBudgetEditing] = useState(false);
+  const [budgetText, setBudgetText] = useState('');
+  const [showBudgetInfo, setShowBudgetInfo] = useState(false);
+  const budgetInputRef = useRef<TextInput>(null);
 
   const spent = liveCategory ? calcBudgetCategorySpending(payload, liveCategory.id, currentUser, selectedYM) : 0;
   const incomeReal = liveCategory ? calcBudgetCategoryIncome(payload, liveCategory.id, selectedYM) : 0;
@@ -121,6 +132,28 @@ export function BudgetCategoryDetailModal({
   const cancelNote = () => {
     setNoteEditing(false);
     setNoteText('');
+  };
+
+  const openBudgetEditor = () => {
+    if (!liveCategory) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setBudgetText(liveCategory.monthlyBudget > 0 ? String(liveCategory.monthlyBudget) : '');
+    setBudgetEditing(true);
+  };
+
+  const saveBudget = () => {
+    if (!liveCategory) return;
+    const parsed = parseFloat(budgetText.replace(',', '.'));
+    const newBudget = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    updateBudgetCategory({ ...liveCategory, monthlyBudget: newBudget });
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setBudgetEditing(false);
+  };
+
+  const cancelBudget = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setBudgetEditing(false);
+    setBudgetText('');
   };
 
   if (!category || !liveCategory) return null;
@@ -192,27 +225,85 @@ export function BudgetCategoryDetailModal({
           <View style={styles.detailList}>
 
             {/* Row: Presupuesto (full width) */}
-            <View style={styles.detailRow}>
-              <View style={styles.detailIconCircle}>
-                <Ionicons name="wallet-outline" size={16} color={colors.text} />
+            {budgetEditing ? (
+              <View style={styles.noteEditorRow}>
+                <View style={styles.budgetEditorHeader}>
+                  <View style={styles.detailIconCircle}>
+                    <Ionicons name="wallet-outline" size={16} color={colors.text} />
+                  </View>
+                  <Text style={[styles.detailLabel, { marginLeft: 10 }]}>Presupuesto mensual</Text>
+                </View>
+                <TextInput
+                  ref={budgetInputRef}
+                  value={budgetText}
+                  onChangeText={setBudgetText}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  style={styles.budgetAmountInput}
+                />
+                <View style={styles.noteEditorActions}>
+                  <Pressable
+                    onPress={() => runAfterKeyboardDismiss(cancelBudget)}
+                    style={({ pressed }) => [styles.noteBtn, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.noteBtnCancel}>Cancelar</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => runAfterKeyboardDismiss(saveBudget)}
+                    style={({ pressed }) => [styles.noteBtn, styles.noteBtnSave, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.noteBtnSaveText}>Guardar</Text>
+                  </Pressable>
+                </View>
               </View>
-              <View style={styles.detailCopy}>
-                <Text style={styles.detailLabel}>Presupuesto</Text>
+            ) : (
+              <View style={styles.detailRow}>
+                <View style={styles.detailIconCircle}>
+                  <Ionicons name="wallet-outline" size={16} color={colors.text} />
+                </View>
+                <View style={styles.detailCopy}>
+                  <View style={styles.labelRow}>
+                    <Text style={styles.detailLabel}>Presupuesto</Text>
+                    <Pressable
+                      onPress={() => setShowBudgetInfo((v) => !v)}
+                      style={styles.infoBtn}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="information-circle-outline" size={15} color={colors.muted} />
+                    </Pressable>
+                  </View>
+                  {showBudgetInfo && (
+                    <View style={styles.infoTooltip}>
+                      <Text style={styles.infoTooltipText}>
+                        El presupuesto mensual es el límite de gasto que asignas a esta categoría cada mes. Al registrar gastos en esta categoría, podrás ver cuánto te queda disponible y recibir una alerta si lo excedes.
+                      </Text>
+                    </View>
+                  )}
+                  {hasBudget ? (
+                    <Text style={styles.detailValue}>{fmt(liveCategory.monthlyBudget, currency)}</Text>
+                  ) : (
+                    <Text style={[styles.detailValue, styles.detailValueMuted]}>Sin límite</Text>
+                  )}
+                </View>
                 {hasBudget ? (
-                  <Text style={styles.detailValue}>{fmt(liveCategory.monthlyBudget, currency)}</Text>
+                  <Pressable
+                    onPress={openBudgetEditor}
+                    style={({ pressed }) => [styles.addBudgetBtn, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.addBudgetBtnText}>Editar</Text>
+                  </Pressable>
                 ) : (
-                  <Text style={[styles.detailValue, styles.detailValueMuted]}>Sin límite</Text>
+                  <Pressable
+                    onPress={openBudgetEditor}
+                    style={({ pressed }) => [styles.addBudgetBtn, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.addBudgetBtnText}>Agregar</Text>
+                  </Pressable>
                 )}
               </View>
-              {!hasBudget && (
-                <Pressable
-                  onPress={() => setEditCategoryOpen(true)}
-                  style={({ pressed }) => [styles.addBudgetBtn, pressed && styles.pressed]}
-                >
-                  <Text style={styles.addBudgetBtnText}>Agregar</Text>
-                </Pressable>
-              )}
-            </View>
+            )}
 
             {/* Row: Disponible */}
             {hasBudget && (
@@ -304,7 +395,7 @@ export function BudgetCategoryDetailModal({
                 </View>
                 {!liveCategory.notes && (
                   <Pressable
-                    onPress={openNoteEditor}
+                    onPress={(e) => { e.stopPropagation(); openNoteEditor(); }}
                     style={({ pressed }) => [styles.addBudgetBtn, pressed && styles.pressed]}
                   >
                     <Text style={styles.addBudgetBtnText}>Agregar</Text>
@@ -657,6 +748,46 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     fontWeight: '600',
   },
 
+  // ── Budget inline editor ──────────────────────────────────
+  budgetEditorHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  budgetAmountInput: {
+    color: colors.text,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 38,
+    height: 64,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    width: '100%',
+  },
+
+  // ── Info tooltip ─────────────────────────────────────────
+  labelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  infoBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoTooltip: {
+    backgroundColor: colors.actionBg,
+    borderColor: colors.cardBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 4,
+    padding: 10,
+  },
+  infoTooltipText: {
+    color: colors.secondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
   // ── Transaction list ─────────────────────────────────────
   txSectionTitle: {
     color: colors.secondary,
@@ -667,6 +798,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     paddingHorizontal: 16,
   },
   txList: {
+    gap: 12,
     marginTop: 12,
     paddingHorizontal: 16,
   },

@@ -1,0 +1,4165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nosotros/Juntos — Mapa de Flujos e Interacciones (Detallado & Financiero)</title>
+  <!-- Google Fonts: Poppins & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    /* CSS VARIABLES - Premium Dark & Light Palette */
+    :root {
+      --bg-main: #0B0F19;
+      --bg-panel: #131B2E;
+      --bg-panel-glass: rgba(19, 27, 46, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --primary: #7C3AED;
+      --primary-hover: #6D28D9;
+      --accent-red: #EC1147;
+      --accent-green: #10B981;
+      --accent-blue: #0EA5E9;
+      --shadow-color: rgba(0, 0, 0, 0.4);
+
+      /* User Flow Style Tokens (Based on images) */
+      --flow-action-bg: #0A0E23;
+      --flow-action-text: #A78BFA;
+      --flow-screen-bg: #FFFFFF;
+      --flow-screen-border: #0A0E23;
+      --flow-screen-text: #0A0E23;
+      --flow-button-bg: #FFFFFF;
+      --flow-button-border: #7C3AED;
+      --flow-button-text: #7C3AED;
+      --flow-purpose-bg: #7C3AED;
+      --flow-purpose-text: #FFFFFF;
+
+      /* Device Mock Colors */
+      --phone-bg: #0A0E17;
+      --phone-surface: #121824;
+      --phone-border: #262F40;
+    }
+
+    [data-theme="light"] {
+      --bg-main: #F8FAFC;
+      --bg-panel: #FFFFFF;
+      --bg-panel-glass: rgba(255, 255, 255, 0.8);
+      --border-color: rgba(0, 0, 0, 0.08);
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --primary: #7C3AED;
+      --primary-hover: #6D28D9;
+      --accent-red: #EC1147;
+      --accent-green: #059669;
+      --accent-blue: #0284C7;
+      --shadow-color: rgba(0, 0, 0, 0.08);
+
+      --phone-bg: #F8FAFC;
+      --phone-surface: #FFFFFF;
+      --phone-border: #E2E8F0;
+    }
+
+    /* GENERAL SYSTEM RESET */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    header {
+      background-color: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-container {
+      background: rgba(124, 58, 237, 0.15);
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-red);
+    }
+
+    .brand-title {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-toggle, .btn-secondary {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .theme-toggle:hover, .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+      transform: translateY(-1px);
+    }
+
+    /* MAIN CONTAINER LAYOUT */
+    .app-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 410px 380px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    @media (max-width: 1200px) {
+      .app-layout {
+        grid-template-columns: 1fr 400px;
+      }
+      .tech-panel {
+        display: none;
+      }
+    }
+
+    /* PANEL STYLES */
+    .panel {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      border-right: 1px solid var(--border-color);
+      background-color: var(--bg-main);
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: var(--bg-panel);
+    }
+
+    .panel-title {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* COLUMN 1: FLOWCHART CANVAS */
+    .canvas-panel {
+      overflow: auto;
+      cursor: grab;
+      position: relative;
+      background: radial-gradient(circle at 1px 1px, var(--border-color) 1px, transparent 0);
+      background-size: 24px 24px;
+    }
+
+    .canvas-panel:active {
+      cursor: grabbing;
+    }
+
+    .canvas-container {
+      padding: 60px;
+      min-width: 2500px;
+      min-height: 1300px;
+      position: relative;
+      transform-origin: 0 0;
+      transition: transform 0.1s ease-out;
+    }
+
+    /* ZOOM CONTROLS */
+    .canvas-controls {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      display: flex;
+      gap: 8px;
+      background: var(--bg-panel);
+      padding: 6px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      z-index: 50;
+    }
+
+    .ctrl-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: none;
+      background: rgba(255,255,255,0.03);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .ctrl-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: var(--primary);
+    }
+
+    /* CONNECTIVE FLOW LINES */
+    .flow-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .flow-line {
+      fill: none;
+      stroke: var(--text-muted);
+      stroke-width: 2.5;
+      stroke-dasharray: 4 4;
+      animation: dash 30s linear infinite;
+      transition: stroke 0.3s, stroke-width 0.3s;
+    }
+
+    .flow-line.active {
+      stroke: var(--primary);
+      stroke-width: 4;
+      stroke-dasharray: none;
+    }
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -1000;
+      }
+    }
+
+    /* FLOW NODES STYLING */
+    .node-group {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 5;
+    }
+
+    .node {
+      padding: 12px 24px;
+      border-radius: 99px;
+      font-size: 12.5px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px var(--shadow-color);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      position: relative;
+    }
+
+    .node:hover {
+      transform: scale(1.05) translateY(-2px);
+      box-shadow: 0 10px 20px var(--shadow-color);
+    }
+
+    .node.selected {
+      outline: 3px solid var(--primary);
+      outline-offset: 3px;
+    }
+
+    /* Node Color Codes */
+    .node-action {
+      background-color: var(--flow-action-bg);
+      color: var(--flow-action-text);
+      border: 2px solid var(--flow-action-text);
+    }
+
+    .node-screen {
+      background-color: var(--flow-screen-bg);
+      color: var(--flow-screen-text);
+      border: 2px solid var(--flow-screen-border);
+    }
+
+    .node-button {
+      background-color: var(--flow-button-bg);
+      color: var(--flow-button-text);
+      border: 2px solid var(--flow-button-border);
+    }
+
+    .node-purpose {
+      background-color: var(--flow-purpose-bg);
+      color: var(--flow-purpose-text);
+      border: 2px solid var(--flow-purpose-bg);
+    }
+
+    .node-label {
+      margin-top: 6px;
+      font-size: 9.5px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    /* NODE CATEGORY LEGEND */
+    .legend {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      background: var(--bg-panel);
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 50;
+    }
+
+    .legend-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 99px;
+      display: inline-block;
+    }
+
+    /* COLUMN 2: DEVICE SIMULATOR SCREEN */
+    .simulator-panel {
+      background-color: var(--bg-panel);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .phone-shell {
+      width: 360px;
+      height: 720px;
+      background-color: var(--phone-bg);
+      border-radius: 44px;
+      border: 12px solid var(--phone-border);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    /* PHONE INTERNALS */
+    .phone-bar {
+      height: 28px;
+      padding: 0 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      z-index: 10;
+      background: transparent;
+    }
+
+    .phone-notch {
+      width: 140px;
+      height: 18px;
+      background-color: var(--phone-border);
+      border-bottom-left-radius: 16px;
+      border-bottom-right-radius: 16px;
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 11;
+    }
+
+    .phone-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .phone-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    .phone-nav {
+      height: 60px;
+      border-top: 1px solid var(--border-color);
+      background-color: var(--phone-surface);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 9px;
+      font-weight: 600;
+      flex: 1;
+      padding: 8px 0;
+      transition: color 0.2s;
+    }
+
+    .nav-item.active {
+      color: var(--primary);
+    }
+
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* FAB BUTTON */
+    .nav-fab-wrap {
+      position: relative;
+      top: -15px;
+      z-index: 15;
+    }
+
+    .fab-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 99px;
+      background-color: var(--accent-red);
+      color: #FFFFFF;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(236, 17, 71, 0.4);
+      transition: transform 0.2s;
+    }
+
+    .fab-btn:hover {
+      transform: scale(1.08);
+    }
+
+    /* SCREEN STATES */
+    .sim-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+      background-color: var(--phone-bg);
+      animation: fadeIn 0.25s ease-out;
+      padding: 16px 20px;
+    }
+
+    .sim-screen.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* SCREEN UTILITIES */
+    .logo-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .logo-circle {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      background: rgba(236, 17, 71, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-red);
+      margin-bottom: 12px;
+    }
+
+    .logo-name {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: -0.5px;
+      color: var(--text-primary);
+    }
+
+    .logo-tagline {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* FORM STYLING */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 5px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+    }
+
+    .btn-block {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      background-color: var(--primary);
+      color: white;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+    }
+
+    .btn-block:hover {
+      opacity: 0.9;
+    }
+
+    .btn-block.btn-accent {
+      background-color: var(--accent-red);
+    }
+
+    .btn-block.btn-outline {
+      background-color: transparent;
+      border: 1.5px solid var(--border-color);
+      color: var(--text-primary);
+    }
+
+    .btn-block.btn-outline-danger {
+      background-color: transparent;
+      border: 1.5px solid rgba(236, 17, 71, 0.3);
+      color: var(--accent-red);
+      margin-top: 10px;
+    }
+
+    .btn-block.btn-outline-danger:hover {
+      background-color: rgba(236, 17, 71, 0.08);
+    }
+
+    .btn-google {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      margin-top: 10px;
+    }
+
+    .auth-footer {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 20px;
+    }
+
+    .auth-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* OTP Code inputs */
+    .otp-container {
+      display: flex;
+      justify-content: space-between;
+      margin: 20px 0;
+      gap: 6px;
+    }
+
+    .otp-input {
+      width: 44px;
+      height: 48px;
+      border-radius: 10px;
+      background-color: var(--phone-surface);
+      border: 1.5px solid var(--border-color);
+      color: var(--text-primary);
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      outline: none;
+    }
+
+    .otp-input:focus {
+      border-color: var(--primary);
+    }
+
+    /* ONBOARDING FEATURES LIST */
+    .features-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .feat-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .feat-icon-wrap {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-green);
+      flex-shrink: 0;
+    }
+
+    .feat-info {
+      flex: 1;
+    }
+
+    .feat-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .feat-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    /* DASHBOARD CARD & LIST UI */
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .welcome-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .user-profile-title {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .avatar-stack {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .avatar-small {
+      width: 32px;
+      height: 32px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--phone-bg);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .balance-card {
+      background: linear-gradient(135deg, var(--primary) 0%, #4F46E5 100%);
+      color: white;
+      padding: 18px;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(124, 58, 237, 0.25);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+
+    .balance-card::before {
+      content: '';
+      position: absolute;
+      top: -30px;
+      right: -30px;
+      width: 100px;
+      height: 100px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 99px;
+    }
+
+    .bal-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      opacity: 0.8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .bal-amount {
+      font-family: 'Poppins', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      margin: 8px 0;
+    }
+
+    .bal-row {
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      padding-top: 10px;
+      margin-top: 4px;
+    }
+
+    .bal-subcol {
+      flex: 1;
+    }
+
+    .bal-subcol-title {
+      font-size: 10px;
+      opacity: 0.7;
+    }
+
+    .bal-subcol-value {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    /* GETTING STARTED CARD */
+    .getting-started-card {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    .gs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .gs-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .gs-progress-pill {
+      font-size: 10px;
+      font-weight: 700;
+      background-color: rgba(16, 185, 129, 0.1);
+      color: var(--accent-green);
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+
+    .gs-progress-bar {
+      height: 4px;
+      background-color: var(--border-color);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .gs-progress-fill {
+      height: 100%;
+      background-color: var(--accent-green);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    .gs-tasks {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .gs-task-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+
+    .gs-checkbox {
+      width: 18px;
+      height: 18px;
+      border-radius: 99px;
+      border: 1.5px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .gs-checkbox.checked {
+      background-color: var(--accent-green);
+      border-color: var(--accent-green);
+      color: white;
+    }
+
+    .gs-task-content {
+      flex: 1;
+    }
+
+    .gs-task-label {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .gs-task-label.checked {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .gs-task-hint {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    /* QUICK ACTIONS */
+    .quick-actions-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .qa-btn {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      padding: 10px 4px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .qa-btn:hover {
+      background-color: var(--border-color);
+      color: var(--primary);
+    }
+
+    .qa-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .qa-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* TRANSACTION LIST ITEM */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .section-link {
+      font-size: 12px;
+      color: var(--primary);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .transaction-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .tx-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background-color: var(--phone-surface);
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .tx-item:hover {
+      border-color: var(--primary);
+    }
+
+    .tx-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .tx-details {
+      flex: 1;
+    }
+
+    .tx-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .tx-category {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .tx-amount-col {
+      text-align: right;
+    }
+
+    .tx-amount {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tx-amount.income {
+      color: var(--accent-green);
+    }
+
+    .tx-amount.expense {
+      color: var(--accent-red);
+    }
+
+    .tx-date {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* BUBBLE HINTS */
+    .toast-hint {
+      position: absolute;
+      bottom: 74px;
+      right: 20px;
+      left: 20px;
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: springUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 100;
+    }
+
+    .toast-arrow {
+      position: absolute;
+      bottom: -6px;
+      right: 145px;
+      width: 12px;
+      height: 12px;
+      background-color: var(--phone-surface);
+      border-bottom: 1px solid var(--border-color);
+      border-right: 1px solid var(--border-color);
+      transform: rotate(45deg);
+    }
+
+    .toast-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+
+    @keyframes springUp {
+      from { opacity: 0; transform: translateY(20px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* MODAL POPUPS */
+    .sim-modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 90;
+      display: none;
+      align-items: flex-end;
+    }
+
+    .sim-modal-overlay.active {
+      display: flex;
+    }
+
+    .sim-modal-content {
+      width: 100%;
+      background-color: var(--phone-surface);
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
+      padding: 24px 20px;
+      max-height: 85%;
+      overflow-y: auto;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .modal-drag-indicator {
+      width: 36px;
+      height: 4px;
+      background-color: var(--border-color);
+      border-radius: 99px;
+      margin: -12px auto 16px auto;
+    }
+
+    .modal-title {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 17px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-close {
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    /* CATEGORIES & BUDGET CARD */
+    .cat-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .cat-card {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 14px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .cat-card:hover {
+      border-color: var(--primary);
+    }
+
+    .cat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .cat-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cat-icon-circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cat-name {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .cat-limit {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .cat-budget-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11.5px;
+      margin-bottom: 6px;
+    }
+
+    .cat-used {
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .cat-progress-fill {
+      height: 6px;
+      border-radius: 99px;
+    }
+
+    /* METAS AHORRO */
+    .saving-card {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .saving-card:hover {
+      border-color: var(--primary);
+    }
+
+    .saving-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* PLAN CARD */
+    .plan-card {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .plan-card:hover {
+      border-color: var(--primary);
+    }
+
+    .plan-meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+    }
+
+    /* VOICE CONTROL VISUALS */
+    .voice-waves {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 4px;
+      height: 60px;
+      margin: 20px 0;
+    }
+
+    .wave-bar {
+      width: 4px;
+      background-color: var(--primary);
+      border-radius: 99px;
+      animation: wave 1.2s ease-in-out infinite alternate;
+    }
+
+    .wave-bar:nth-child(2) { height: 15px; animation-delay: 0.1s; }
+    .wave-bar:nth-child(3) { height: 30px; animation-delay: 0.2s; }
+    .wave-bar:nth-child(4) { height: 45px; animation-delay: 0.3s; }
+    .wave-bar:nth-child(5) { height: 25px; animation-delay: 0.4s; }
+    .wave-bar:nth-child(6) { height: 10px; animation-delay: 0.5s; }
+
+    @keyframes wave {
+      0% { transform: scaleY(0.3); }
+      100% { transform: scaleY(1.2); }
+    }
+
+    .voice-command-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .voice-cmd-item {
+      background-color: var(--phone-bg);
+      border: 1px solid var(--border-color);
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 12.5px;
+      font-style: italic;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .voice-cmd-item:hover {
+      background-color: var(--border-color);
+      color: var(--text-primary);
+    }
+
+    /* PROFILE SCREEN UI */
+    .profile-avatar-large {
+      width: 72px;
+      height: 72px;
+      border-radius: 99px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 800;
+      margin: 10px auto;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+    }
+
+    .profile-name {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 17px;
+      text-align: center;
+    }
+
+    .profile-email {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .profile-section-card {
+      background-color: var(--phone-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card-title-sm {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .profile-option {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* COLUMN 3: TECHNICAL DETAILS PANEL */
+    .tech-panel {
+      background-color: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      border-left: 1px solid var(--border-color);
+    }
+
+    .tech-content {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .tech-block {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .tech-block-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--primary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tech-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+
+    .code-block {
+      background-color: #070913;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11.5px;
+      color: #A5B4FC;
+      border: 1px solid rgba(255,255,255,0.03);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* BADGES */
+    .tag-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .badge-yellow { background: rgba(234, 179, 8, 0.15); color: #F59E0B; }
+    .badge-purple { background: rgba(124, 58, 237, 0.15); color: #A78BFA; }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+    .badge-blue { background: rgba(14, 165, 233, 0.15); color: var(--accent-blue); }
+    .badge-red { background: rgba(236, 17, 71, 0.15); color: var(--accent-red); }
+
+    /* SWITCH COMPONENT */
+    .switch-ui {
+      width: 42px;
+      height: 22px;
+      background-color: var(--border-color);
+      border-radius: 99px;
+      position: relative;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .switch-ui.active {
+      background-color: var(--accent-green);
+    }
+
+    .switch-handle {
+      width: 18px;
+      height: 18px;
+      background-color: white;
+      border-radius: 99px;
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .switch-ui.active .switch-handle {
+      transform: translateX(20px);
+    }
+
+    /* CHECKBOXES */
+    .interactive-check-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .interactive-check-row:last-child {
+      border-bottom: none;
+    }
+
+    .task-label-strike {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .task-label-strike.done {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    /* contribution logs list */
+    .contribution-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .contrib-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      background-color: rgba(255,255,255,0.02);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="logo-container">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+          <path d="M11.645 20.91l-.007-.003-.003-.001a.752.752 0 01-.703 0l-.003.001-.007.003-2.5 1.25a.75.75 0 01-1.07-.643v-4.148c-1.92-.375-3.375-1.96-3.375-3.871V6.75c0-2.071 1.679-3.75 3.75-3.75h9c2.071 0 3.75 1.679 3.75 3.75v6.75c0 1.91-1.455 3.496-3.375 3.871v4.148a.75.75 0 01-1.07.643l-2.5-1.25zM12 7.5a2.25 2.25 0 00-3.18 0l-.53.53a.375.375 0 01-.53 0l-.53-.53a2.25 2.25 0 00-3.18 3.18l3.995 3.995a.375.375 0 00.53 0L12.58 10.68a2.25 2.25 0 00-.58-3.18z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">Nosotros / Juntos</h1>
+        <p class="brand-subtitle">Mapa de Flujos (Creación & Detalles Detallados)</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-secondary" onclick="highlightFlow('auth')">🔑 Auth Flow</button>
+      <button class="btn-secondary" onclick="highlightFlow('onboarding')">🚀 Onboarding</button>
+      <button class="btn-secondary" onclick="highlightFlow('creation')">📝 4 Acciones Creación</button>
+      <button class="btn-secondary" onclick="highlightFlow('details')">🔍 4 Vistas Detalle</button>
+      
+      <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+        <span>Modo</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- APP LAYOUT -->
+  <div class="app-layout">
+    
+    <!-- COLUMN 1: VISUAL FLOW CANVAS -->
+    <div class="panel canvas-panel" id="canvasPanel">
+      
+      <!-- Visual Legend -->
+      <div class="legend">
+        <h3 class="legend-title">Nomenclatura del Flujo</h3>
+        <div class="legend-item">
+          <span class="legend-color" style="background: var(--flow-action-bg); border: 2px solid var(--flow-action-text)"></span>
+          <span>Acción (Lógica / Flujo)</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: var(--flow-screen-bg); border: 2px solid var(--flow-screen-border)"></span>
+          <span>Pantalla (Formularios / Vistas)</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: var(--flow-button-bg); border: 2px solid var(--flow-button-border)"></span>
+          <span>Botones / Interacciones</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: var(--flow-purpose-bg); border: 2px solid var(--flow-purpose-bg)"></span>
+          <span>Propósito (Destino / Guard)</span>
+        </div>
+      </div>
+
+      <div class="canvas-container" id="canvasContainer">
+        <!-- SVG lines to connect nodes -->
+        <svg class="flow-svg" id="flowSvg"></svg>
+
+        <!-- ================= BOOT & AUTH FLOW ================= -->
+        <div class="node-group" style="top: 80px; left: 60px;" id="node_boot">
+          <div class="node node-action" onclick="loadScreenNode('boot')">App Apertura (Boot)</div>
+          <div class="node-label">Acción</div>
+        </div>
+
+        <div class="node-group" style="top: 80px; left: 320px;" id="node_auth_check">
+          <div class="node node-purpose" onclick="loadScreenNode('auth_check')">¿Tiene Sesión?</div>
+          <div class="node-label">Propósito</div>
+        </div>
+
+        <div class="node-group" style="top: 180px; left: 320px;" id="node_login">
+          <div class="node node-screen" onclick="loadScreenNode('login')">Pantalla Login (`app/login.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 300px; left: 160px;" id="node_register">
+          <div class="node node-screen" onclick="loadScreenNode('register')">Crear Cuenta (`app/register.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 300px; left: 480px;" id="node_verify">
+          <div class="node node-screen" onclick="loadScreenNode('verify')">Verificar OTP (`app/verify.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <!-- ================= ONBOARDING ================= -->
+        <div class="node-group" style="top: 80px; left: 680px;" id="node_profile_check">
+          <div class="node node-purpose" onclick="loadScreenNode('profile_check')">¿Perfil Completo?</div>
+          <div class="node-label">Propósito</div>
+        </div>
+
+        <div class="node-group" style="top: 180px; left: 680px;" id="node_onboarding_welcome">
+          <div class="node node-screen" onclick="loadScreenNode('onboarding_welcome')">Bienvenida (`onboarding/index.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 300px; left: 820px;" id="node_onboarding_setup">
+          <div class="node node-screen" onclick="loadScreenNode('onboarding_setup')">Configurar Perfil Form</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <!-- ================= MAIN APP DASHBOARD ================= -->
+        <div class="node-group" style="top: 80px; left: 1040px;" id="node_dashboard">
+          <div class="node node-screen" onclick="loadScreenNode('dashboard')">Resumen Home (`(tabs)/index.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 180px; left: 1040px;" id="node_card_primeros_pasos">
+          <div class="node node-action" onclick="loadScreenNode('card_primeros_pasos')">Card "Primeros Pasos"</div>
+          <div class="node-label">Acción</div>
+        </div>
+
+        <div class="node-group" style="top: 240px; left: 900px;" id="node_fab_add">
+          <div class="node node-button" onclick="loadScreenNode('fab_add')">Botón FAB (+)</div>
+          <div class="node-label">Botón</div>
+        </div>
+
+        <div class="node-group" style="top: 340px; left: 1040px;" id="node_voice_modal">
+          <div class="node node-screen" onclick="loadScreenNode('voice_modal')">Comando Voz (Mic Tooltip)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 450px; left: 1040px;" id="node_voice_engine">
+          <div class="node node-action" onclick="loadScreenNode('voice_engine')">Procesador Voz NLP</div>
+          <div class="node-label">Acción</div>
+        </div>
+
+        <!-- ================= TAB: HISTORIAL (MOVIMIENTOS) ================= -->
+        <div class="node-group" style="top: 220px; left: 1280px;" id="node_movimientos">
+          <div class="node node-screen" onclick="loadScreenNode('movimientos')">Historial (`(tabs)/movimientos.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 180px; left: 1560px;" id="node_form_movimiento">
+          <div class="node node-screen" onclick="loadScreenNode('form_movimiento')">Registrar Movimiento Form</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 260px; left: 1560px;" id="node_detalle_movimiento">
+          <div class="node node-screen" onclick="loadScreenNode('detalle_movimiento')">Detalle de Movimiento</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <!-- ================= TAB: PRESUPUESTOS (CATEGORIAS) ================= -->
+        <div class="node-group" style="top: 380px; left: 1280px;" id="node_categorias">
+          <div class="node node-screen" onclick="loadScreenNode('categorias')">Presupuestos (`(tabs)/categorias.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 340px; left: 1560px;" id="node_form_categoria">
+          <div class="node node-screen" onclick="loadScreenNode('form_categoria')">Crear Categoría Form</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 420px; left: 1560px;" id="node_detalle_categoria">
+          <div class="node node-screen" onclick="loadScreenNode('detalle_categoria')">Detalles de Categoría</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <!-- ================= TAB: EXTRAS & AHORROS ================= -->
+        <div class="node-group" style="top: 540px; left: 1280px;" id="node_extras">
+          <div class="node node-screen" onclick="loadScreenNode('extras')">Menú Extras (`(tabs)/extras.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 540px; left: 1560px;" id="node_ahorros">
+          <div class="node node-screen" onclick="loadScreenNode('ahorros')">Ahorros Lista (`(tabs)/ahorros.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 500px; left: 1840px;" id="node_form_ahorro">
+          <div class="node node-screen" onclick="loadScreenNode('form_ahorro')">Crear Meta Ahorro Form</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 580px; left: 1840px;" id="node_detalle_ahorro">
+          <div class="node node-screen" onclick="loadScreenNode('detalle_ahorro')">Ahorro Detalle (`(tabs)/ahorro.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <!-- ================= TAB: PLANES DE PAREJA ================= -->
+        <div class="node-group" style="top: 700px; left: 1280px;" id="node_lista_planes">
+          <div class="node node-screen" onclick="loadScreenNode('lista_planes')">Planes Compartidos</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 660px; left: 1560px;" id="node_form_plan">
+          <div class="node node-screen" onclick="loadScreenNode('form_plan')">Crear Plan Form</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 740px; left: 1560px;" id="node_detalle_plan">
+          <div class="node node-screen" onclick="loadScreenNode('detalle_plan')">Plan Detalles & Checklist</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <div class="node-group" style="top: 740px; left: 1840px;" id="node_form_gasto_plan">
+          <div class="node node-screen" onclick="loadScreenNode('form_gasto_plan')">Añadir Gasto a Plan Form</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+        <!-- ================= TAB: CONFIGURACIONES (PERFIL) ================= -->
+        <div class="node-group" style="top: 880px; left: 1280px;" id="node_perfil">
+          <div class="node node-screen" onclick="loadScreenNode('perfil')">Perfil Config (`(tabs)/perfil.tsx`)</div>
+          <div class="node-label">Pantalla</div>
+        </div>
+
+      </div>
+
+      <!-- Canvas controls -->
+      <div class="canvas-controls">
+        <button class="ctrl-btn" onclick="zoomCanvas(0.1)">➕</button>
+        <button class="ctrl-btn" onclick="zoomCanvas(-0.1)">➖</button>
+        <button class="ctrl-btn" onclick="resetCanvas()">🔄</button>
+      </div>
+    </div>
+
+    <!-- COLUMN 2: PHONE DEVICE SIMULATOR -->
+    <div class="panel simulator-panel">
+      <div class="panel-header" style="width: 100%; border: none; background: transparent; padding: 0 0 10px 0;">
+        <span class="panel-title">📱 Simulador de Interacciones</span>
+        <span class="tag-badge badge-green" id="onlineBadge">DATABASE SYNCED</span>
+      </div>
+
+      <!-- The Phone Frame Shell -->
+      <div class="phone-shell">
+        <div class="phone-notch"></div>
+        <div class="phone-bar">
+          <span id="phone-time">16:56</span>
+          <div style="display: flex; gap: 4px;">
+            <span>📶</span>
+            <span>🔋</span>
+          </div>
+        </div>
+
+        <!-- Simulated Screens Container -->
+        <div class="phone-content" id="phoneContent">
+
+          <!-- 1. BOOT SCREEN -->
+          <div class="sim-screen active" id="scr_boot">
+            <div class="logo-hero" style="margin-top: 150px;">
+              <div class="logo-circle" style="color: var(--primary); background: rgba(124, 58, 237, 0.15)">⚡</div>
+              <h2 class="logo-name">Nosotros</h2>
+              <p class="logo-tagline">Verificando tokens y sesión...</p>
+            </div>
+          </div>
+
+          <!-- 2. WELCOME / ONBOARDING INFO SCREEN -->
+          <div class="sim-screen" id="scr_onboarding_welcome">
+            <div class="logo-hero">
+              <div class="logo-circle">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="30" height="30">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </div>
+              <h2 class="logo-name">Juntos</h2>
+              <p class="logo-tagline">Finanzas en pareja de forma simple</p>
+            </div>
+
+            <div class="features-list">
+              <div class="feat-item">
+                <div class="feat-icon-wrap" style="color: #7C3AED">💵</div>
+                <div class="feat-info">
+                  <h4 class="feat-title">Balance Compartido</h4>
+                  <p class="feat-desc">Ve ingresos y gastos conjuntos en tiempo real.</p>
+                </div>
+              </div>
+              <div class="feat-item">
+                <div class="feat-icon-wrap" style="color: #10B981">📊</div>
+                <div class="feat-info">
+                  <h4 class="feat-title">Presupuestos y Categorías</h4>
+                  <p class="feat-desc">Crea límites mensuales para controlar tus gastos.</p>
+                </div>
+              </div>
+              <div class="feat-item">
+                <div class="feat-icon-wrap" style="color: #0EA5E9">🎯</div>
+                <div class="feat-info">
+                  <h4 class="feat-title">Metas & Planes</h4>
+                  <p class="feat-desc">Ahorra en equipo y planifica metas comunes.</p>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-accent" onclick="completeOnboardingWelcome()">
+                Empezar Onboarding
+                <span style="font-size: 16px;">➔</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. LOGIN SCREEN -->
+          <div class="sim-screen" id="scr_login">
+            <div class="logo-hero">
+              <div class="logo-circle">🔑</div>
+              <h2 class="logo-name">Iniciar sesión</h2>
+              <p class="logo-tagline">Accede a tu cuenta de finanzas</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Correo electrónico</label>
+              <input type="email" class="form-input" id="login_email" value="demo@nosotros.com">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Contraseña</label>
+              <input type="password" class="form-input" id="login_password" value="password123">
+            </div>
+
+            <button class="btn-block btn-accent" onclick="authAction('login')">Iniciar Sesión</button>
+            
+            <button class="btn-block btn-google" onclick="authAction('google')">
+              <span style="margin-right: 8px;">🌐</span> Iniciar sesión con Google
+            </button>
+
+            <p class="auth-footer">
+              ¿No tienes cuenta? <span class="auth-link" onclick="goToAuthScreen('register')">Crea una cuenta</span>
+            </p>
+          </div>
+
+          <!-- 4. REGISTER SCREEN -->
+          <div class="sim-screen" id="scr_register">
+            <div class="logo-hero">
+              <div class="logo-circle">📝</div>
+              <h2 class="logo-name">Crear Cuenta</h2>
+              <p class="logo-tagline">Únete y empieza a gestionar balances</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nombre completo</label>
+              <input type="text" class="form-input" id="reg_name" placeholder="Tu nombre" value="Alan Gomez">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Correo electrónico</label>
+              <input type="email" class="form-input" id="reg_email" placeholder="correo@ejemplo.com">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Contraseña</label>
+              <input type="password" class="form-input" id="reg_pass" placeholder="Mínimo 8 caracteres" value="contrasena123">
+            </div>
+
+            <button class="btn-block btn-accent" onclick="authAction('register_submit')">Registrar Cuenta</button>
+
+            <p class="auth-footer">
+              ¿Ya tienes cuenta? <span class="auth-link" onclick="goToAuthScreen('login')">Inicia sesión</span>
+            </p>
+          </div>
+
+          <!-- 5. VERIFY OTP SCREEN -->
+          <div class="sim-screen" id="scr_verify">
+            <div class="logo-hero">
+              <div class="logo-circle">📨</div>
+              <h2 class="logo-name">Revisa tu correo</h2>
+              <p class="logo-tagline" id="verify_sent_label">Hemos enviado un código OTP a tu cuenta</p>
+            </div>
+
+            <div class="otp-container">
+              <input type="text" class="otp-input" value="8" maxlength="1">
+              <input type="text" class="otp-input" value="4" maxlength="1">
+              <input type="text" class="otp-input" value="2" maxlength="1">
+              <input type="text" class="otp-input" value="0" maxlength="1">
+              <input type="text" class="otp-input" value="5" maxlength="1">
+              <input type="text" class="otp-input" value="1" maxlength="1">
+            </div>
+
+            <button class="btn-block btn-accent" onclick="authAction('verify_submit')">Verificar Código</button>
+
+            <p class="auth-footer">
+              ¿No llegó el código? <span class="auth-link" style="opacity: 0.6;">Reenviar código</span>
+            </p>
+          </div>
+
+          <!-- 6. SETUP PROFILE ONBOARDING -->
+          <div class="sim-screen" id="scr_onboarding_setup">
+            <div class="logo-hero">
+              <div class="logo-circle" style="background: rgba(124, 58, 237, 0.15)">🎨</div>
+              <h2 class="logo-name">Personalizar</h2>
+              <p class="logo-tagline">Define cómo te verás ante tu pareja</p>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+              <div id="setup-avatar-preview" class="avatar-small" style="width: 60px; height: 60px; font-size: 20px; background: #EDE9FE; color: #7C3AED;">
+                AL
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Tu nombre</label>
+              <input type="text" class="form-input" value="Alan" id="setup-name-input" oninput="updateSetupAvatar()">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Color de avatar</label>
+              <div style="display: flex; gap: 8px;">
+                <span onclick="setAvatarColor('#7C3AED', '#EDE9FE')" style="width: 24px; height: 24px; border-radius: 99px; background: #7C3AED; cursor: pointer; border: 2px solid white;"></span>
+                <span onclick="setAvatarColor('#E11D48', '#FFE4E6')" style="width: 24px; height: 24px; border-radius: 99px; background: #E11D48; cursor: pointer;"></span>
+                <span onclick="setAvatarColor('#10B981', '#D1FAE5')" style="width: 24px; height: 24px; border-radius: 99px; background: #10B981; cursor: pointer;"></span>
+                <span onclick="setAvatarColor('#0EA5E9', '#E0F2FE')" style="width: 24px; height: 24px; border-radius: 99px; background: #0EA5E9; cursor: pointer;"></span>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 10px;">
+              <button class="btn-block btn-accent" onclick="completeProfileSetup()">Guardar y Terminar</button>
+            </div>
+          </div>
+
+          <!-- 7. DASHBOARD SCREEN -->
+          <div class="sim-screen" id="scr_dashboard">
+            <div class="dashboard-header">
+              <div>
+                <span class="welcome-text">Hola de nuevo,</span>
+                <h3 class="user-profile-title" id="dash-user-title">Alan</h3>
+              </div>
+              <div class="avatar-stack" id="dash-avatars"></div>
+            </div>
+
+            <!-- Balance Card -->
+            <div class="balance-card" onclick="toggleBalanceUser()">
+              <div class="bal-label">
+                <span id="bal-card-scope">BALANCE COMPARTIDO</span>
+                <span>🔄</span>
+              </div>
+              <div class="bal-amount" id="bal-card-total">1,450.00 €</div>
+              <div class="bal-row">
+                <div class="bal-subcol">
+                  <div class="bal-subcol-title">Ingresos</div>
+                  <div class="bal-subcol-value" id="bal-card-income">+2,300.00 €</div>
+                </div>
+                <div class="bal-subcol" style="text-align: right;">
+                  <div class="bal-subcol-title">Gastos</div>
+                  <div class="bal-subcol-value" id="bal-card-expenses">-850.00 €</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Getting Started Task Card -->
+            <div class="getting-started-card" id="gettingStartedCard">
+              <div class="gs-header">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <span class="gs-title" id="gs-title-label">Primeros pasos</span>
+                  <span class="gs-progress-pill" id="gs-progress-pill">0/3</span>
+                </div>
+                <span style="cursor: pointer; font-size: 14px; color: var(--text-muted);" onclick="dismissGettingStarted()">✕</span>
+              </div>
+              
+              <div class="gs-progress-bar">
+                <div class="gs-progress-fill" id="gs-progress-fill"></div>
+              </div>
+
+              <div class="gs-tasks">
+                <div class="gs-task-row" onclick="toggleGettingStartedTask('task1')">
+                  <div class="gs-checkbox" id="gs-chk-task1"></div>
+                  <div class="gs-task-content">
+                    <div class="gs-task-label" id="gs-lbl-task1">Registra tu primer movimiento</div>
+                    <div class="gs-task-hint">Pulsa Gasto o el botón +</div>
+                  </div>
+                </div>
+
+                <div class="gs-task-row" onclick="toggleGettingStartedTask('task2')">
+                  <div class="gs-checkbox" id="gs-chk-task2"></div>
+                  <div class="gs-task-content">
+                    <div class="gs-task-label" id="gs-lbl-task2">Crea una categoría de presupuesto</div>
+                    <div class="gs-task-hint">En Límites ➔ Crear categoría</div>
+                  </div>
+                </div>
+
+                <div class="gs-task-row" onclick="toggleGettingStartedTask('task3')">
+                  <div class="gs-checkbox" id="gs-chk-task3"></div>
+                  <div class="gs-task-content">
+                    <div class="gs-task-label" id="gs-lbl-task3">Crea tu primera meta de ahorro</div>
+                    <div class="gs-task-hint">En Extras ➔ Ahorros</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="quick-actions-grid">
+              <div class="qa-btn" onclick="openCreateScreen('transaction', 'expense')">
+                📄
+                <span class="qa-label">Gasto</span>
+              </div>
+              <div class="qa-btn" onclick="openCreateScreen('transaction', 'income')">
+                💰
+                <span class="qa-label">Ingreso</span>
+              </div>
+              <div class="qa-btn" onclick="goToTab('categorias')">
+                📁
+                <span class="qa-label">Límite</span>
+              </div>
+              <div class="qa-btn" onclick="goToTab('extras')">
+                ✨
+                <span class="qa-label">Planes</span>
+              </div>
+            </div>
+
+            <!-- Recent Movements -->
+            <div class="section-header">
+              <h4 class="section-title">Movimientos recientes</h4>
+              <span class="section-link" onclick="goToTab('movimientos')">Ver todos</span>
+            </div>
+
+            <div class="transaction-list" id="dashboard-tx-list"></div>
+          </div>
+
+          <!-- 8. MOVIMIENTOS SCREEN (HISTORIAL) -->
+          <div class="sim-screen" id="scr_movimientos">
+            <div class="section-header">
+              <h3 class="user-profile-title">Historial</h3>
+              <span class="section-link" onclick="openCreateScreen('transaction', 'expense')">+ Añadir</span>
+            </div>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 4px;">
+              <span class="tag-badge badge-purple" style="cursor: pointer;">Todos</span>
+              <span class="tag-badge badge-yellow" style="cursor: pointer; opacity: 0.6;">Comida</span>
+              <span class="tag-badge badge-blue" style="cursor: pointer; opacity: 0.6;">Viajes</span>
+            </div>
+
+            <div class="transaction-list" id="full-tx-list"></div>
+          </div>
+
+          <!-- 9. FORMULARIO REGISTRAR MOVIMIENTO -->
+          <div class="sim-screen" id="scr_form_movimiento">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="cancelCreationFlow()">⬅</span>
+              <h3 class="user-profile-title" id="form-tx-title">Registrar Gasto</h3>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Concepto / Descripción</label>
+              <input type="text" class="form-input" id="form-tx-desc" placeholder="Ej: Cena Italiana">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Importe (€)</label>
+                <input type="number" class="form-input" id="form-tx-amount" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tipo</label>
+                <select class="form-input" id="form-tx-type" onchange="toggleFormTxType()">
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Categoría</label>
+              <select class="form-input" id="form-tx-category">
+                <option value="Comida">🍔 Comida</option>
+                <option value="Transporte">🚗 Transporte</option>
+                <option value="Hogar">🏠 Hogar</option>
+                <option value="Viajes">✈️ Viajes</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Fecha</label>
+                <select class="form-input" id="form-tx-date">
+                  <option value="Hoy">Hoy</option>
+                  <option value="Ayer">Ayer</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Pagado por</label>
+                <select class="form-input" id="form-tx-user">
+                  <option value="AL">Alan (Tú)</option>
+                  <option value="GA">Gabi (Pareja)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-accent" onclick="saveTransactionSim()">Guardar Movimiento</button>
+            </div>
+          </div>
+
+          <!-- 10. DETALLE DE MOVIMIENTO -->
+          <div class="sim-screen" id="scr_detalle_movimiento">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="goToTab('movimientos')">⬅</span>
+              <h3 class="user-profile-title">Detalle de Movimiento</h3>
+            </div>
+
+            <div class="balance-card" id="det-tx-card" style="background: linear-gradient(135deg, var(--accent-red) 0%, #B91C1C 100%);">
+              <div class="bal-label" id="det-tx-type-label">GASTO REALIZADO</div>
+              <div class="bal-amount" id="det-tx-amount">-56.40 €</div>
+              <div class="bal-label" id="det-tx-desc">Supermercado Mercadona</div>
+            </div>
+
+            <div class="profile-section-card">
+              <h4 class="card-title-sm">Especificaciones</h4>
+              <div class="profile-option" style="border-bottom: 1px solid var(--border-color);">
+                <span>Categoría</span>
+                <span id="det-tx-category" style="font-weight: 700;">🍔 Comida</span>
+              </div>
+              <div class="profile-option" style="border-bottom: 1px solid var(--border-color);">
+                <span>Fecha</span>
+                <span id="det-tx-date">Hoy</span>
+              </div>
+              <div class="profile-option" style="border-bottom: 1px solid var(--border-color);">
+                <span>Pagado Por</span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <div class="avatar-small" id="det-tx-user-avatar" style="background: #EDE9FE; color: #7C3AED;">AL</div>
+                  <span id="det-tx-user-name">Alan</span>
+                </div>
+              </div>
+              <div class="profile-option">
+                <span>Room ID</span>
+                <span id="det-tx-room" style="font-family: monospace; font-size: 11px;">gabi-alan-room-main</span>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-outline" onclick="alert('Edición simulada.')">✏️ Editar Movimiento</button>
+              <button class="btn-block btn-outline-danger" onclick="deleteTransactionSim()">🗑️ Eliminar Movimiento</button>
+            </div>
+          </div>
+
+          <!-- 11. CATEGORIAS SCREEN -->
+          <div class="sim-screen" id="scr_categorias">
+            <div class="section-header">
+              <h3 class="user-profile-title">Presupuestos</h3>
+              <span class="section-link" onclick="openCreateScreen('category')">+ Crear</span>
+            </div>
+            <div class="cat-grid" id="categories-grid"></div>
+          </div>
+
+          <!-- 12. FORMULARIO CREAR CATEGORIA -->
+          <div class="sim-screen" id="scr_form_categoria">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="cancelCreationFlow()">⬅</span>
+              <h3 class="user-profile-title">Nueva Categoría</h3>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nombre de Categoría</label>
+              <input type="text" class="form-input" id="form-cat-name" placeholder="Ej: Regalos o Suscripciones">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Límite de Presupuesto Mensual (€)</label>
+              <input type="number" class="form-input" id="form-cat-limit" placeholder="150.00">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Color de Referencia</label>
+              <div style="display: flex; gap: 8px;">
+                <span onclick="setFormCatColor('#8B5CF6')" style="width: 24px; height: 24px; border-radius: 6px; background: #8B5CF6; cursor: pointer; border: 2px solid white;" class="form-cat-color-sel"></span>
+                <span onclick="setFormCatColor('#EF4444')" style="width: 24px; height: 24px; border-radius: 6px; background: #EF4444; cursor: pointer;" class="form-cat-color-sel"></span>
+                <span onclick="setFormCatColor('#F59E0B')" style="width: 24px; height: 24px; border-radius: 6px; background: #F59E0B; cursor: pointer;" class="form-cat-color-sel"></span>
+                <span onclick="setFormCatColor('#10B981')" style="width: 24px; height: 24px; border-radius: 6px; background: #10B981; cursor: pointer;" class="form-cat-color-sel"></span>
+                <span onclick="setFormCatColor('#3B82F6')" style="width: 24px; height: 24px; border-radius: 6px; background: #3B82F6; cursor: pointer;" class="form-cat-color-sel"></span>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-accent" onclick="saveCategorySim()">Crear Categoría</button>
+            </div>
+          </div>
+
+          <!-- 13. DETALLE DE CATEGORIA -->
+          <div class="sim-screen" id="scr_detalle_categoria">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="goToTab('categorias')">⬅</span>
+              <h3 class="user-profile-title" id="det-cat-name">Comida</h3>
+            </div>
+
+            <div class="profile-section-card">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="font-size: 13px; color: var(--text-secondary);">Presupuesto Mensual</span>
+                <span id="det-cat-limit" style="font-weight: 700;">300.00 €</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 13px; color: var(--text-secondary);">Gasto Acumulado</span>
+                <span id="det-cat-used" style="font-weight: 700; color: var(--accent-red);">56.40 €</span>
+              </div>
+              <div class="gs-progress-bar" style="height: 8px;">
+                <div class="gs-progress-fill" id="det-cat-progress-fill" style="width: 18.8%; background-color: var(--primary);"></div>
+              </div>
+            </div>
+
+            <div class="profile-section-card">
+              <h4 class="card-title-sm">Configuración de Alertas</h4>
+              <div class="profile-option" style="border-bottom: 1px solid var(--border-color);">
+                <span>Aviso al superar 80%</span>
+                <div class="switch-ui active" onclick="this.classList.toggle('active')">
+                  <div class="switch-handle"></div>
+                </div>
+              </div>
+              <div class="profile-option">
+                <span>Bloquear al superar 100%</span>
+                <div class="switch-ui" onclick="this.classList.toggle('active')">
+                  <div class="switch-handle"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-header">
+              <h4 class="section-title">Gastos en esta categoría</h4>
+            </div>
+            <div class="transaction-list" id="det-cat-tx-list" style="max-height: 160px; overflow-y: auto;"></div>
+
+            <div style="margin-top: auto; padding-bottom: 10px;">
+              <button class="btn-block btn-outline-danger" onclick="deleteCategorySim()">🗑️ Eliminar Presupuesto</button>
+            </div>
+          </div>
+
+          <!-- 14. EXTRAS MENU -->
+          <div class="sim-screen" id="scr_extras">
+            <h3 class="user-profile-title" style="margin-bottom: 16px;">Extras</h3>
+            <div class="profile-section-card" style="padding: 0;">
+              <div class="profile-option" onclick="goToTab('ahorros')" style="padding: 16px; border-bottom: 1px solid var(--border-color); cursor: pointer;">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                  <span style="font-size: 20px;">🎯</span>
+                  <div>
+                    <div style="font-weight: 700;">Metas de Ahorro</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Ahorra en pareja</div>
+                  </div>
+                </div>
+                <span>➔</span>
+              </div>
+              
+              <div class="profile-option" onclick="goToTab('lista_planes')" style="padding: 16px; cursor: pointer;">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                  <span style="font-size: 20px;">✈️</span>
+                  <div>
+                    <div style="font-weight: 700;">Planes Compartidos</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Checklists y presupuestos comunes</div>
+                  </div>
+                </div>
+                <span>➔</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 15. AHORROS SCREEN -->
+          <div class="sim-screen" id="scr_ahorros">
+            <div class="section-header">
+              <h3 class="user-profile-title">Metas Ahorro</h3>
+              <span class="section-link" onclick="openCreateScreen('saving')">+ Crear</span>
+            </div>
+            <div id="savings-list"></div>
+          </div>
+
+          <!-- 16. FORMULARIO NUEVA META AHORRO -->
+          <div class="sim-screen" id="scr_form_ahorro">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="cancelCreationFlow()">⬅</span>
+              <h3 class="user-profile-title">Nueva Meta</h3>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nombre del Objetivo</label>
+              <input type="text" class="form-input" id="form-sav-name" placeholder="Ej: PlayStation 5 o Coche">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Objetivo Total (€)</label>
+                <input type="number" class="form-input" id="form-sav-target" placeholder="1000.00">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Aporte Inicial (€)</label>
+                <input type="number" class="form-input" id="form-sav-current" placeholder="0.00" value="0">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Color de Hucha</label>
+              <div style="display: flex; gap: 8px;">
+                <span onclick="setFormSavColor('#0EA5E9')" style="width: 24px; height: 24px; border-radius: 99px; background: #0EA5E9; cursor: pointer; border: 2px solid white;" class="form-sav-color-sel"></span>
+                <span onclick="setFormSavColor('#EC4899')" style="width: 24px; height: 24px; border-radius: 99px; background: #EC4899; cursor: pointer;" class="form-sav-color-sel"></span>
+                <span onclick="setFormSavColor('#10B981')" style="width: 24px; height: 24px; border-radius: 99px; background: #10B981; cursor: pointer;" class="form-sav-color-sel"></span>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-accent" onclick="saveSavingSim()">Crear Meta de Ahorro</button>
+            </div>
+          </div>
+
+          <!-- 17. DETALLE DE AHORRO -->
+          <div class="sim-screen" id="scr_detalle_ahorro">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="goToTab('ahorros')">⬅</span>
+              <h3 class="user-profile-title" id="saving-det-title">Viaje de Verano</h3>
+            </div>
+
+            <div class="balance-card" id="saving-det-card" style="background: linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%); margin-bottom: 12px;">
+              <div class="bal-label">TOTAL ACUMULADO</div>
+              <div class="bal-amount" id="saving-det-current">850.00 €</div>
+              <div class="bal-label">META: <span id="saving-det-target">1,500.00 €</span></div>
+            </div>
+
+            <div class="profile-section-card" style="margin-bottom: 12px; padding: 12px;">
+              <h4 class="card-title-sm" style="margin-bottom: 8px;">Progreso</h4>
+              <div class="gs-progress-bar" style="height: 8px; margin-bottom: 8px;">
+                <div class="gs-progress-fill" id="saving-det-progress-bar" style="width: 56.6%; background-color: var(--accent-blue);"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary);">
+                <span id="saving-det-percent">56.6% completado</span>
+                <span id="saving-det-remaining">Faltan 650.00 €</span>
+              </div>
+            </div>
+
+            <div class="profile-section-card" style="margin-bottom: 12px; padding: 12px;">
+              <h4 class="card-title-sm" style="margin-bottom: 8px;">Aportar fondos</h4>
+              <div style="display: flex; gap: 8px;">
+                <input type="number" class="form-input" id="saving-contribute-amount" value="50" style="padding: 6px 10px; flex: 1;">
+                <button class="btn-block" onclick="contributeToSavingSim()" style="width: auto; padding: 6px 12px; font-size: 12px;">Añadir</button>
+              </div>
+            </div>
+
+            <h4 class="card-title-sm" style="margin-left: 4px; margin-bottom: 6px;">Historial de depósitos</h4>
+            <div class="contribution-timeline" id="saving-contributions-list"></div>
+
+            <div style="margin-top: auto; padding-top: 10px;">
+              <button class="btn-block btn-outline-danger" style="padding: 8px;" onclick="deleteSavingSim()">🗑️ Eliminar Meta</button>
+            </div>
+          </div>
+
+          <!-- 18. LISTA DE PLANES COMPARTIDOS -->
+          <div class="sim-screen" id="scr_lista_planes">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="goToTab('extras')">⬅</span>
+              <h3 class="user-profile-title">Planes Comunes</h3>
+            </div>
+            <div id="planes-list-container"></div>
+            <div style="margin-top: auto; padding-bottom: 10px;">
+              <button class="btn-block btn-accent" onclick="openCreateScreen('plan')">+ Crear Nuevo Plan</button>
+            </div>
+          </div>
+
+          <!-- 19. FORMULARIO NUEVO PLAN -->
+          <div class="sim-screen" id="scr_form_plan">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="goToTab('lista_planes')">⬅</span>
+              <h3 class="user-profile-title">Nuevo Plan</h3>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nombre del Plan</label>
+              <input type="text" class="form-input" id="form-plan-title" placeholder="Ej: Escapada a la Montaña">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Presupuesto Estimado (€)</label>
+              <input type="number" class="form-input" id="form-plan-budget" placeholder="300.00">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nota o descripción corta</label>
+              <input type="text" class="form-input" id="form-plan-note" placeholder="Ej: Viaje de fin de semana en pareja">
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-accent" onclick="savePlanSim()">Crear Plan Compartido</button>
+            </div>
+          </div>
+
+          <!-- 20. DETALLE DE PLAN (INCLUYE FINANZAS Y GASTOS ASOCIADOS) -->
+          <div class="sim-screen" id="scr_detalle_plan">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="goToTab('lista_planes')">⬅</span>
+              <h3 class="user-profile-title" id="plan-det-title">Viaje a la Playa</h3>
+            </div>
+
+            <!-- Financial Status Card of the Plan -->
+            <div class="balance-card" id="plan-det-card" style="background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%); margin-bottom: 12px; padding: 14px;">
+              <div class="bal-label">PRESUPUESTO DEL PLAN</div>
+              <div class="bal-amount" id="plan-det-budget" style="font-size: 22px; margin: 4px 0;">600.00 €</div>
+              <div class="bal-row" style="margin-top: 4px; padding-top: 8px;">
+                <div class="bal-subcol">
+                  <div class="bal-subcol-title">Gastado</div>
+                  <div class="bal-subcol-value" id="plan-det-spent">300.00 €</div>
+                </div>
+                <div class="bal-subcol" style="text-align: right;">
+                  <div class="bal-subcol-title">Disponible</div>
+                  <div class="bal-subcol-value" id="plan-det-available">300.00 €</div>
+                </div>
+              </div>
+              <div class="gs-progress-bar" style="height: 6px; background-color: rgba(255,255,255,0.2); margin-top: 10px;">
+                <div class="gs-progress-fill" id="plan-det-progress-fill" style="width: 50%; background-color: var(--accent-green);"></div>
+              </div>
+            </div>
+
+            <!-- Checklist Section -->
+            <div class="profile-section-card" style="margin-bottom: 12px; padding: 12px;">
+              <h4 class="card-title-sm" style="margin-bottom: 6px;">Tareas del Plan</h4>
+              <div id="plan-tasks-list" style="max-height: 120px; overflow-y: auto;"></div>
+              <div style="display: flex; gap: 8px; margin-top: 10px;">
+                <input type="text" class="form-input" id="plan-new-task-text" placeholder="Ej: Comprar billetes" style="padding: 6px 10px; flex: 1;">
+                <button class="btn-block" onclick="addTaskToPlanSim()" style="width: auto; padding: 6px 12px; font-size: 12px;">+</button>
+              </div>
+            </div>
+
+            <!-- Associated Expenses Section -->
+            <div class="profile-section-card" style="margin-bottom: 12px; padding: 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                <h4 class="card-title-sm" style="margin-bottom:0;">Gastos Registrados</h4>
+                <span class="section-link" onclick="loadScreenNode('form_gasto_plan')" style="font-size:11px;">+ Añadir Gasto</span>
+              </div>
+              <div id="plan-expenses-list" style="display:flex; flex-direction:column; gap:8px; max-height: 120px; overflow-y: auto;"></div>
+            </div>
+
+            <div style="margin-top: auto; padding-top: 10px;">
+              <button class="btn-block btn-outline-danger" style="padding: 8px;" onclick="deletePlanSim()">🗑️ Cancelar Plan</button>
+            </div>
+          </div>
+
+          <!-- 21. FORMULARIO AÑADIR GASTO A UN PLAN ESPECÍFICO (NUEVO) -->
+          <div class="sim-screen" id="scr_form_gasto_plan">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+              <span style="cursor: pointer; font-size: 18px;" onclick="loadScreenNode('detalle_plan')">⬅</span>
+              <h3 class="user-profile-title" id="gasto-plan-title-form">Añadir Gasto a Plan</h3>
+            </div>
+
+            <p style="font-size:12px; color:var(--text-secondary); margin-bottom: 12px;" id="gasto-plan-assoc-name">Asociado a: Viaje a la Playa</p>
+
+            <div class="form-group">
+              <label class="form-label">Concepto del Gasto</label>
+              <input type="text" class="form-input" id="form-gp-desc" placeholder="Ej: Comida en chiringuito">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Importe (€)</label>
+                <input type="number" class="form-input" id="form-gp-amount" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Pagado por</label>
+                <select class="form-input" id="form-gp-user">
+                  <option value="AL">Alan (Tú)</option>
+                  <option value="GA">Gabi (Pareja)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; padding-bottom: 20px;">
+              <button class="btn-block btn-accent" onclick="savePlanExpenseSim()">Registrar Gasto en Plan</button>
+            </div>
+          </div>
+
+          <!-- 22. PERFIL CONFIG -->
+          <div class="sim-screen" id="scr_perfil">
+            <div class="profile-avatar-large" id="profile-avatar-node" style="background: #EDE9FE; color: #7C3AED;">AL</div>
+            <h3 class="profile-name" id="profile-name-node">Alan Gomez</h3>
+            <p class="profile-email" id="profile-email-node">alan@email.com</p>
+
+            <div class="profile-section-card">
+              <h4 class="card-title-sm">Sincronización en Pareja</h4>
+              <div id="pairing-unpaired-view">
+                <p style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.4;">
+                  Comparte balances, presupuestos y planes en tiempo real.
+                </p>
+                <div style="display: flex; gap: 8px;">
+                  <input type="email" class="form-input" id="partner-invite-email" placeholder="pareja@correo.com" style="flex: 1; padding: 6px 10px;">
+                  <button class="btn-block" onclick="sendPartnerInviteSim()" style="width: auto; padding: 6px 12px; font-size: 12px;">Invitar</button>
+                </div>
+                <div id="partner-invite-status" style="margin-top: 8px; font-size: 11px; font-weight: 600; display: none;"></div>
+              </div>
+
+              <div id="pairing-pending-view" style="display: none; background: rgba(236,17,71,0.08); padding: 12px; border-radius: 10px; border: 1.5px dashed var(--accent-red);">
+                <div style="font-size: 12px; font-weight: 700; color: var(--accent-red); margin-bottom: 6px;">💌 Invitación Recibida</div>
+                <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
+                  Gabi te invita a sincronizar vuestras cuentas.
+                </p>
+                <div style="display: flex; gap: 8px;">
+                  <button class="btn-block btn-accent" onclick="resolvePartnerInviteSim(true)" style="padding: 6px; font-size: 12px;">Aceptar</button>
+                  <button class="btn-block btn-google" onclick="resolvePartnerInviteSim(false)" style="padding: 6px; font-size: 12px; margin-top: 0;">Rechazar</button>
+                </div>
+              </div>
+
+              <div id="pairing-paired-view" style="display: none;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">❤️</span>
+                    <div>
+                      <div style="font-weight: 700; font-size: 12px;">Sincronizado con Gabi</div>
+                      <div style="font-size: 10px; color: var(--text-muted);" id="paired-partner-room">Sala: gabi-alan-room-main</div>
+                    </div>
+                  </div>
+                  <span class="tag-badge badge-green">ACTIVO</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="profile-section-card">
+              <h4 class="card-title-sm">Preferencias</h4>
+              <div class="profile-option" style="border-bottom: 1px solid var(--border-color);">
+                <span>Tema Oscuro</span>
+                <div class="switch-ui" id="theme-switch-sim" onclick="toggleSimTheme()">
+                  <div class="switch-handle"></div>
+                </div>
+              </div>
+              <div class="profile-option">
+                <span>Moneda Principal</span>
+                <span style="font-weight: 700; color: var(--primary);">EUR (€)</span>
+              </div>
+            </div>
+
+            <button class="btn-block btn-google" style="margin-bottom: 20px;" onclick="logOutSim()">🚪 Cerrar Sesión</button>
+          </div>
+
+        </div>
+
+        <!-- Simulated Modals -->
+        <div class="sim-modal-overlay" id="simModal">
+          <div class="sim-modal-content" id="simModalContent"></div>
+        </div>
+
+        <!-- Hint tooltip -->
+        <div class="toast-hint" id="voiceHintBubble" style="display: none;">
+          <div style="font-size: 16px;">🎤</div>
+          <div class="toast-text">Mantén pulsado para crear con voz</div>
+          <div class="toast-arrow"></div>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="phone-nav" id="phoneNavBar" style="display: none;">
+          <div class="nav-item active" onclick="goToTab('dashboard')" id="nav-dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            <span>Resumen</span>
+          </div>
+
+          <div class="nav-item" onclick="goToTab('movimientos')" id="nav-movimientos">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+            <span>Historial</span>
+          </div>
+
+          <div class="nav-fab-wrap">
+            <button class="fab-btn" onclick="openFABMenu()" id="mainFABBtn">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="28" height="28">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="nav-item" onclick="goToTab('categorias')" id="nav-categorias">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.003 9.003 0 1020.945 13H11V3.055z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+            </svg>
+            <span>Límites</span>
+          </div>
+
+          <div class="nav-item" onclick="goToTab('extras')" id="nav-extras">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+            </svg>
+            <span>Extras</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- COLUMN 3: TECHNICAL DETAILS PANEL -->
+    <div class="panel tech-panel">
+      <div class="panel-header">
+        <span class="panel-title">🛠️ Detalle Técnico (Desarrolladores)</span>
+      </div>
+      
+      <div class="tech-content">
+        <div class="tech-block">
+          <h4 class="tech-block-title">📁 Ruta del Archivo Código</h4>
+          <div class="code-block" id="tech-file-path">Cargando...</div>
+        </div>
+
+        <div class="tech-block">
+          <h4 class="tech-block-title">💾 Estado Zustand (`store/useAppStore.ts`)</h4>
+          <div class="tech-label">currentUser / authProfile</div>
+          <div class="code-block" id="tech-zustand-state">Cargando...</div>
+          
+          <div class="tech-label">payload.expenses / payload.budgetCategories</div>
+          <div class="code-block" id="tech-payload-state">Cargando...</div>
+        </div>
+
+        <div class="tech-block">
+          <h4 class="tech-block-title">📦 AsyncStorage</h4>
+          <div class="code-block" id="tech-async-storage">Cargando...</div>
+        </div>
+
+        <div class="tech-block">
+          <h4 class="tech-block-title">☁️ Mutaciones Supabase DB</h4>
+          <div class="code-block" id="tech-supabase">Cargando...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* =========================================================================
+       GLOBAL APP STATE
+       ========================================================================= */
+    const appState = {
+      isAuthReady: false,
+      currentUser: null,
+      authProfile: null,
+      pairingState: 'unpaired',
+      activeRoomId: null,
+      themeMode: 'dark',
+      simTheme: 'dark',
+      onboardingDone: false,
+      gettingStartedDismissed: false,
+
+      // Model Arrays
+      expenses: [
+        { id: 1, desc: 'Supermercado Mercadona', amount: 56.40, category: 'Comida', user: 'AL', date: 'Hoy', type: 'expense' },
+        { id: 2, desc: 'Gasolina Repsol', amount: 45.00, category: 'Transporte', user: 'AL', date: 'Ayer', type: 'expense' },
+        { id: 3, desc: 'Sueldo Alan', amount: 2300.00, category: 'Nómina', user: 'AL', date: 'Hoy', type: 'income' },
+        { id: 101, desc: 'Billetes de tren (Playa)', amount: 120.00, category: 'Viajes', user: 'AL', date: '01 Jun', type: 'expense', planId: 1 },
+        { id: 102, desc: 'Reserva Hotel (Playa)', amount: 180.00, category: 'Viajes', user: 'GA', date: '02 Jun', type: 'expense', planId: 1 }
+      ],
+      categories: [
+        { id: 1, name: 'Comida', limit: 300, used: 56.40, color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)' },
+        { id: 2, name: 'Transporte', limit: 150, used: 45.00, color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)' },
+        { id: 3, name: 'Hogar', limit: 500, used: 0.00, color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' },
+        { id: 4, name: 'Viajes', limit: 600, used: 300.00, color: '#0EA5E9', bg: 'rgba(14, 165, 233, 0.15)' }
+      ],
+      savings: [
+        { 
+          id: 1, 
+          name: 'Viaje de Verano', 
+          target: 1500, 
+          current: 850, 
+          color: '#0EA5E9',
+          contributions: [
+            { id: 1, user: 'AL', amount: 500.00, date: '01 Jun' },
+            { id: 2, user: 'GA', amount: 350.00, date: '02 Jun' }
+          ]
+        }
+      ],
+      plans: [
+        {
+          id: 1,
+          title: 'Viaje a la Playa',
+          budget: 600,
+          note: 'Viaje de fin de semana con Gabi',
+          tasks: [
+            { id: 1, text: 'Reservar Hotel', done: true },
+            { id: 2, text: 'Alquilar coche', done: false },
+            { id: 3, text: 'Comprar protector solar', done: false }
+          ],
+          expenses: [
+            { id: 101, desc: 'Billetes de tren', amount: 120.00, user: 'AL', date: '01 Jun' },
+            { id: 102, desc: 'Reserva Hotel', amount: 180.00, user: 'GA', date: '02 Jun' }
+          ]
+        },
+        {
+          id: 2,
+          title: 'Cena de Aniversario',
+          budget: 120,
+          note: 'Cena romántica el sábado por la noche',
+          tasks: [
+            { id: 1, text: 'Elegir restaurante', done: false },
+            { id: 2, text: 'Comprar regalo', done: false }
+          ],
+          expenses: []
+        }
+      ],
+
+      // Navigation / Detail Selection states
+      activeTab: 'dashboard',
+      activeDetailTxId: null,
+      activeDetailCatId: null,
+      activeDetailSavingId: 1,
+      activeDetailPlanId: 1,
+
+      // Form Creation helpers
+      tempTxType: 'expense',
+      tempFormColor: '#7C3AED'
+    };
+
+    // Detailed metadata definitions for every screen node
+    const technicalMetadata = {
+      boot: {
+        file: 'app/_layout.tsx (líneas 276-288)',
+        zustand: 'isAuthReady: false\nauthProfile: null',
+        payload: '[]',
+        async: 'nosotros_onboarding_done: undefined',
+        supabase: '-- initialize() lee la sesión local\nSELECT get_session();'
+      },
+      auth_check: {
+        file: 'store/useAppStore.ts (initialize)',
+        zustand: 'isAuthReady: true\nauthProfile: null\ncurrentUser: null',
+        payload: '[]',
+        async: 'Lee nosotros_onboarding_done',
+        supabase: 'supabase.auth.getSession()'
+      },
+      login: {
+        file: 'app/login.tsx',
+        zustand: 'isAuthReady: true\nauthProfile: null',
+        payload: '[]',
+        async: 'None',
+        supabase: 'supabase.auth.signInWithPassword({\n  email, password\n})'
+      },
+      register: {
+        file: 'app/register.tsx',
+        zustand: 'isAuthReady: true\nauthProfile: null',
+        payload: '[]',
+        async: 'None',
+        supabase: 'supabase.auth.signUp({\n  email, password\n})'
+      },
+      verify: {
+        file: 'app/verify.tsx',
+        zustand: 'isAuthReady: true\nauthProfile: null',
+        payload: '[]',
+        async: 'None',
+        supabase: 'supabase.auth.verifyOtp({\n  email, token, type: "signup"\n})'
+      },
+      profile_check: {
+        file: 'store/useAppStore.ts (initialize)',
+        zustand: 'isAuthReady: true\nauthProfile: UserProfile',
+        payload: '[]',
+        async: 'nosotros_onboarding_done',
+        supabase: 'supabase.from("user_profiles").select("*")'
+      },
+      onboarding_welcome: {
+        file: 'app/onboarding/index.tsx',
+        zustand: 'isAuthReady: true\nauthProfile: { id: "1" }',
+        payload: '[]',
+        async: 'nosotros_onboarding_done = "1"',
+        supabase: 'None'
+      },
+      onboarding_setup: {
+        file: 'app/onboarding/index.tsx (Formulario)',
+        zustand: 'authProfile: {\n  id: "uuid", name: "Alan"\n}',
+        payload: '[]',
+        async: 'nosotros_onboarding_done = "1"',
+        supabase: 'supabase.from("user_profiles").insert({\n  id: "uuid", name: "Alan", color: "#7C3AED", bg: "#EDE9FE"\n})'
+      },
+      dashboard: {
+        file: 'app/(tabs)/index.tsx',
+        zustand: 'currentUser: "alan-uuid"\nauthProfile.roomId: "gabi-alan-room-main"\npayload: { expenses, budgetCategories }',
+        payload: 'expenses: Array(5)\nbudgetCategories: Array(4)',
+        async: 'nosotros_getting_started_dismissed: "0"',
+        supabase: 'Escucha Canal Realtime Supabase:\nshared_state:room_id = eq.gabi-alan-room-main'
+      },
+      card_primeros_pasos: {
+        file: 'components/GettingStartedCard.tsx',
+        zustand: 'currentUser: "alan-uuid"\npayload: { expenses, budgetCategories, savings }',
+        payload: 'Calcula dinámicamente tareas completadas basándose en los arrays del store.',
+        async: 'nosotros_getting_started_dismissed: "1" (al cerrar)',
+        supabase: 'None'
+      },
+      movimientos: {
+        file: 'app/(tabs)/movimientos.tsx',
+        zustand: 'payload.expenses: Array(5)',
+        payload: 'expenses: Array(5)',
+        async: 'None',
+        supabase: 'SELECT * FROM public.expenses WHERE room_id = room_id;'
+      },
+      form_movimiento: {
+        file: 'modals/CreateTransaction.tsx',
+        zustand: 'Mapea campos de entrada a addExpense()',
+        payload: 'addExpense({\n  id: uuid, desc, amount, category, user, date, type\n})',
+        async: 'None',
+        supabase: 'INSERT INTO public.expenses (\n  concept, amount, category, user_id, type, room_id\n) VALUES (...)'
+      },
+      detalle_movimiento: {
+        file: 'app/movimiento/[id].tsx',
+        zustand: 'payload.expenses.find(id)',
+        payload: 'deleteExpense(id)',
+        async: 'None',
+        supabase: 'DELETE FROM public.expenses WHERE id = target_id'
+      },
+      categorias: {
+        file: 'app/(tabs)/categorias.tsx',
+        zustand: 'payload.budgetCategories: Array(4)',
+        payload: 'budgetCategories: Array(4)',
+        async: 'None',
+        supabase: 'SELECT * FROM public.budget_categories WHERE room_id = room_id;'
+      },
+      form_categoria: {
+        file: 'modals/CreateCategory.tsx',
+        zustand: 'addCategory({ id, name, limit, color })',
+        payload: 'categories.push(newCategory)',
+        async: 'None',
+        supabase: 'INSERT INTO public.budget_categories (\n  name, monthly_limit, color, room_id\n)'
+      },
+      detalle_categoria: {
+        file: 'app/categoria/[id].tsx',
+        zustand: 'payload.expenses.filter(category == name)',
+        payload: 'Muestra sumatoria de gastos comparado al límite total',
+        async: 'None',
+        supabase: 'SELECT * FROM public.expenses WHERE category = category_name'
+      },
+      extras: {
+        file: 'app/(tabs)/extras.tsx',
+        zustand: 'None',
+        payload: 'Menú de navegación para otras vistas secundarias',
+        async: 'None',
+        supabase: 'None'
+      },
+      ahorros: {
+        file: 'app/(tabs)/ahorros.tsx',
+        zustand: 'payload.savings: Array(1)',
+        payload: 'savings: Array(1)',
+        async: 'None',
+        supabase: 'SELECT * FROM public.savings_goals WHERE room_id = room_id;'
+      },
+      form_ahorro: {
+        file: 'modals/CreateSavingGoal.tsx',
+        zustand: 'addSavingGoal({ id, name, target, current })',
+        payload: 'savings.push(newGoal)',
+        async: 'None',
+        supabase: 'INSERT INTO public.savings_goals (\n  name, target_amount, current_amount, color, room_id\n)'
+      },
+      detalle_ahorro: {
+        file: 'app/(tabs)/ahorro.tsx',
+        zustand: 'contributeToSaving(id, amount)',
+        payload: 'Aumenta current_amount y registra log de aporte en el store.',
+        async: 'None',
+        supabase: 'UPDATE public.savings_goals SET current_amount = ...\nINSERT INTO public.saving_contributions'
+      },
+      lista_planes: {
+        file: 'app/planes.tsx',
+        zustand: 'payload.plans: Array(2)',
+        payload: 'plans: Array(2)',
+        async: 'None',
+        supabase: 'SELECT * FROM public.couple_plans WHERE room_id = room_id;'
+      },
+      form_plan: {
+        file: 'modals/CreatePlan.tsx',
+        zustand: 'addPlan({ id, title, budget, note, tasks })',
+        payload: 'plans.push(newPlan)',
+        async: 'None',
+        supabase: 'INSERT INTO public.couple_plans (\n  title, budget, note, tasks, room_id\n)'
+      },
+      detalle_plan: {
+        file: 'app/plan/[id].tsx',
+        zustand: 'togglePlanTask(planId, taskId)\naddTaskToPlan(planId, text)',
+        payload: 'Calcula el presupuesto total (budget) y suma de gastos asociados en expenses.',
+        async: 'None',
+        supabase: 'UPDATE public.couple_plans SET tasks = tasks_array WHERE id = plan_id'
+      },
+      form_gasto_plan: {
+        file: 'modals/AddPlanExpense.tsx (o modal en plan)',
+        zustand: 'addPlanExpense(planId, expenseObject)',
+        payload: 'Agrega un gasto tanto al array de gastos del plan como a la tabla global de gastos vinculándolo mediante planId.',
+        async: 'None',
+        supabase: 'INSERT INTO public.expenses (\n  concept, amount, type, category, plan_id, room_id\n) VALUES (...)'
+      },
+      perfil: {
+        file: 'app/perfil.tsx',
+        zustand: 'authProfile: UserProfile\npendingInvitation: Invitation',
+        payload: 'None',
+        async: 'Borra tokens de sesión al salir',
+        supabase: 'RPC accept_partner_invitation(id)\nRPC decline_partner_invitation(id)'
+      },
+      fab_add: {
+        file: 'app/(tabs)/_layout.tsx (Floating Menu)',
+        zustand: 'Abre modal interactivo de creación',
+        payload: 'None',
+        async: 'None',
+        supabase: 'None'
+      },
+      voice_modal: {
+        file: 'app/(tabs)/_layout.tsx (Tooltip Mic)',
+        zustand: 'showVoiceHint: true\nvoiceHintAnim',
+        payload: 'None',
+        async: 'nosotros_hint_voice_seen = "1"',
+        supabase: 'None'
+      },
+      voice_engine: {
+        file: 'services/nlp_processor.ts',
+        zustand: 'Mapea la cadena de texto a comandos del store',
+        payload: 'Inserta directamente en expenses, categories o savings.',
+        async: 'None',
+        supabase: 'Realtime INSERT a la tabla Supabase correspondiente'
+      }
+    };
+
+    /* =========================================================================
+       ZOOM & DRAG CONTROL FOR CANVAS FLOWCHART
+       ========================================================================= */
+    const canvasContainer = document.getElementById('canvasContainer');
+    const canvasPanel = document.getElementById('canvasPanel');
+    
+    let scale = 0.8;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let scrollLeft = 0, scrollTop = 0;
+
+    function zoomCanvas(amount) {
+      scale = Math.min(Math.max(0.35, scale + amount), 1.6);
+      canvasContainer.style.transform = `scale(${scale})`;
+    }
+
+    function resetCanvas() {
+      scale = 0.8;
+      canvasContainer.style.transform = `scale(${scale})`;
+      canvasPanel.scrollLeft = 250;
+      canvasPanel.scrollTop = 100;
+    }
+
+    canvasPanel.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.node')) return;
+      isDragging = true;
+      startX = e.pageX - canvasPanel.offsetLeft;
+      startY = e.pageY - canvasPanel.offsetTop;
+      scrollLeft = canvasPanel.scrollLeft;
+      scrollTop = canvasPanel.scrollTop;
+    });
+
+    canvasPanel.addEventListener('mouseleave', () => { isDragging = false; });
+    canvasPanel.addEventListener('mouseup', () => { isDragging = false; });
+    
+    canvasPanel.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const x = e.pageX - canvasPanel.offsetLeft;
+      const y = e.pageY - canvasPanel.offsetTop;
+      const walkX = (x - startX) * 1.5;
+      const walkY = (y - startY) * 1.5;
+      canvasPanel.scrollLeft = scrollLeft - walkX;
+      canvasPanel.scrollTop = scrollTop - walkY;
+    });
+
+    /* =========================================================================
+       SVG CONNECTOR LINES DRAWING
+       ========================================================================= */
+    function drawFlowLines() {
+      const svg = document.getElementById('flowSvg');
+      svg.innerHTML = '';
+
+      lines.forEach((line) => {
+        const fromEl = document.getElementById(`node_${line.from}`);
+        const toEl = document.getElementById(`node_${line.to}`);
+
+        if (fromEl && toEl) {
+          const x1 = fromEl.offsetLeft + (fromEl.offsetWidth / 2);
+          const y1 = fromEl.offsetTop + (fromEl.offsetHeight / 2);
+          const x2 = toEl.offsetLeft + (toEl.offsetWidth / 2);
+          const y2 = toEl.offsetTop + (toEl.offsetHeight / 2);
+
+          let d = '';
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+
+          if (Math.abs(dy) < 60) {
+            d = `M ${x1} ${y1} C ${x1 + dx/2} ${y1}, ${x1 + dx/2} ${y2}, ${x2} ${y2}`;
+          } else {
+            d = `M ${x1} ${y1} C ${x1} ${y1 + dy/2}, ${x2} ${y1 + dy/2}, ${x2} ${y2}`;
+          }
+
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', d);
+          path.setAttribute('class', 'flow-line');
+          path.setAttribute('id', `line_${line.from}_${line.to}`);
+          svg.appendChild(path);
+
+          if (line.label) {
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', x1 + dx/2);
+            text.setAttribute('y', y1 + dy/2 - 8);
+            text.setAttribute('fill', 'var(--text-muted)');
+            text.setAttribute('font-size', '10px');
+            text.setAttribute('font-weight', '700');
+            text.setAttribute('text-anchor', 'middle');
+            text.textContent = line.label;
+            svg.appendChild(text);
+          }
+        }
+      });
+    }
+
+    /* =========================================================================
+       ACTIVE STATE TRANSITIONS & TECHNICAL DETAILS
+       ========================================================================= */
+    function loadScreenNode(nodeId) {
+      document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+      document.querySelectorAll('.flow-line').forEach(el => el.classList.remove('active'));
+
+      const selectedNodeGroup = document.getElementById(`node_${nodeId}`);
+      if (selectedNodeGroup) {
+        selectedNodeGroup.querySelector('.node').classList.add('selected');
+      }
+
+      lines.forEach(line => {
+        if (line.from === nodeId || line.to === nodeId) {
+          const pathEl = document.getElementById(`line_${line.from}_${line.to}`);
+          if (pathEl) pathEl.classList.add('active');
+        }
+      });
+
+      const meta = technicalMetadata[nodeId] || { file: 'Desconocido', zustand: 'N/A', payload: 'N/A', async: 'N/A', supabase: 'N/A' };
+      document.getElementById('tech-file-path').innerText = meta.file;
+      document.getElementById('tech-zustand-state').innerText = meta.zustand;
+      document.getElementById('tech-payload-state').innerText = meta.payload;
+      document.getElementById('tech-async-storage').innerText = meta.async;
+      document.getElementById('tech-supabase').innerText = meta.supabase;
+
+      syncSimulatorView(nodeId);
+    }
+
+    function syncSimulatorView(nodeId) {
+      closeAllSimModals();
+      hideToastHint();
+
+      const mapping = {
+        boot: 'boot',
+        auth_check: 'login',
+        login: 'login',
+        register: 'register',
+        verify: 'verify',
+        profile_check: 'onboarding_welcome',
+        onboarding_welcome: 'onboarding_welcome',
+        onboarding_setup: 'onboarding_setup',
+        dashboard: 'dashboard',
+        card_primeros_pasos: 'dashboard',
+        movimientos: 'movimientos',
+        categorias: 'categorias',
+        extras: 'extras',
+        ahorros: 'ahorros',
+        lista_planes: 'lista_planes',
+        form_movimiento: 'form_movimiento',
+        detalle_movimiento: 'detalle_movimiento',
+        form_categoria: 'form_categoria',
+        detalle_categoria: 'detalle_categoria',
+        form_ahorro: 'form_ahorro',
+        detalle_ahorro: 'detalle_ahorro',
+        form_plan: 'form_plan',
+        detalle_plan: 'detalle_plan',
+        form_gasto_plan: 'form_gasto_plan',
+        perfil: 'perfil',
+        fab_add: 'dashboard',
+        voice_modal: 'dashboard'
+      };
+
+      const targetScreen = mapping[nodeId] || 'dashboard';
+      
+      if (nodeId === 'detalle_movimiento' && appState.activeDetailTxId === null) {
+        appState.activeDetailTxId = appState.expenses[0].id;
+      }
+      if (nodeId === 'detalle_categoria' && appState.activeDetailCatId === null) {
+        appState.activeDetailCatId = appState.categories[0].id;
+      }
+
+      showScreen(targetScreen);
+
+      if (nodeId === 'card_primeros_pasos') {
+        highlightGettingStartedCard();
+      } else if (nodeId === 'fab_add') {
+        openFABMenu();
+      } else if (nodeId === 'voice_modal') {
+        openVoiceModal();
+      }
+    }
+
+    function showScreen(screenId) {
+      document.querySelectorAll('.sim-screen').forEach(scr => scr.classList.remove('active'));
+      const target = document.getElementById(`scr_${screenId}`);
+      if (target) target.classList.add('active');
+
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      
+      let navId = screenId;
+      if (screenId === 'extras' || screenId === 'ahorros' || screenId === 'detalle_ahorro' || screenId === 'lista_planes' || screenId === 'detalle_plan' || screenId === 'form_gasto_plan') {
+        navId = 'extras';
+      }
+      const activeNavItem = document.getElementById(`nav-${navId}`);
+      if (activeNavItem) activeNavItem.classList.add('active');
+
+      const tabScreens = ['dashboard', 'movimientos', 'categorias', 'extras', 'ahorros', 'detalle_ahorro', 'lista_planes', 'detalle_plan', 'form_gasto_plan', 'perfil'];
+      const navBar = document.getElementById('phoneNavBar');
+      if (tabScreens.includes(screenId)) {
+        navBar.style.display = 'flex';
+      } else {
+        navBar.style.display = 'none';
+      }
+
+      // Reload screen data
+      if (screenId === 'dashboard') renderDashboardData();
+      else if (screenId === 'movimientos') renderFullTransactions();
+      else if (screenId === 'categorias') renderCategories();
+      else if (screenId === 'ahorros') renderSavings();
+      else if (screenId === 'detalle_ahorro') renderSavingDetail();
+      else if (screenId === 'lista_planes') renderPlanes();
+      else if (screenId === 'detalle_plan') renderPlanDetail();
+      else if (screenId === 'form_gasto_plan') renderFormGastoPlan();
+      else if (screenId === 'detalle_movimiento') renderTxDetail();
+      else if (screenId === 'detalle_categoria') renderCatDetail();
+      else if (screenId === 'perfil') renderProfileScreen();
+    }
+
+    /* =========================================================================
+       CREATION SCREEN NAVIGATION FLOWS (FORMS OPEN & CANCEL)
+       ========================================================================= */
+    function openCreateScreen(type, subType = 'expense') {
+      if (type === 'transaction') {
+        appState.tempTxType = subType;
+        loadScreenNode('form_movimiento');
+      } else if (type === 'category') {
+        loadScreenNode('form_categoria');
+      } else if (type === 'saving') {
+        loadScreenNode('form_ahorro');
+      } else if (type === 'plan') {
+        loadScreenNode('form_plan');
+      }
+    }
+
+    function cancelCreationFlow() {
+      const activeNode = document.querySelector('.node.selected');
+      if (!activeNode) {
+        goToTab('dashboard');
+        return;
+      }
+      
+      const parentId = activeNode.parentNode.id.replace('node_', '');
+      if (parentId === 'form_movimiento') loadScreenNode('movimientos');
+      else if (parentId === 'form_categoria') loadScreenNode('categorias');
+      else if (parentId === 'form_ahorro') loadScreenNode('ahorros');
+      else if (parentId === 'form_plan') loadScreenNode('lista_planes');
+      else goToTab('dashboard');
+    }
+
+    function toggleFormTxType() {
+      const type = document.getElementById('form-tx-type').value;
+      appState.tempTxType = type;
+      document.getElementById('form-tx-title').innerText = type === 'expense' ? 'Registrar Gasto' : 'Registrar Ingreso';
+    }
+
+    function setFormCatColor(color) {
+      document.querySelectorAll('.form-cat-color-sel').forEach(el => el.style.border = 'none');
+      event.target.style.border = '2px solid white';
+      appState.tempFormColor = color;
+    }
+
+    function setFormSavColor(color) {
+      document.querySelectorAll('.form-sav-color-sel').forEach(el => el.style.border = 'none');
+      event.target.style.border = '2px solid white';
+      appState.tempFormColor = color;
+    }
+
+    /* =========================================================================
+       MUTATIONS / SAVE FUNCTIONS SIMULATION
+       ========================================================================= */
+    function saveTransactionSim() {
+      const desc = document.getElementById('form-tx-desc').value || 'Movimiento rápido';
+      const amount = parseFloat(document.getElementById('form-tx-amount').value) || 12.50;
+      const category = document.getElementById('form-tx-category').value;
+      const date = document.getElementById('form-tx-date').value;
+      const user = document.getElementById('form-tx-user').value;
+      
+      const newTx = {
+        id: Date.now(),
+        desc: desc,
+        amount: amount,
+        category: category,
+        user: user,
+        date: date,
+        type: appState.tempTxType
+      };
+
+      appState.expenses.unshift(newTx);
+
+      const cat = appState.categories.find(c => c.name === category);
+      if (cat && newTx.type === 'expense') {
+        cat.used += amount;
+      }
+
+      loadScreenNode('movimientos');
+      renderGettingStartedChecklist();
+    }
+
+    function saveCategorySim() {
+      const name = document.getElementById('form-cat-name').value || 'Otros';
+      const limit = parseFloat(document.getElementById('form-cat-limit').value) || 100;
+
+      appState.categories.push({
+        id: Date.now(),
+        name: name,
+        limit: limit,
+        used: 0,
+        color: appState.tempFormColor,
+        bg: appState.tempFormColor + '26'
+      });
+
+      loadScreenNode('categorias');
+      renderGettingStartedChecklist();
+    }
+
+    function saveSavingSim() {
+      const name = document.getElementById('form-sav-name').value || 'Mi Hucha';
+      const target = parseFloat(document.getElementById('form-sav-target').value) || 500;
+      const current = parseFloat(document.getElementById('form-sav-current').value) || 0;
+
+      const newSaving = {
+        id: Date.now(),
+        name: name,
+        target: target,
+        current: current,
+        color: appState.tempFormColor,
+        contributions: []
+      };
+
+      if (current > 0) {
+        newSaving.contributions.push({ id: Date.now(), user: 'AL', amount: current, date: 'Hoy' });
+      }
+
+      appState.savings.push(newSaving);
+      loadScreenNode('ahorros');
+      renderGettingStartedChecklist();
+    }
+
+    function savePlanSim() {
+      const title = document.getElementById('form-plan-title').value || 'Escapada';
+      const budget = parseFloat(document.getElementById('form-plan-budget').value) || 200;
+      const note = document.getElementById('form-plan-note').value || 'Fin de semana';
+
+      appState.plans.push({
+        id: Date.now(),
+        title: title,
+        budget: budget,
+        note: note,
+        tasks: [
+          { id: 1, text: 'Planificar fecha', done: false },
+          { id: 2, text: 'Definir trayectos', done: false }
+        ],
+        expenses: []
+      });
+
+      loadScreenNode('lista_planes');
+    }
+
+    // NEW: Save Plan Specific Expense
+    function savePlanExpenseSim() {
+      const desc = document.getElementById('form-gp-desc').value || 'Gasto plan';
+      const amount = parseFloat(document.getElementById('form-gp-amount').value) || 0;
+      const user = document.getElementById('form-gp-user').value;
+
+      if (amount <= 0) return;
+
+      const plan = appState.plans.find(p => p.id === appState.activeDetailPlanId);
+      if (plan) {
+        const expenseItem = {
+          id: Date.now(),
+          desc: desc,
+          amount: amount,
+          user: user,
+          date: 'Hoy'
+        };
+
+        // Add to plan specific list
+        plan.expenses.unshift(expenseItem);
+
+        // Add to global expenses list (so it affects general balances & history)
+        appState.expenses.unshift({
+          id: expenseItem.id,
+          desc: `${desc} (${plan.title})`,
+          amount: amount,
+          category: 'Viajes', // category matching plan scope
+          user: user,
+          date: 'Hoy',
+          type: 'expense',
+          planId: plan.id
+        });
+
+        // Add to Travels Category used budget
+        const cat = appState.categories.find(c => c.name === 'Viajes');
+        if (cat) cat.used += amount;
+
+        loadScreenNode('detalle_plan');
+        renderGettingStartedChecklist();
+      }
+    }
+
+    /* =========================================================================
+       DELETE FUNCTIONS SIMULATION
+       ========================================================================= */
+    function deleteTransactionSim() {
+      // If deleted transaction was linked to a plan, clean plan expenses list too
+      const tx = appState.expenses.find(t => t.id === appState.activeDetailTxId);
+      if (tx && tx.planId) {
+        const plan = appState.plans.find(p => p.id === tx.planId);
+        if (plan) plan.expenses = plan.expenses.filter(e => e.id !== tx.id);
+      }
+
+      appState.expenses = appState.expenses.filter(tx => tx.id !== appState.activeDetailTxId);
+      loadScreenNode('movimientos');
+    }
+
+    function deleteCategorySim() {
+      appState.categories = appState.categories.filter(c => c.id !== appState.activeDetailCatId);
+      loadScreenNode('categorias');
+    }
+
+    function deleteSavingSim() {
+      appState.savings = appState.savings.filter(s => s.id !== appState.activeDetailSavingId);
+      loadScreenNode('ahorros');
+    }
+
+    function deletePlanSim() {
+      // Also delete all global expenses associated with this plan
+      appState.expenses = appState.expenses.filter(tx => tx.planId !== appState.activeDetailPlanId);
+      appState.plans = appState.plans.filter(p => p.id !== appState.activeDetailPlanId);
+      loadScreenNode('lista_planes');
+    }
+
+    /* =========================================================================
+       SPECIFIC SCREEN DETAIL VIEW RENDERING
+       ========================================================================= */
+    function renderTxDetail() {
+      const tx = appState.expenses.find(t => t.id === appState.activeDetailTxId);
+      if (!tx) return;
+
+      const card = document.getElementById('det-tx-card');
+      const label = document.getElementById('det-tx-type-label');
+      const amount = document.getElementById('det-tx-amount');
+      const desc = document.getElementById('det-tx-desc');
+      const category = document.getElementById('det-tx-category');
+      const date = document.getElementById('det-tx-date');
+      const userAvatar = document.getElementById('det-tx-user-avatar');
+      const userName = document.getElementById('det-tx-user-name');
+      const roomEl = document.getElementById('det-tx-room');
+
+      desc.innerText = tx.desc;
+      category.innerText = tx.category;
+      date.innerText = tx.date;
+      userAvatar.innerText = tx.user;
+      userName.innerText = tx.user === 'AL' ? 'Alan' : 'Gabi';
+      roomEl.innerText = appState.pairingState === 'paired' ? 'gabi-alan-room-main' : 'alan-uuid-main';
+      
+      if (tx.type === 'expense') {
+        card.style.background = 'linear-gradient(135deg, var(--accent-red) 0%, #B91C1C 100%)';
+        label.innerText = 'GASTO REALIZADO';
+        amount.innerText = `-${tx.amount.toFixed(2)} €`;
+      } else {
+        card.style.background = 'linear-gradient(135deg, var(--accent-green) 0%, #065F46 100%)';
+        label.innerText = 'INGRESO REGISTRADO';
+        amount.innerText = `+${tx.amount.toFixed(2)} €`;
+      }
+    }
+
+    function renderCatDetail() {
+      const cat = appState.categories.find(c => c.id === appState.activeDetailCatId);
+      if (!cat) return;
+
+      document.getElementById('det-cat-name').innerText = cat.name;
+      document.getElementById('det-cat-limit').innerText = `${cat.limit.toFixed(2)} €`;
+      document.getElementById('det-cat-used').innerText = `${cat.used.toFixed(2)} €`;
+
+      const progressFill = document.getElementById('det-cat-progress-fill');
+      const percent = Math.min((cat.used / cat.limit) * 100, 100);
+      progressFill.style.width = `${percent}%`;
+      progressFill.style.backgroundColor = cat.color;
+
+      if (percent >= 100) {
+        document.getElementById('det-cat-used').style.color = 'var(--accent-red)';
+      } else {
+        document.getElementById('det-cat-used').style.color = 'var(--text-primary)';
+      }
+
+      // Filter tx in category
+      const txContainer = document.getElementById('det-cat-tx-list');
+      txContainer.innerHTML = '';
+      const catExpenses = appState.expenses.filter(e => e.category === cat.name && e.type === 'expense');
+
+      if (catExpenses.length === 0) {
+        txContainer.innerHTML = `<div style="font-size:12px; color: var(--text-muted); text-align:center; padding:10px;">Sin gastos registrados</div>`;
+      } else {
+        catExpenses.forEach(tx => {
+          const item = document.createElement('div');
+          item.className = 'tx-item';
+          item.style.padding = '8px 12px';
+          item.innerHTML = `
+            <div class="tx-details">
+              <div class="tx-name" style="font-size:12.5px;">${tx.desc}</div>
+              <div class="tx-category" style="font-size:10.5px;">${tx.date}</div>
+            </div>
+            <div class="tx-amount-col">
+              <div class="tx-amount expense" style="font-size:12.5px;">-${tx.amount.toFixed(2)} €</div>
+            </div>
+          `;
+          txContainer.appendChild(item);
+        });
+      }
+    }
+
+    function renderPlanes() {
+      const container = document.getElementById('planes-list-container');
+      container.innerHTML = '';
+
+      appState.plans.forEach(plan => {
+        const totalTasks = plan.tasks.length;
+        const doneTasks = plan.tasks.filter(t => t.done).length;
+
+        const card = document.createElement('div');
+        card.className = 'plan-card';
+        card.onclick = () => {
+          appState.activeDetailPlanId = plan.id;
+          loadScreenNode('detalle_plan');
+        };
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:700; font-size:13.5px;">${plan.title}</div>
+            <span style="font-size:15px;">➔</span>
+          </div>
+          <div class="plan-meta-row">
+            <span>Presupuesto: ${plan.budget} €</span>
+            <span class="tag-badge badge-purple">${doneTasks}/${totalTasks} tareas</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderPlanDetail() {
+      const plan = appState.plans.find(p => p.id === appState.activeDetailPlanId);
+      if (!plan) return;
+
+      document.getElementById('plan-det-title').innerText = plan.title;
+      document.getElementById('plan-det-budget').innerText = `${plan.budget.toFixed(2)} €`;
+      document.getElementById('plan-det-note').innerText = plan.note;
+
+      // Sum plan specific expenses
+      let totalSpent = 0;
+      plan.expenses.forEach(e => totalSpent += e.amount);
+      const totalAvailable = plan.budget - totalSpent;
+
+      document.getElementById('plan-det-spent').innerText = `${totalSpent.toFixed(2)} €`;
+      document.getElementById('plan-det-available').innerText = `${totalAvailable.toFixed(2)} €`;
+
+      const progressFill = document.getElementById('plan-det-progress-fill');
+      const percent = Math.min((totalSpent / plan.budget) * 100, 100);
+      progressFill.style.width = `${percent}%`;
+
+      if (totalAvailable < 0) {
+        document.getElementById('plan-det-available').style.color = 'var(--accent-red)';
+      } else {
+        document.getElementById('plan-det-available').style.color = 'var(--text-primary)';
+      }
+
+      // Render tasks list
+      const tasksList = document.getElementById('plan-tasks-list');
+      tasksList.innerHTML = '';
+
+      plan.tasks.forEach(task => {
+        const row = document.createElement('div');
+        row.className = 'interactive-check-row';
+        row.innerHTML = `
+          <div class="gs-checkbox ${task.done ? 'checked' : ''}" onclick="togglePlanTaskSim(${task.id})">${task.done ? '✓' : ''}</div>
+          <div class="task-label-strike ${task.done ? 'done' : ''}">${task.text}</div>
+        `;
+        tasksList.appendChild(row);
+      });
+
+      // Render associated plan expenses list
+      const expensesList = document.getElementById('plan-expenses-list');
+      expensesList.innerHTML = '';
+
+      if (plan.expenses.length === 0) {
+        expensesList.innerHTML = `<div style="font-size:11px; text-align:center; color: var(--text-muted); padding: 8px;">Sin gastos asociados</div>`;
+      } else {
+        plan.expenses.forEach(e => {
+          const item = document.createElement('div');
+          item.className = 'tx-item';
+          item.style.padding = '8px 10px';
+          item.innerHTML = `
+            <div class="tx-details">
+              <div class="tx-name" style="font-size:12px;">${e.desc}</div>
+              <div class="tx-category" style="font-size:10px;">Por ${e.user === 'AL' ? 'Alan' : 'Gabi'}</div>
+            </div>
+            <div class="tx-amount-col">
+              <div class="tx-amount expense" style="font-size:12px;">-${e.amount.toFixed(2)} €</div>
+            </div>
+          `;
+          expensesList.appendChild(item);
+        });
+      }
+    }
+
+    function togglePlanTaskSim(taskId) {
+      const plan = appState.plans.find(p => p.id === appState.activeDetailPlanId);
+      if (plan) {
+        const task = plan.tasks.find(t => t.id === taskId);
+        if (task) task.done = !task.done;
+        renderPlanDetail();
+      }
+    }
+
+    function addTaskToPlanSim() {
+      const text = document.getElementById('plan-new-task-text').value;
+      if (!text) return;
+
+      const plan = appState.plans.find(p => p.id === appState.activeDetailPlanId);
+      if (plan) {
+        plan.tasks.push({
+          id: Date.now(),
+          text: text,
+          done: false
+        });
+        document.getElementById('plan-new-task-text').value = '';
+        renderPlanDetail();
+      }
+    }
+
+    function renderFormGastoPlan() {
+      const plan = appState.plans.find(p => p.id === appState.activeDetailPlanId);
+      if (!plan) return;
+      document.getElementById('gasto-plan-assoc-name').innerText = `Asociado a: ${plan.title}`;
+      document.getElementById('form-gp-desc').value = '';
+      document.getElementById('form-gp-amount').value = '';
+    }
+
+    function contributeToSavingSim() {
+      const amount = parseFloat(document.getElementById('saving-contribute-amount').value) || 0;
+      if (amount <= 0) return;
+
+      const sav = appState.savings.find(s => s.id === appState.activeDetailSavingId);
+      if (sav) {
+        sav.current += amount;
+        sav.contributions.unshift({
+          id: Date.now(),
+          user: 'AL',
+          amount: amount,
+          date: 'Hoy'
+        });
+        renderSavingDetail();
+        renderGettingStartedChecklist();
+      }
+    }
+
+    /* =========================================================================
+       TABBAR & DASHBOARD RENDER UTILS
+       ========================================================================= */
+    function renderDashboardData() {
+      document.getElementById('dash-user-title').innerText = appState.authProfile ? appState.authProfile.name : 'Usuario Demo';
+      
+      const avatarsWrap = document.getElementById('dash-avatars');
+      avatarsWrap.innerHTML = '';
+      
+      const myAvatar = document.createElement('div');
+      myAvatar.className = 'avatar-small';
+      myAvatar.style.backgroundColor = appState.authProfile ? appState.authProfile.bg : '#EDE9FE';
+      myAvatar.style.color = appState.authProfile ? appState.authProfile.color : '#7C3AED';
+      myAvatar.innerText = appState.authProfile ? appState.authProfile.initials : 'DM';
+      avatarsWrap.appendChild(myAvatar);
+
+      if (appState.pairingState === 'paired') {
+        const heartEl = document.createElement('span');
+        heartEl.innerHTML = '❤️';
+        heartEl.style.fontSize = '12px';
+        avatarsWrap.appendChild(heartEl);
+
+        const partnerAvatar = document.createElement('div');
+        partnerAvatar.className = 'avatar-small';
+        partnerAvatar.style.backgroundColor = '#FFE4E6';
+        partnerAvatar.style.color = '#E11D48';
+        partnerAvatar.innerText = 'GA';
+        avatarsWrap.appendChild(partnerAvatar);
+      }
+
+      renderGettingStartedChecklist();
+
+      const txContainer = document.getElementById('dashboard-tx-list');
+      txContainer.innerHTML = '';
+      
+      appState.expenses.slice(0, 3).forEach(tx => {
+        const item = document.createElement('div');
+        item.className = 'tx-item';
+        item.onclick = () => {
+          appState.activeDetailTxId = tx.id;
+          loadScreenNode('detalle_movimiento');
+        };
+        
+        let sign = '-';
+        let styleCls = 'expense';
+        if (tx.type === 'income') {
+          sign = '+';
+          styleCls = 'income';
+        }
+        item.innerHTML = `
+          <div class="tx-avatar" style="background: ${tx.user === 'AL' ? '#EDE9FE' : '#FFE4E6'}; color: ${tx.user === 'AL' ? '#7C3AED' : '#E11D48'}">${tx.user}</div>
+          <div class="tx-details">
+            <div class="tx-name">${tx.desc}</div>
+            <div class="tx-category">${tx.category}</div>
+          </div>
+          <div class="tx-amount-col">
+            <div class="tx-amount ${styleCls}">${sign}${tx.amount.toFixed(2)} €</div>
+            <div class="tx-date">${tx.date}</div>
+          </div>
+        `;
+        txContainer.appendChild(item);
+      });
+    }
+
+    function renderFullTransactions() {
+      const container = document.getElementById('full-tx-list');
+      container.innerHTML = '';
+
+      appState.expenses.forEach(tx => {
+        const item = document.createElement('div');
+        item.className = 'tx-item';
+        item.onclick = () => {
+          appState.activeDetailTxId = tx.id;
+          loadScreenNode('detalle_movimiento');
+        };
+        let sign = '-';
+        let styleCls = 'expense';
+        if (tx.type === 'income') {
+          sign = '+';
+          styleCls = 'income';
+        }
+        item.innerHTML = `
+          <div class="tx-avatar" style="background: ${tx.user === 'AL' ? '#EDE9FE' : '#FFE4E6'}; color: ${tx.user === 'AL' ? '#7C3AED' : '#E11D48'}">${tx.user}</div>
+          <div class="tx-details">
+            <div class="tx-name">${tx.desc}</div>
+            <div class="tx-category">${tx.category}</div>
+          </div>
+          <div class="tx-amount-col">
+            <div class="tx-amount ${styleCls}">${sign}${tx.amount.toFixed(2)} €</div>
+            <div class="tx-date">${tx.date}</div>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function renderCategories() {
+      const container = document.getElementById('categories-grid');
+      container.innerHTML = '';
+
+      appState.categories.forEach(cat => {
+        const percent = Math.min((cat.used / cat.limit) * 100, 100);
+        const card = document.createElement('div');
+        card.className = 'cat-card';
+        card.onclick = () => {
+          appState.activeDetailCatId = cat.id;
+          loadScreenNode('detalle_categoria');
+        };
+        card.innerHTML = `
+          <div class="cat-header">
+            <div class="cat-title-wrap">
+              <div class="cat-icon-circle" style="background: ${cat.bg}; color: ${cat.color};">📁</div>
+              <span class="cat-name">${cat.name}</span>
+            </div>
+            <span class="cat-limit">Límite: ${cat.limit} €</span>
+          </div>
+          <div class="cat-budget-info">
+            <span>Usado: <b class="cat-used">${cat.used.toFixed(2)} €</b></span>
+            <span style="color: var(--text-muted)">${(cat.limit - cat.used).toFixed(2)} € libres</span>
+          </div>
+          <div class="gs-progress-bar">
+            <div class="gs-progress-fill" style="width: ${percent}%; background-color: ${cat.color};"></div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderSavings() {
+      const container = document.getElementById('savings-list');
+      container.innerHTML = '';
+
+      appState.savings.forEach(sav => {
+        const percent = Math.min((sav.current / sav.target) * 100, 100);
+        const card = document.createElement('div');
+        card.className = 'saving-card';
+        card.onclick = () => {
+          appState.activeDetailSavingId = sav.id;
+          loadScreenNode('detalle_ahorro');
+        };
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-weight: 700; font-size: 13.5px;">${sav.name}</div>
+            <span style="font-size: 15px;">➔</span>
+          </div>
+          <div class="gs-progress-bar" style="margin: 10px 0 6px 0;">
+            <div class="gs-progress-fill" style="width: ${percent}%; background-color: ${sav.color}"></div>
+          </div>
+          <div class="saving-meta">
+            <span style="color: var(--text-muted)">${percent.toFixed(1)}%</span>
+            <span>${sav.current.toFixed(0)} € / ${sav.target} €</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    /* =========================================================================
+       GETTING STARTED TASKS CONTROLLER
+       ========================================================================= */
+    function renderGettingStartedChecklist() {
+      const checklistCard = document.getElementById('gettingStartedCard');
+      if (appState.gettingStartedDismissed) {
+        checklistCard.style.display = 'none';
+        return;
+      }
+      checklistCard.style.display = 'flex';
+
+      const t1 = appState.expenses.length > 5;
+      const t2 = appState.categories.length > 4;
+      const t3 = appState.savings[0].current > 850;
+
+      let doneCount = 0;
+      
+      const updateRow = (id, checkVal) => {
+        if (checkVal) {
+          doneCount++;
+          document.getElementById(`gs-chk-${id}`).className = 'gs-checkbox checked';
+          document.getElementById(`gs-chk-${id}`).innerHTML = '✓';
+          document.getElementById(`gs-lbl-${id}`).className = 'gs-task-label checked';
+        } else {
+          document.getElementById(`gs-chk-${id}`).className = 'gs-checkbox';
+          document.getElementById(`gs-chk-${id}`).innerHTML = '';
+          document.getElementById(`gs-lbl-${id}`).className = 'gs-task-label';
+        }
+      };
+
+      updateRow('task1', t1);
+      updateRow('task2', t2);
+      updateRow('task3', t3);
+
+      const percent = (doneCount / 3) * 100;
+      document.getElementById('gs-progress-fill').style.width = `${percent}%`;
+      document.getElementById('gs-progress-pill').innerText = `${doneCount}/3`;
+
+      if (doneCount === 3) {
+        document.getElementById('gs-title-label').innerText = '🎉 ¡Todo completado!';
+        setTimeout(() => dismissGettingStarted(), 2500);
+      }
+    }
+
+    function toggleGettingStartedTask(taskId) {
+      if (taskId === 'task1') {
+        appState.expenses.unshift({ id: 9, desc: 'Cena rápida', amount: 15.40, category: 'Comida', user: 'AL', date: 'Hoy', type: 'expense' });
+        appState.categories[0].used += 15.40;
+      } else if (taskId === 'task2') {
+        appState.categories.push({ id: 9, name: 'Suscripciones', limit: 80, used: 0, color: '#EC4899', bg: 'rgba(236,72,153,0.15)' });
+      } else if (taskId === 'task3') {
+        appState.savings[0].current += 100;
+        appState.savings[0].contributions.unshift({ id: Date.now(), user: 'AL', amount: 100.00, date: 'Hoy' });
+      }
+      renderDashboardData();
+    }
+
+    function dismissGettingStarted() {
+      appState.gettingStartedDismissed = true;
+      document.getElementById('gettingStartedCard').style.display = 'none';
+    }
+
+    function highlightGettingStartedCard() {
+      const card = document.getElementById('gettingStartedCard');
+      card.style.border = '2.5px solid var(--primary)';
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => { card.style.border = '1px solid var(--border-color)'; }, 1500);
+    }
+
+    let balanceScopeJoint = true;
+    function toggleBalanceUser() {
+      balanceScopeJoint = !balanceScopeJoint;
+      const label = document.getElementById('bal-card-scope');
+      const amount = document.getElementById('bal-card-total');
+      const income = document.getElementById('bal-card-income');
+      const expenses = document.getElementById('bal-card-expenses');
+
+      if (balanceScopeJoint && appState.pairingState === 'paired') {
+        label.innerText = 'BALANCE COMPARTIDO';
+        amount.innerText = '1,930.00 €';
+        income.innerText = '+3,500.00 €';
+        expenses.innerText = '-1,570.00 €';
+      } else {
+        label.innerText = 'MI BALANCE PERSONAL';
+        amount.innerText = '1,450.00 €';
+        income.innerText = '+2,300.00 €';
+        expenses.innerText = '-850.00 €';
+      }
+    }
+
+    /* =========================================================================
+       FAB MENUS & COMMANDS BY VOICE INTERACTIVE MODALS
+       ========================================================================= */
+    const simModal = document.getElementById('simModal');
+    const simModalContent = document.getElementById('simModalContent');
+
+    function closeAllSimModals() {
+      simModal.classList.remove('active');
+    }
+
+    function openFABMenu() {
+      simModal.classList.add('active');
+      simModalContent.innerHTML = `
+        <div class="modal-drag-indicator"></div>
+        <div class="modal-title">
+          <span>Crear Nuevo</span>
+          <span class="modal-close" onclick="closeAllSimModals()">✕</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+          <button class="btn-block" onclick="closeAllSimModals(); openCreateScreen('transaction', 'expense')">📄 Registrar Gasto</button>
+          <button class="btn-block" onclick="closeAllSimModals(); openCreateScreen('transaction', 'income')">💰 Registrar Ingreso</button>
+          <button class="btn-block" onclick="closeAllSimModals(); openCreateScreen('category')">📁 Crear Presupuesto/Límite</button>
+          <button class="btn-block" onclick="closeAllSimModals(); openCreateScreen('saving')">🎯 Nueva Meta de Ahorro</button>
+          <button class="btn-block" onclick="closeAllSimModals(); openCreateScreen('plan')">✈️ Nuevo Plan Compartido</button>
+        </div>
+      `;
+    }
+
+    function openVoiceModal() {
+      simModal.classList.add('active');
+      simModalContent.innerHTML = `
+        <div class="modal-drag-indicator"></div>
+        <div class="modal-title">
+          <span>🎤 Comandos por Voz</span>
+          <span class="modal-close" onclick="closeAllSimModals()">✕</span>
+        </div>
+        <div class="voice-waves">
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+        </div>
+        <p style="font-size: 11px; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+          Di algo como:
+        </p>
+        <div class="voice-command-list">
+          <div class="voice-cmd-item" onclick="triggerVoiceCmdSim('gasté 32 en comida hoy')">
+            <span>🗣️ "gasté 32 en comida hoy"</span>
+            <span>➔</span>
+          </div>
+          <div class="voice-cmd-item" onclick="triggerVoiceCmdSim('ingreso de 1200 por nómina')">
+            <span>🗣️ "ingreso de 1200 por nómina"</span>
+            <span>➔</span>
+          </div>
+          <div class="voice-cmd-item" onclick="triggerVoiceCmdSim('ahorrar 350 para viaje de verano')">
+            <span>🗣️ "ahorrar 350 para viaje de verano"</span>
+            <span>➔</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function triggerVoiceCmdSim(cmdText) {
+      closeAllSimModals();
+      loadScreenNode('voice_engine');
+
+      setTimeout(() => {
+        if (cmdText.includes('gasté')) {
+          appState.expenses.unshift({
+            id: Date.now(),
+            desc: 'Gasto por voz (Comida)',
+            amount: 32.00,
+            category: 'Comida',
+            user: 'AL',
+            date: 'Hoy',
+            type: 'expense'
+          });
+          const cat = appState.categories.find(c => c.name === 'Comida');
+          if (cat) cat.used += 32.00;
+        } else if (cmdText.includes('ingreso')) {
+          appState.expenses.unshift({
+            id: Date.now(),
+            desc: 'Nómina',
+            amount: 1200.00,
+            category: 'Nómina',
+            user: 'AL',
+            date: 'Hoy',
+            type: 'income'
+          });
+        } else if (cmdText.includes('ahorrar')) {
+          const sav = appState.savings.find(s => s.name === 'Viaje de Verano');
+          if (sav) {
+            sav.current += 350.00;
+            sav.contributions.unshift({ id: Date.now(), user: 'AL', amount: 350.00, date: 'Hoy' });
+          }
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'toast-hint';
+        toast.style.bottom = '80px';
+        toast.style.background = 'var(--accent-green)';
+        toast.style.color = '#FFFFFF';
+        toast.innerHTML = `
+          <div style="font-size: 16px;">✓</div>
+          <div class="toast-text" style="color: white;">Comando ejecutado: "${cmdText}"</div>
+        `;
+        document.querySelector('.phone-shell').appendChild(toast);
+        
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          setTimeout(() => toast.remove(), 300);
+        }, 2200);
+
+        loadScreenNode('dashboard');
+      }, 1000);
+    }
+
+    function showVoiceTooltip() {
+      const bubble = document.getElementById('voiceHintBubble');
+      bubble.style.display = 'flex';
+      setTimeout(() => { hideToastHint(); }, 5000);
+    }
+
+    function hideToastHint() {
+      const bubble = document.getElementById('voiceHintBubble');
+      if (bubble) bubble.style.display = 'none';
+    }
+
+    /* =========================================================================
+       BOOT SEQUENCE / PROFILE SETUP / LOGIN
+       ========================================================================= */
+    function bootSequence() {
+      showScreen('boot');
+      setTimeout(() => {
+        appState.isAuthReady = true;
+        loadScreenNode('auth_check');
+      }, 1000);
+    }
+
+    function goToAuthScreen(view) {
+      loadScreenNode(view);
+    }
+
+    function authAction(type) {
+      if (type === 'login' || type === 'google') {
+        appState.currentUser = 'demo_a';
+        appState.authProfile = { id: 'demo_a', name: 'Alan', initials: 'AL', color: '#7C3AED', bg: '#EDE9FE', email: 'alan@email.com' };
+        if (!appState.onboardingDone) {
+          loadScreenNode('profile_check');
+        } else {
+          loadScreenNode('dashboard');
+        }
+      } else if (type === 'register_submit') {
+        const email = document.getElementById('reg_email').value || 'demo@nosotros.com';
+        document.getElementById('verify_sent_label').innerHTML = `Hemos enviado un código OTP a <b>${email}</b>`;
+        loadScreenNode('verify');
+      } else if (type === 'verify_submit') {
+        appState.currentUser = 'demo_a';
+        appState.authProfile = { id: 'demo_a', name: '', initials: 'AL', color: '#7C3AED', bg: '#EDE9FE', email: 'alan@email.com' };
+        loadScreenNode('onboarding_welcome');
+      }
+    }
+
+    function completeOnboardingWelcome() {
+      loadScreenNode('onboarding_setup');
+    }
+
+    function updateSetupAvatar() {
+      const name = document.getElementById('setup-name-input').value || '';
+      const preview = document.getElementById('setup-avatar-preview');
+      preview.innerText = name.slice(0, 2).toUpperCase() || '??';
+    }
+
+    function setAvatarColor(color, bg) {
+      const preview = document.getElementById('setup-avatar-preview');
+      preview.style.backgroundColor = bg;
+      preview.style.color = color;
+      if (appState.authProfile) {
+        appState.authProfile.color = color;
+        appState.authProfile.bg = bg;
+      }
+    }
+
+    function completeProfileSetup() {
+      const name = document.getElementById('setup-name-input').value || 'Alan';
+      if (appState.authProfile) {
+        appState.authProfile.name = name;
+        appState.authProfile.initials = name.slice(0, 2).toUpperCase();
+      }
+      appState.onboardingDone = true;
+      loadScreenNode('dashboard');
+      setTimeout(() => showVoiceTooltip(), 1500);
+    }
+
+    function logOutSim() {
+      appState.currentUser = null;
+      appState.authProfile = null;
+      appState.onboardingDone = false;
+      appState.pairingState = 'unpaired';
+      appState.activeRoomId = null;
+      loadScreenNode('login');
+    }
+
+    function goToTab(tabId) {
+      appState.activeTab = tabId;
+      loadScreenNode(tabId);
+    }
+
+    /* =========================================================================
+       PAIRING SIMULATOR ACTIONS
+       ========================================================================= */
+    function renderProfileScreen() {
+      document.getElementById('profile-name-node').innerText = appState.authProfile ? appState.authProfile.name + ' Gomez' : 'Alan Gomez';
+      document.getElementById('profile-email-node').innerText = appState.authProfile ? appState.authProfile.email : 'alan@email.com';
+      
+      const avatarNode = document.getElementById('profile-avatar-node');
+      avatarNode.innerText = appState.authProfile ? appState.authProfile.initials : 'AL';
+      avatarNode.style.color = appState.authProfile ? appState.authProfile.color : '#7C3AED';
+      avatarNode.style.backgroundColor = appState.authProfile ? appState.authProfile.bg : '#EDE9FE';
+
+      const switchEl = document.getElementById('theme-switch-sim');
+      if (appState.simTheme === 'dark') switchEl.classList.add('active');
+      else switchEl.classList.remove('active');
+
+      const unpairedView = document.getElementById('pairing-unpaired-view');
+      const pendingView = document.getElementById('pairing-pending-view');
+      const pairedView = document.getElementById('pairing-paired-view');
+
+      unpairedView.style.display = 'none';
+      pendingView.style.display = 'none';
+      pairedView.style.display = 'none';
+
+      if (appState.pairingState === 'unpaired') unpairedView.style.display = 'block';
+      else if (appState.pairingState === 'pending') pendingView.style.display = 'block';
+      else if (appState.pairingState === 'paired') {
+        pairedView.style.display = 'block';
+        document.getElementById('paired-partner-room').innerText = `Sala: ${appState.activeRoomId}`;
+      }
+    }
+
+    function sendPartnerInviteSim() {
+      const inviteEmail = document.getElementById('partner-invite-email').value;
+      if (!inviteEmail) return;
+
+      const statusEl = document.getElementById('partner-invite-status');
+      statusEl.style.display = 'block';
+      statusEl.style.color = 'var(--accent-blue)';
+      statusEl.innerText = 'Buscando perfil...';
+
+      setTimeout(() => {
+        statusEl.innerText = `Invitación enviada a ${inviteEmail}`;
+        statusEl.style.color = 'var(--accent-green)';
+        setTimeout(() => {
+          appState.pairingState = 'pending';
+          renderProfileScreen();
+        }, 1500);
+      }, 1000);
+    }
+
+    function resolvePartnerInviteSim(accept) {
+      if (accept) {
+        appState.pairingState = 'paired';
+        appState.activeRoomId = 'gabi-alan-room-main';
+        appState.expenses.push({ id: 5, desc: 'Clases Yoga (Gabi)', amount: 45.00, category: 'Hogar', user: 'GA', date: 'Hace 3 días', type: 'expense' });
+        appState.expenses.push({ id: 6, desc: 'Compra Supermercado', amount: 92.50, category: 'Comida', user: 'GA', date: 'Ayer', type: 'expense' });
+        appState.categories[0].used += 92.50;
+      } else {
+        appState.pairingState = 'unpaired';
+      }
+      renderProfileScreen();
+    }
+
+    function toggleSimTheme() {
+      appState.simTheme = appState.simTheme === 'dark' ? 'light' : 'dark';
+      renderProfileScreen();
+    }
+
+    /* =========================================================================
+       GLOBAL UTILS & THEMING
+       ========================================================================= */
+    function toggleTheme() {
+      const htmlEl = document.documentElement;
+      const currentTheme = htmlEl.getAttribute('data-theme') || 'dark';
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      htmlEl.setAttribute('data-theme', newTheme);
+      document.querySelector('#themeBtn span').innerText = newTheme === 'dark' ? 'Oscuro' : 'Claro';
+    }
+
+    function highlightFlow(flowName) {
+      document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+      document.querySelectorAll('.flow-line').forEach(el => el.classList.remove('active'));
+
+      let nodeKeys = [];
+      if (flowName === 'auth') {
+        nodeKeys = ['boot', 'auth_check', 'login', 'register', 'verify'];
+      } else if (flowName === 'onboarding') {
+        nodeKeys = ['profile_check', 'onboarding_welcome', 'onboarding_setup', 'dashboard'];
+      } else if (flowName === 'creation') {
+        nodeKeys = ['dashboard', 'movimientos', 'form_movimiento', 'categorias', 'form_categoria', 'extras', 'ahorros', 'form_ahorro', 'lista_planes', 'form_plan', 'form_gasto_plan'];
+      } else if (flowName === 'details') {
+        nodeKeys = ['dashboard', 'movimientos', 'detalle_movimiento', 'categorias', 'detalle_categoria', 'extras', 'ahorros', 'detalle_ahorro', 'lista_planes', 'detalle_plan'];
+      }
+
+      nodeKeys.forEach(key => {
+        const group = document.getElementById(`node_${key}`);
+        if (group) group.querySelector('.node').classList.add('selected');
+      });
+
+      lines.forEach(line => {
+        if (nodeKeys.includes(line.from) && nodeKeys.includes(line.to)) {
+          const path = document.getElementById(`line_${line.from}_${line.to}`);
+          if (path) path.classList.add('active');
+        }
+      });
+    }
+
+    window.addEventListener('load', () => {
+      drawFlowLines();
+      bootSequence();
+    });
+
+    window.addEventListener('resize', () => {
+      drawFlowLines();
+    });
+  </script>
+</body>
+</html>

@@ -189,6 +189,14 @@ function calcSaldoHastaFecha(payload: AppPayload, uid: UserId, endDate: string):
     if (c.uid === uid && c.date <= endDate) total -= c.amt;
   }
 
+  for (const plan of payload.savings) {
+    for (const entry of (plan.history ?? [])) {
+      if (entry.uid === uid && entry.date <= endDate && entry.source === 'balance') {
+        total -= entry.amount;
+      }
+    }
+  }
+
   return total;
 }
 

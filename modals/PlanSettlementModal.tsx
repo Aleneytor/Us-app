@@ -12,7 +12,7 @@ import { AppModal as Modal } from '../components/AppModal';
 import { ModalScreen } from '../components/ModalScreen';
 import { type AppTheme } from '../constants/colors';
 import type { Plan, PlanMember, PlanSettlement } from '../types';
-import { fmt, parseAmt, todayStr } from '../utils/format';
+import { parseAmt, todayStr } from '../utils/format';
 import { useAppStore } from '../store/useAppStore';
 import { useTheme } from '../contexts/ThemeContext';
 import { runAfterKeyboardDismiss } from '../utils/keyboard';
@@ -43,36 +43,33 @@ export function PlanSettlementModal({
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [amtText, setAmtText] = useState('');
-  const [date, setDate] = useState(todayStr());
-  const [note, setNote] = useState('');
 
   useEffect(() => {
     if (!visible) return;
     setAmtText(suggestedAmount != null ? String(suggestedAmount).replace('.', ',') : '');
-    setDate(todayStr());
-    setNote('');
   }, [visible, suggestedAmount]);
 
   if (!fromMember || !toMember) return null;
 
   const amount = parseAmt(amtText);
+  const maxAmount = suggestedAmount ?? 0;
 
   const save = () => {
     if (!Number.isFinite(amount) || amount <= 0) {
       Alert.alert('Monto inválido', 'Escribe un monto mayor a cero.');
       return;
     }
-    if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      Alert.alert('Fecha inválida', 'Usa el formato AAAA-MM-DD.');
+    if (maxAmount > 0 && amount > maxAmount + 0.01) {
+      Alert.alert('Monto inválido', 'El monto no puede ser mayor que la deuda pendiente.');
       return;
     }
+
     const settlement: PlanSettlement = {
       id: Date.now(),
       fromMemberId: fromMember.id,
       toMemberId: toMember.id,
       amount,
-      date,
-      note: note.trim() || undefined,
+      date: todayStr(),
     };
     addPlanSettlement(plan.id, settlement);
     onClose();
@@ -81,17 +78,9 @@ export function PlanSettlementModal({
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <ModalScreen
-        title="Saldar deuda"
+        title={`Saldar deuda con ${toMember.name}`}
         onBack={onClose}
         contentContainerStyle={{ padding: 0 }}
-        footer={(
-          <Pressable
-            onPress={() => runAfterKeyboardDismiss(save)}
-            style={({ pressed }) => [styles.saveBtn, pressed && styles.pressed]}
-          >
-            <Text style={styles.saveBtnText}>Registrar liquidación</Text>
-          </Pressable>
-        )}
       >
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -99,20 +88,7 @@ export function PlanSettlementModal({
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.transferCard}>
-            <MemberBubble member={fromMember} label="Paga" />
-            <View style={styles.arrowWrap}>
-              <View style={styles.arrowLine} />
-              <Text style={styles.arrowAmt}>
-                {Number.isFinite(amount) && amount > 0 ? fmt(amount, currency) : ''}
-              </Text>
-              <View style={styles.arrowLine} />
-              <View style={styles.arrowHead} />
-            </View>
-            <MemberBubble member={toMember} label="Recibe" />
-          </View>
-
-          <View style={styles.field}>
+          <View style={styles.amountCard}>
             <Text style={styles.fieldLabel}>Monto</Text>
             <View style={styles.amountRow}>
               <TextInput
@@ -121,7 +97,7 @@ export function PlanSettlementModal({
                 placeholder="0,00"
                 placeholderTextColor={theme.textMuted}
                 keyboardType="decimal-pad"
-                style={[styles.input, styles.amountInput]}
+                style={styles.amountInput}
                 autoFocus
               />
               <View style={styles.currencyBadge}>
@@ -130,154 +106,38 @@ export function PlanSettlementModal({
             </View>
           </View>
 
-          {suggestedAmount != null && suggestedAmount > 0 && (
-            <Pressable
-              onPress={() => setAmtText(String(suggestedAmount).replace('.', ','))}
-              style={({ pressed }) => [styles.suggestionBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.suggestionText}>
-                Usar monto sugerido: {fmt(suggestedAmount, currency)}
-              </Text>
-            </Pressable>
-          )}
-
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Fecha</Text>
-            <TextInput
-              value={date}
-              onChangeText={setDate}
-              placeholder="AAAA-MM-DD"
-              placeholderTextColor={theme.textMuted}
-              style={styles.input}
-              keyboardType="numeric"
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Nota (opcional)</Text>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Ej. Transferencia por Bizum"
-              placeholderTextColor={theme.textMuted}
-              style={[styles.input, styles.noteInput]}
-              multiline
-            />
-          </View>
+          <Pressable
+            onPress={() => runAfterKeyboardDismiss(save)}
+            style={({ pressed }) => [styles.saveBtn, pressed && styles.pressed]}
+          >
+            <Text style={styles.saveBtnText}>Saldar</Text>
+          </Pressable>
         </ScrollView>
       </ModalScreen>
     </Modal>
   );
 }
 
-function MemberBubble({ member, label }: { member: PlanMember; label: string }) {
-  const theme = useTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-
-  return (
-    <View style={styles.bubble}>
-      <View style={[styles.bubbleAvatar, { backgroundColor: member.bg }]}>
-        <Text style={[styles.bubbleInitials, { color: member.color }]}>{member.initials}</Text>
-      </View>
-      <Text style={styles.bubbleName} numberOfLines={1}>{member.name}</Text>
-      <Text style={styles.bubbleLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const makeStyles = (t: AppTheme) => StyleSheet.create({
   scroll: {
-    gap: 8,
+    gap: 12,
     padding: 16,
     paddingBottom: 32,
   },
-
-  transferCard: {
-    alignItems: 'center',
+  amountCard: {
     backgroundColor: t.surface,
     borderColor: t.border,
     borderRadius: 16,
     borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    padding: 20,
-  },
-  bubble: {
-    alignItems: 'center',
-    gap: 6,
-    width: 72,
-  },
-  bubbleAvatar: {
-    alignItems: 'center',
-    borderRadius: 24,
-    height: 48,
-    justifyContent: 'center',
-    width: 48,
-  },
-  bubbleInitials: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  bubbleName: {
-    color: t.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  bubbleLabel: {
-    color: t.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  arrowWrap: {
-    alignItems: 'center',
-    flex: 1,
-    gap: 4,
-  },
-  arrowLine: {
-    backgroundColor: t.border,
-    height: 1.5,
-    width: '80%',
-  },
-  arrowAmt: {
-    color: ACCENT,
-    fontFamily: 'Poppins_700Bold',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  arrowHead: {
-    borderBottomColor: 'transparent',
-    borderBottomWidth: 5,
-    borderLeftColor: t.border,
-    borderLeftWidth: 8,
-    borderTopColor: 'transparent',
-    borderTopWidth: 5,
-  },
-
-  field: {
-    gap: 8,
-    paddingVertical: 8,
+    gap: 10,
+    padding: 16,
   },
   fieldLabel: {
     color: t.textSecondary,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: t.surface,
-    borderColor: t.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    color: t.textPrimary,
-    fontSize: 15,
-    fontWeight: '500',
-    minHeight: 46,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    textAlignVertical: 'center',
   },
   amountRow: {
     alignItems: 'center',
@@ -285,57 +145,45 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     gap: 8,
   },
   amountInput: {
+    backgroundColor: t.background,
+    borderColor: t.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: t.textPrimary,
     flex: 1,
     fontFamily: 'Poppins_600SemiBold',
-    fontSize: 24,
-    letterSpacing: -1.2,
+    fontSize: 28,
+    minHeight: 54,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     textAlign: 'center',
   },
   currencyBadge: {
     alignItems: 'center',
-    backgroundColor: t.surface,
-    borderColor: t.border,
+    backgroundColor: ACCENT_BG,
+    borderColor: ACCENT,
     borderRadius: 12,
     borderWidth: 1,
-    height: 46,
+    height: 54,
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
   currencyText: {
-    color: t.textSecondary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  noteInput: {
-    minHeight: 72,
-    textAlignVertical: 'top',
-    paddingTop: 12,
-  },
-  suggestionBtn: {
-    alignItems: 'center',
-    backgroundColor: ACCENT_BG,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  suggestionText: {
     color: ACCENT,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
-
   saveBtn: {
     alignItems: 'center',
     backgroundColor: ACCENT,
     borderRadius: 14,
-    flex: 1,
     height: 50,
     justifyContent: 'center',
   },
   saveBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   pressed: { opacity: 0.72 },
 });

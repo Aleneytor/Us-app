@@ -28,17 +28,17 @@ export default function Root({ children }: PropsWithChildren) {
           content="black-translucent"
         />
         {/* Nombre que aparece bajo el icono en la pantalla de inicio */}
-        <meta name="apple-mobile-web-app-title" content="Nosotros" />
+        <meta name="apple-mobile-web-app-title" content="Juntos" />
 
         {/* ===== PWA estándar ===== */}
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#23C55E" />
-        <meta name="application-name" content="Nosotros" />
+        <meta name="application-name" content="Juntos" />
 
         {/* Evita que el teléfono detecte automáticamente números como teléfonos */}
         <meta name="format-detection" content="telephone=no" />
 
-        <title>Nosotros</title>
+        <title>Juntos</title>
 
         {/*
          * Expo Router usa un ScrollView de React Native Web que necesita

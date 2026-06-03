@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   Image,
   Pressable,
   RefreshControl,
@@ -25,6 +26,7 @@ import { CURRENCIES } from '../types';
 import type { CurrencyCode } from '../types';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { reportFabScroll } from '../utils/fabScroll';
+import { useEntranceAnimation } from '../hooks/useEntranceAnimation';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -59,6 +61,11 @@ export default function PerfilScreen() {
 
   const router         = useRouter();
   const insets         = useSafeAreaInsets();
+  const scrollRef      = useRef<ScrollView>(null);
+  const { heroAnim, contentAnim } = useEntranceAnimation({
+    scrollRef,
+    onResetScroll: () => reportFabScroll(0),
+  });
 
   const [refreshing, setRefreshing]   = useState(false);
   const [uploading, setUploading]     = useState(false);
@@ -190,6 +197,7 @@ export default function PerfilScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.scrollContent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.textMuted} />}
@@ -203,7 +211,19 @@ export default function PerfilScreen() {
       scrollEventThrottle={16}
     >
       {/* -- Hero ------------------------------------------------------------ */}
-      <View style={[styles.hero, { paddingTop: insets.top > 0 ? insets.top + 12 : 44, flexDirection: 'column', alignItems: 'stretch', gap: 16 }]}>
+      <Animated.View
+        style={[
+          styles.hero,
+          {
+            paddingTop: insets.top > 0 ? insets.top + 12 : 44,
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: 16,
+            opacity: heroAnim,
+            transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-18, 0] }) }],
+          },
+        ]}
+      >
         <View style={styles.heroHeaderRow}>
           <Pressable
             onPress={() => {
@@ -243,10 +263,18 @@ export default function PerfilScreen() {
             <Text style={styles.heroSub}>Usuario activo</Text>
           </View>
         </View>
-      </View>
+      </Animated.View>
 
       {/* -- Content --------------------------------------------------------- */}
-      <View style={styles.content}>
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            opacity: contentAnim,
+            transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+          },
+        ]}
+      >
 
         {/* Usuarios */}
         <View style={styles.section}>
@@ -540,6 +568,22 @@ export default function PerfilScreen() {
           <Text style={styles.sectionLabel}>Desarrollo</Text>
           <View style={styles.card}>
             <Pressable
+              onPress={() => router.push('/onboarding')}
+              style={({ pressed }) => [styles.devTile, pressed && styles.pressed]}
+            >
+              <View style={[styles.devIconWrap, { backgroundColor: '#EDE9FE' }]}>
+                <Ionicons name="sparkles-outline" size={20} color="#7C3AED" />
+              </View>
+              <View style={styles.devInfo}>
+                <Text style={styles.devLabel}>Ver flujo de onboarding</Text>
+                <Text style={styles.devSub}>Prueba las pantallas de configuración de cuenta</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+            </Pressable>
+
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+            <Pressable
               onPress={handleLoadTestData}
               disabled={loadingDemo}
               style={({ pressed }) => [styles.devTile, (pressed || loadingDemo) && styles.pressed]}
@@ -558,7 +602,7 @@ export default function PerfilScreen() {
           </View>
         </View>
 
-      </View>
+      </Animated.View>
     </ScrollView>
   );
 }

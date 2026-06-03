@@ -57,6 +57,7 @@ function AppNavigator() {
       <StatusBar style={theme.mode === 'light' ? 'dark' : 'light'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="perfil" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="onboarding" options={{ animation: 'slide_from_bottom' }} />
       </Stack>
     </NavigationThemeProvider>
   );
@@ -136,8 +137,8 @@ function ResponsiveWebShell({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.webContainer}>
       <Head>
-        <title>Nosotros — Finanzas en Pareja</title>
-        <meta name="description" content="Nosotros es la aplicación premium para controlar las finanzas y presupuestos en pareja de forma sincronizada y sencilla." />
+        <title>Juntos — Finanzas en Pareja</title>
+        <meta name="description" content="Juntos es la aplicación premium para controlar las finanzas y presupuestos en pareja de forma sincronizada y sencilla." />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
       </Head>
 
@@ -174,7 +175,7 @@ function ResponsiveWebShell({ children }: { children: React.ReactNode }) {
               <Ionicons name="sparkles" size={24} color="#7C3AED" />
             </View>
             <View>
-              <Text style={styles.brandTitle}>Nosotros</Text>
+              <Text style={styles.brandTitle}>Juntos</Text>
               <Text style={styles.brandSubtitle}>Finanzas Compartidas</Text>
             </View>
           </View>

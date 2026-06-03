@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,19 +42,33 @@ export default function ExtrasScreen() {
   const tabPadding = useTabPadding();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { contentAnim } = useEntranceAnimation();
+  const scrollRef = useRef<ScrollView>(null);
+  const { heroAnim, contentAnim, itemAnims } = useEntranceAnimation({
+    scrollRef,
+    onResetScroll: () => reportFabScroll(0),
+  });
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
     <View style={styles.screen}>
       {/* ── Top bar ── */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 14 }]}>
+      <Animated.View
+        style={[
+          styles.topBar,
+          {
+            paddingTop: insets.top + 14,
+            opacity: heroAnim,
+            transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }],
+          },
+        ]}
+      >
         <Text style={styles.screenTitle}>Extras</Text>
         <UserHeaderButton />
-      </View>
+      </Animated.View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
         bounces={false}
         overScrollMode="never"
@@ -71,41 +85,51 @@ export default function ExtrasScreen() {
             },
           ]}
         >
-          {EXTRAS_OPTIONS.map((opt) => (
-            <Pressable
-              key={opt.key}
-              onPress={() => router.navigate(opt.route as never)}
-              style={({ pressed }) => [
-                styles.card,
-                { borderColor: theme.border, shadowColor: opt.accent },
-                pressed && styles.pressed,
-              ]}
-            >
-              <CardGradient accent={opt.accent} accentDeep={opt.accentDeep} id={opt.gradientId} />
+          {EXTRAS_OPTIONS.map((opt, index) => {
+            const itemAnim = itemAnims[index] ?? contentAnim;
+            return (
+              <Animated.View
+                key={opt.key}
+                style={{
+                  opacity: itemAnim,
+                  transform: [{ translateY: itemAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+                }}
+              >
+                <Pressable
+                  onPress={() => router.navigate(opt.route as never)}
+                  style={({ pressed }) => [
+                    styles.card,
+                    { borderColor: theme.border, shadowColor: opt.accent },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <CardGradient accent={opt.accent} accentDeep={opt.accentDeep} id={opt.gradientId} />
 
-              {/* Icon + title row */}
-              <View style={styles.cardTop}>
-                <View style={[styles.cardIconWrap, { backgroundColor: opt.accent, borderColor: opt.accent }]}>
-                  <Ionicons name={opt.icon} size={26} color="#FFFFFF" />
-                </View>
-                <View style={styles.cardTopText}>
-                  <Text style={styles.cardLabel}>{opt.label}</Text>
-                  <Text style={[styles.cardSubtitle, { color: opt.accent }]}>{opt.subtitle}</Text>
-                </View>
-              </View>
+                  {/* Icon + title row */}
+                  <View style={styles.cardTop}>
+                    <View style={[styles.cardIconWrap, { backgroundColor: opt.accent, borderColor: opt.accent }]}>
+                      <Ionicons name={opt.icon} size={26} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.cardTopText}>
+                      <Text style={styles.cardLabel}>{opt.label}</Text>
+                      <Text style={[styles.cardSubtitle, { color: opt.accent }]}>{opt.subtitle}</Text>
+                    </View>
+                  </View>
 
-              {/* Description */}
-              <Text style={styles.cardDesc}>{opt.description}</Text>
+                  {/* Description */}
+                  <Text style={styles.cardDesc}>{opt.description}</Text>
 
-              {/* Footer CTA */}
-              <View style={styles.cardFooter}>
-                <View style={[styles.cardCta, { borderColor: opt.accentBorder }]}>
-                  <Text style={[styles.cardCtaText, { color: opt.accent }]}>Abrir</Text>
-                  <Ionicons name="arrow-forward" size={13} color={opt.accent} />
-                </View>
-              </View>
-            </Pressable>
-          ))}
+                  {/* Footer CTA */}
+                  <View style={styles.cardFooter}>
+                    <View style={[styles.cardCta, { borderColor: opt.accentBorder }]}>
+                      <Text style={[styles.cardCtaText, { color: opt.accent }]}>Abrir</Text>
+                      <Ionicons name="arrow-forward" size={13} color={opt.accent} />
+                    </View>
+                  </View>
+                </Pressable>
+              </Animated.View>
+            );
+          })}
         </Animated.View>
       </ScrollView>
     </View>

@@ -22,10 +22,10 @@ const pwaMeta = `
     <!-- PWA: iOS Safari standalone mode (oculta barra del navegador) -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Nosotros" />
+    <meta name="apple-mobile-web-app-title" content="Juntos" />
     <!-- PWA: Android / Chrome -->
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="application-name" content="Nosotros" />
+    <meta name="application-name" content="Juntos" />
     <meta name="format-detection" content="telephone=no" />
     <!-- viewport-fit=cover para soporte de notch -->`;
 

@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
@@ -20,11 +21,12 @@ import { BudgetCategoryDetailModal } from '../../modals/BudgetCategoryDetailModa
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import type { BudgetCategory } from '../../types';
-import { calcBudgetCategorySpending } from '../../utils/calculations';
+import { calcBudgetCategoryIncome, calcBudgetCategorySpending } from '../../utils/calculations';
 import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
 import { useTabPadding } from '../../hooks/useTabPadding';
 import { reportFabScroll } from '../../utils/fabScroll';
 import { useTheme } from '../../contexts/ThemeContext';
+import { nextYM, prevYM } from '../../utils/format';
 
 // Purple palette — same as movimientos hero
 type Palette = { base: string; soft: string; bright: string; glow: string; deep: string; shade: string; veil: string };
@@ -34,6 +36,7 @@ const PURPLE_BASE: Palette = {
 const PURPLE_SHIFT: Palette = {
   base: '#4C1D95', soft: '#7C3AED', bright: '#9061F9', glow: '#B89AF8', deep: '#2E0070', shade: '#3D1882', veil: '#6D28D9',
 };
+type ChartMode = 'expense' | 'income';
 
 export default function CategoriasScreen() {
   const tabPadding = useTabPadding();
@@ -42,15 +45,23 @@ export default function CategoriasScreen() {
   const currentUser = useAppStore((s) => s.currentUser);
   const users = useAppStore((s) => s.users);
   const selectedYM = useAppStore((s) => s.selectedYM);
+  const setSelectedYM = useAppStore((s) => s.setSelectedYM);
   const currency = useAppStore((s) => s.currency);
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { width: screenWidth } = useWindowDimensions();
+  const chartSize = Math.min(230, Math.max(198, screenWidth - 124));
 
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null);
+  const [chartMode, setChartMode] = useState<ChartMode>('expense');
+  const scrollRef = useRef<ScrollView>(null);
 
-  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation();
+  const { heroAnim, contentAnim, headerAnim, itemAnims } = useEntranceAnimation({
+    scrollRef,
+    onResetScroll: () => reportFabScroll(0),
+  });
 
   const user = users[currentUser] ?? { name: currentUser };
 
@@ -61,22 +72,28 @@ export default function CategoriasScreen() {
 
   const sortedBudgetCategories = useMemo(() => {
     return [...budgetCategories].sort((a, b) => {
-      const spentA = calcBudgetCategorySpending(payload, a.id, currentUser, selectedYM);
-      const spentB = calcBudgetCategorySpending(payload, b.id, currentUser, selectedYM);
-      return spentB - spentA || a.name.localeCompare(b.name);
+      const valueA = chartMode === 'income'
+        ? calcBudgetCategoryIncome(payload, a.id, selectedYM)
+        : calcBudgetCategorySpending(payload, a.id, currentUser, selectedYM);
+      const valueB = chartMode === 'income'
+        ? calcBudgetCategoryIncome(payload, b.id, selectedYM)
+        : calcBudgetCategorySpending(payload, b.id, currentUser, selectedYM);
+      return valueB - valueA || a.name.localeCompare(b.name);
     });
-  }, [budgetCategories, currentUser, payload, selectedYM]);
+  }, [budgetCategories, chartMode, currentUser, payload, selectedYM]);
 
   const ringSlices = useMemo((): RingSlice[] => {
     return sortedBudgetCategories.map((cat) => ({
       id: cat.id,
       label: cat.name,
       color: getIconColor(cat.iconColor).color,
-      value: calcBudgetCategorySpending(payload, cat.id, currentUser, selectedYM),
+      value: chartMode === 'income'
+        ? calcBudgetCategoryIncome(payload, cat.id, selectedYM)
+        : calcBudgetCategorySpending(payload, cat.id, currentUser, selectedYM),
     }));
-  }, [sortedBudgetCategories, currentUser, payload, selectedYM]);
+  }, [chartMode, sortedBudgetCategories, currentUser, payload, selectedYM]);
 
-  const totalSpent = useMemo(
+  const totalByMode = useMemo(
     () => ringSlices.reduce((sum, s) => sum + s.value, 0),
     [ringSlices],
   );
@@ -90,6 +107,7 @@ export default function CategoriasScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, { paddingBottom: tabPadding }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         showsVerticalScrollIndicator={false}
@@ -98,126 +116,153 @@ export default function CategoriasScreen() {
         onScroll={(event) => reportFabScroll(event.nativeEvent.contentOffset.y)}
         scrollEventThrottle={16}
       >
-        {/* ── Hero card ─────────────────────────────────────────── */}
         <Animated.View
-          style={[
-            styles.heroCard,
-            {
-              opacity: heroAnim,
-              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
-            },
-          ]}
-        >
-          <CatHeroGradient />
-          <View style={[styles.heroTop, { paddingTop: insets.top + 14 }]}>
-            <View style={styles.heroTextWrap}>
-              <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
-              <Text style={styles.heroSubtitle}>
-                Consulta tus gastos y el presupuesto restante por categoría
-              </Text>
-            </View>
-            <UserHeaderButton variant="light" tintColor="#C4B5FD" />
-          </View>
-        </Animated.View>
-
-        {/* ── Action button ─────────────────────────────────────── */}
-        <Animated.View
-          style={[
-            styles.actionRow,
-            {
-              opacity: contentAnim,
-              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
-            },
-          ]}
-        >
-          <Pressable
-            onPress={() => setCreateOpen(true)}
-            style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+            style={[
+              styles.heroCard,
+              {
+                opacity: heroAnim,
+                transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+              },
+            ]}
           >
-            <Ionicons name="pie-chart-outline" size={18} color="#7C3AED" />
-            <Text style={styles.actionBtnText}>Crear categoría</Text>
-          </Pressable>
-        </Animated.View>
+            <CatHeroGradient />
+            <View style={[styles.heroTop, { paddingTop: insets.top + 14 }]}>
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
+                <Text style={styles.heroSubtitle}>
+                  Consulta tus gastos y el presupuesto restante por categoría
+                </Text>
+              </View>
+              <UserHeaderButton variant="light" tintColor="#C4B5FD" />
+            </View>
+          </Animated.View>
 
-        {/* ── Donut ring chart ──────────────────────────────────── */}
+          <Animated.View
+            style={[
+              styles.actionRow,
+              {
+                opacity: contentAnim,
+                transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+              },
+            ]}
+          >
+            <Pressable
+              onPress={() => setCreateOpen(true)}
+              style={({ pressed }) => [styles.actionBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="pie-chart-outline" size={18} color="#7C3AED" />
+              <Text style={styles.actionBtnText}>Crear categoría</Text>
+            </Pressable>
+          </Animated.View>
+
         {budgetCategories.length > 0 && (
           <Animated.View
-            style={{
-              marginTop: 28,
-              opacity: contentAnim,
-              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
-            }}
-          >
-            <CategoryRingChart
-              slices={ringSlices}
-              currency={currency}
-              selectedYM={selectedYM}
-            />
-
-            {/* ── Legend pills ─────────────────────────────────── */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.legendRow}
-              style={styles.legendScroll}
+              style={{
+                marginTop: 28,
+                opacity: contentAnim,
+                transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }],
+              }}
             >
-              {ringSlices.filter((s) => s.value > 0).map((slice) => (
-                <View key={slice.id} style={styles.legendPill}>
-                  <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
-                  <Text style={styles.legendLabel} numberOfLines={1}>{slice.label}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        )}
-
-        {/* ── Section header ────────────────────────────────────── */}
-        <Animated.View
-          style={[
-            styles.sectionHeader,
-            {
-              opacity: headerAnim,
-              transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
-            },
-          ]}
-        >
-          <Text style={styles.sectionTitle}>Todas las categorías</Text>
-        </Animated.View>
-
-        {/* ── Category list ─────────────────────────────────────── */}
-        {budgetCategories.length === 0 ? (
-          <Animated.View style={[styles.emptyState, { opacity: headerAnim }]}>
-            <Ionicons name="pie-chart-outline" size={34} color={theme.textMuted} />
-            <Text style={styles.emptyTitle}>Sin categorías</Text>
-            <Text style={styles.emptyText}>
-              Crea una categoría para rastrear tu presupuesto mensual por tipo de gasto.
-            </Text>
-          </Animated.View>
-        ) : (
-          <View style={styles.list}>
-            {sortedBudgetCategories.map((category, index) => {
-              const spent = calcBudgetCategorySpending(payload, category.id, currentUser, selectedYM);
-              const percentOfTotal = totalSpent > 0 ? spent / totalSpent : 0;
-              return (
-                <Animated.View
-                  key={category.id}
-                  style={{
-                    opacity: itemAnims[index],
-                    transform: [{ translateY: itemAnims[index].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
-                  }}
+              <View style={styles.chartNavigator}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Mes anterior"
+                  onPress={() => setSelectedYM(prevYM(selectedYM))}
+                  style={({ pressed }) => [
+                    styles.chartNavButton,
+                    pressed && styles.chartNavButtonPressed,
+                  ]}
                 >
-                  <BudgetCategoryCard
-                    category={category}
-                    spent={spent}
-                    currency={currency}
-                    percentOfTotal={percentOfTotal}
-                    onPress={() => setSelectedCategory(category)}
-                  />
-                </Animated.View>
-              );
-            })}
-          </View>
+                  <Ionicons name="chevron-back" size={21} color={theme.textSecondary} />
+                </Pressable>
+
+                <CategoryRingChart
+                  slices={ringSlices}
+                  currency={currency}
+                  selectedYM={selectedYM}
+                  size={chartSize}
+                  mode={chartMode}
+                  onToggleMode={() => setChartMode((mode) => mode === 'expense' ? 'income' : 'expense')}
+                />
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Mes siguiente"
+                  onPress={() => setSelectedYM(nextYM(selectedYM))}
+                  style={({ pressed }) => [
+                    styles.chartNavButton,
+                    pressed && styles.chartNavButtonPressed,
+                  ]}
+                >
+                  <Ionicons name="chevron-forward" size={21} color={theme.textSecondary} />
+                </Pressable>
+              </View>
+
+              {/* ── Legend pills ─────────────────────────────────── */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.legendRow}
+                style={styles.legendScroll}
+              >
+                {ringSlices.filter((s) => s.value > 0).map((slice) => (
+                  <View key={slice.id} style={styles.legendPill}>
+                    <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
+                    <Text style={styles.legendLabel} numberOfLines={1}>{slice.label}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </Animated.View>
         )}
+
+        <Animated.View
+            style={[
+              styles.sectionHeader,
+              {
+                opacity: headerAnim,
+                transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+              },
+            ]}
+          >
+            <Text style={styles.sectionTitle}>Todas las categorías</Text>
+          </Animated.View>
+
+          {budgetCategories.length === 0 ? (
+            <Animated.View style={[styles.emptyState, { opacity: headerAnim }]}>
+              <Ionicons name="pie-chart-outline" size={34} color={theme.textMuted} />
+              <Text style={styles.emptyTitle}>Sin categorías</Text>
+              <Text style={styles.emptyText}>
+                Crea una categoría para rastrear tu presupuesto mensual por tipo de gasto.
+              </Text>
+            </Animated.View>
+          ) : (
+            <View style={styles.list}>
+              {sortedBudgetCategories.map((category, index) => {
+                const itemAnim = itemAnims[index] ?? headerAnim;
+                const value = chartMode === 'income'
+                  ? calcBudgetCategoryIncome(payload, category.id, selectedYM)
+                  : calcBudgetCategorySpending(payload, category.id, currentUser, selectedYM);
+                const percentOfTotal = totalByMode > 0 ? value / totalByMode : 0;
+                return (
+                  <Animated.View
+                    key={category.id}
+                    style={{
+                      opacity: itemAnim,
+                      transform: [{ translateY: itemAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+                    }}
+                  >
+                    <BudgetCategoryCard
+                      category={category}
+                      spent={value}
+                      currency={currency}
+                      percentOfTotal={percentOfTotal}
+                      onPress={() => setSelectedCategory(category)}
+                    />
+                  </Animated.View>
+                );
+              })}
+            </View>
+          )}
       </ScrollView>
 
       <BudgetCategoryModal
@@ -439,6 +484,27 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontFamily: 'Poppins_600SemiBold',
     fontSize: 16,
+  },
+  chartNavigator: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  chartNavButton: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  chartNavButtonPressed: {
+    backgroundColor: t.softSurface,
+    opacity: 0.8,
   },
 
   // Section header

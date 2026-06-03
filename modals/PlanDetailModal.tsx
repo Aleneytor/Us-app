@@ -5,14 +5,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal as Modal } from '../components/AppModal';
 import { CATEGORIES } from '../constants/categories';
@@ -47,16 +54,18 @@ function makeColors(t: AppTheme) {
     iconBg: t.softSurface,
     actionBg: t.softSurface,
     actionText: t.textSecondary,
+    income: t.income,
     expense: t.expense,
   };
 }
 
 // --- Types -------------------------------------------------------------------
 
-type Tab = 'gastos' | 'saldos';
+type Tab = 'detalles' | 'gastos' | 'saldos';
 
 interface PlanDetailModalProps {
   plan: Plan | null;
+  initialTab?: Tab;
   onClose: () => void;
   onEdit: () => void;
 }
@@ -103,19 +112,18 @@ function getSplitModeLabel(mode: Plan['splitMode']): string {
 
 // --- Main component ----------------------------------------------------------
 
-export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps) {
+export function PlanDetailModal({ plan, initialTab = 'detalles', onClose, onEdit }: PlanDetailModalProps) {
   const insets = useSafeAreaInsets();
   const currency = useAppStore((s) => s.currency);
   const currentUser = useAppStore((s) => s.currentUser);
-  const addPlanCategory = useAppStore((s) => s.addPlanCategory);
-  const deletePlanCategory = useAppStore((s) => s.deletePlanCategory);
   const deletePlanExpense = useAppStore((s) => s.deletePlanExpense);
   const deletePlan = useAppStore((s) => s.deletePlan);
+  const updatePlan = useAppStore((s) => s.updatePlan);
   const theme = useTheme();
   const colors = useMemo(() => makeColors(theme), [theme]);
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [activeTab, setActiveTab] = useState<Tab>('gastos');
+  const [activeTab, setActiveTab] = useState<Tab>('detalles');
   const pillAnim = useRef(new Animated.Value(0)).current;
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
@@ -128,85 +136,45 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
     to: Plan['members'][0];
     amount: number;
   } | null>(null);
+  const [finishChoiceOpen, setFinishChoiceOpen] = useState(false);
 
-  const [showCatForm, setShowCatForm] = useState(false);
-  const [catName, setCatName] = useState('');
-  const [catAmount, setCatAmount] = useState('');
-  const [catIcon, setCatIcon] = useState('map');
-
-  // Collapsible detail section — use refs to avoid stale closures in scroll handler
-  const detailCollapsedRef = useRef(false);
-  const detailHeightAnim = useRef(new Animated.Value(1)).current; // 1=expanded, 0=collapsed
-  const [detailHeight, setDetailHeight] = useState(0);
-  const lastScrollY = useRef(0);
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [tempBudget, setTempBudget] = useState('');
 
   // Segmented control width for pill positioning
   const [segWidth, setSegWidth] = useState(0);
+
+  const tabIndex = (tab: Tab) => tab === 'detalles' ? 0 : tab === 'gastos' ? 1 : 2;
 
   const prevPlanIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (!plan) { prevPlanIdRef.current = null; return; }
     if (plan.id === prevPlanIdRef.current) return;
     prevPlanIdRef.current = plan.id;
-    setActiveTab('gastos');
-    pillAnim.setValue(0);
+    setActiveTab(initialTab);
+    pillAnim.setValue(tabIndex(initialTab));
     setExpenseModalOpen(false);
     setEditingExpense(null);
     setDetailExpense(null);
     setSettlementOpen(false);
     setSettlementEdge(null);
-    setShowCatForm(false);
-    setCatName('');
-    setCatAmount('');
-    setCatIcon('map');
-    detailCollapsedRef.current = false;
-    detailHeightAnim.setValue(1);
-    lastScrollY.current = 0;
+    setFinishChoiceOpen(false);
+    setIsEditingBudget(false);
+    setTempBudget('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan?.id]);
+  }, [plan?.id, initialTab]);
 
   if (!plan) return null;
 
-  const collapseDetail = () => {
-    if (detailCollapsedRef.current) return;
-    detailCollapsedRef.current = true;
-    Animated.timing(detailHeightAnim, {
-      toValue: 0,
-      duration: 220,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const expandDetail = () => {
-    if (!detailCollapsedRef.current) return;
-    detailCollapsedRef.current = false;
-    Animated.timing(detailHeightAnim, {
-      toValue: 1,
-      duration: 260,
-      useNativeDriver: false,
-    }).start();
-  };
-
   const switchTab = (tab: Tab) => {
     setActiveTab(tab);
-    expandDetail();
-    lastScrollY.current = 0;
     Animated.spring(pillAnim, {
-      toValue: tab === 'gastos' ? 0 : 1,
+      toValue: tabIndex(tab),
       useNativeDriver: true,
       damping: 22,
       stiffness: 300,
       mass: 0.7,
     }).start();
-  };
-
-  const handleScroll = (y: number) => {
-    lastScrollY.current = y;
-    if (y > 40) {
-      collapseDetail();
-    } else if (y < 10) {
-      expandDetail();
-    }
   };
 
   // -- Derived data -----------------------------------------------------------
@@ -224,18 +192,18 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
 
   // -- Handlers ---------------------------------------------------------------
 
-  const handleDeletePlan = () => {
-    Alert.alert('Eliminar plan', `¿Eliminar "${plan.title}"? Esta acción no se puede deshacer.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: () => { deletePlan(plan.id); onClose(); } },
-    ]);
+  const handleFinishPlan = () => setFinishChoiceOpen(true);
+
+  const confirmFinishPlan = () => {
+    setFinishChoiceOpen(false);
+    updatePlan({ ...plan, finalizedAt: plan.finalizedAt ?? todayStr() });
+    onClose();
   };
 
-  const handleDeleteCategory = (cat: PlanCategory) => {
-    Alert.alert('Eliminar categoría', `¿Eliminar "${cat.name}" y todos sus pagos?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: () => deletePlanCategory(plan.id, cat.id) },
-    ]);
+  const confirmDeletePlan = () => {
+    setFinishChoiceOpen(false);
+    deletePlan(plan.id);
+    onClose();
   };
 
   const handleExpenseTap = (exp: PlanExpense) => setDetailExpense(exp);
@@ -259,16 +227,29 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
     setExpenseModalOpen(true);
   };
 
-  const saveCategory = () => {
-    const name = catName.trim();
-    const amount = parseAmt(catAmount);
-    if (!name) { Alert.alert('Falta el nombre', 'Dale un nombre a la categoría.'); return; }
-    if (!Number.isFinite(amount) || amount <= 0) { Alert.alert('Monto inválido', 'Escribe un monto mayor a cero.'); return; }
-    addPlanCategory(plan.id, { id: Date.now(), name, icon: catIcon, totalAmount: amount });
-    setCatName('');
-    setCatAmount('');
-    setCatIcon('map');
-    setShowCatForm(false);
+  const handleSaveBudget = () => {
+    const amt = parseAmt(tempBudget);
+    if (tempBudget.trim() === '') {
+      const nextPlan: Plan = {
+        ...plan,
+        budget: undefined,
+      };
+      updatePlan(nextPlan);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setIsEditingBudget(false);
+      return;
+    }
+    if (!Number.isFinite(amt) || amt < 0) {
+      Alert.alert('Monto inválido', 'Por favor ingresa un monto válido.');
+      return;
+    }
+    const nextPlan: Plan = {
+      ...plan,
+      budget: amt === 0 ? undefined : amt,
+    };
+    updatePlan(nextPlan);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsEditingBudget(false);
   };
 
   // -- Balance banner ---------------------------------------------------------
@@ -276,21 +257,30 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
   const netBalance = myBalance?.netBalance ?? 0;
   let bannerIcon: 'happy-outline' | 'arrow-down-circle-outline' | 'arrow-up-circle-outline' = 'happy-outline';
   let bannerText = 'Todo saldado';
-  let bannerColor = '#059669';
   if (netBalance > 0.01) {
     bannerIcon = 'arrow-down-circle-outline';
     bannerText = `Te deben ${fmt(netBalance, currency)}`;
-    bannerColor = '#059669';
   } else if (netBalance < -0.01) {
     bannerIcon = 'arrow-up-circle-outline';
     bannerText = `Debes ${fmt(Math.abs(netBalance), currency)}`;
-    bannerColor = colors.expense;
   }
 
-  // Pill position: 0 = Gastos (left), 1 = Saldos (right)
+  // Pill position: 0 = Detalles (left), 1 = Gastos (center), 2 = Saldos (right)
   const pillTranslateX = segWidth > 0
-    ? pillAnim.interpolate({ inputRange: [0, 1], outputRange: [4, segWidth / 2], extrapolate: 'clamp' })
-    : pillAnim.interpolate({ inputRange: [0, 1], outputRange: [4, 180], extrapolate: 'clamp' });
+    ? pillAnim.interpolate({
+        inputRange: [0, 1, 2],
+        outputRange: [
+          4,
+          4 + (segWidth - 8) / 3,
+          4 + ((segWidth - 8) / 3) * 2,
+        ],
+        extrapolate: 'clamp',
+      })
+    : pillAnim.interpolate({
+        inputRange: [0, 1, 2],
+        outputRange: [4, 120, 240],
+        extrapolate: 'clamp',
+      });
 
   return (
     <>
@@ -313,108 +303,133 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
               </Text>
               <Text style={styles.subtitle}>Plan de gastos</Text>
             </View>
-            <Pressable
-              onPress={() => { onClose(); setTimeout(onEdit, 120); }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              style={({ pressed }) => [styles.headerIconBtn, pressed && styles.pressed]}
-            >
-              <Ionicons name="pencil-outline" size={20} color={colors.secondary} />
-            </Pressable>
           </View>
 
           {/* ── Sticky top ── */}
           <View style={styles.stickyTop}>
+            {/* ── Segmented pill control ── */}
+            <View
+              style={styles.segmentContainer}
+              onLayout={(e) => setSegWidth(e.nativeEvent.layout.width)}
+            >
+              <Animated.View
+                style={[
+                  styles.segmentPill,
+                  segWidth > 0 && {
+                    width: (segWidth - 8) / 3,
+                    transform: [{ translateX: pillTranslateX }],
+                  },
+                ]}
+              />
+              <Pressable
+                style={styles.segmentBtn}
+                onPress={() => switchTab('detalles')}
+              >
+                <Text style={[styles.segmentText, activeTab === 'detalles' && styles.segmentTextActive]}>
+                  Detalles
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.segmentBtn}
+                onPress={() => switchTab('gastos')}
+              >
+                <Text style={[styles.segmentText, activeTab === 'gastos' && styles.segmentTextActive]}>
+                  Gastos
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.segmentBtn}
+                onPress={() => switchTab('saldos')}
+              >
+                <Text style={[styles.segmentText, activeTab === 'saldos' && styles.segmentTextActive]}>
+                  Saldos
+                </Text>
+              </Pressable>
+            </View>
+          </View>
 
-            {/* ── Hero: Mis gastos + Total del plan ── */}
-            <View style={styles.heroCard}>
-              <View style={styles.heroCell}>
-                <Text style={styles.heroLabel}>Mis gastos</Text>
-                <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                  {fmt(myPaid, currency)}
-                </Text>
-              </View>
-              <View style={styles.heroDivider} />
-              <View style={styles.heroCell}>
-                <Text style={styles.heroLabel}>Total del plan</Text>
-                <Text style={[styles.heroValue, styles.heroValueAccent]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                  {fmt(totalSpent, currency)}
-                </Text>
-              </View>
-              {totalBudget > 0 && (
-                <View style={styles.heroProgressRow}>
-                  <View style={styles.heroProgressTrack}>
-                    <View
-                      style={[
-                        styles.heroProgressFill,
-                        { width: `${totalPct}%` as `${number}%` },
-                        totalPct >= 100 && styles.heroProgressOver,
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.heroProgressLabel}>
-                    {totalPct}% del presupuesto ({fmt(totalBudget, currency)})
+          {/* ── Tab content ── */}
+          {activeTab === 'detalles' && (
+            <ScrollView
+              style={styles.tabScroll}
+              contentContainerStyle={styles.tabContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* ── Hero: Mis gastos + Total del plan ── */}
+              <View style={styles.heroCard}>
+                <View style={styles.heroCell}>
+                  <Text style={styles.heroLabel}>Mis gastos</Text>
+                  <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                    {fmt(myPaid, currency)}
                   </Text>
                 </View>
-              )}
-            </View>
-
-            {/* ── Collapsible detail list ── */}
-            <Animated.View
-              style={[
-                styles.detailAnimWrapper,
-                detailHeight > 0 && {
-                  height: detailHeightAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, detailHeight],
-                    extrapolate: 'clamp',
-                  }),
-                },
-              ]}
-            >
-              <View
-                onLayout={(e) => {
-                  const h = e.nativeEvent.layout.height;
-                  if (h > 0 && detailHeight === 0) setDetailHeight(h);
-                }}
-              >
-                <View style={styles.detailList}>
-                  {/* Members row */}
-                  <View style={styles.detailRow}>
-                    <View style={styles.detailLeading}>
-                      <View style={styles.detailIconCircle}>
-                        <Ionicons name="people-outline" size={17} color={colors.text} />
-                      </View>
+                <View style={styles.heroDivider} />
+                <View style={styles.heroCell}>
+                  <Text style={styles.heroLabel}>Total del plan</Text>
+                  <Text style={[styles.heroValue, styles.heroValueAccent]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                    {fmt(totalSpent, currency)}
+                  </Text>
+                </View>
+                {totalBudget > 0 && (
+                  <View style={styles.heroProgressRow}>
+                    <View style={styles.heroProgressTrack}>
+                      <View
+                        style={[
+                          styles.heroProgressFill,
+                          { width: `${totalPct}%` as `${number}%` },
+                          totalPct >= 100 && styles.heroProgressOver,
+                        ]}
+                      />
                     </View>
-                    <View style={styles.detailCopy}>
-                      <Text style={styles.detailLabel}>Participantes</Text>
-                      <View style={styles.memberAvatarRow}>
-                        {plan.members.slice(0, 5).map((m, i) => (
-                          <View
-                            key={m.id}
-                            style={[styles.miniAvatar, { backgroundColor: m.bg, marginLeft: i === 0 ? 0 : -7, zIndex: 5 - i }]}
-                          >
-                            <Text style={[styles.miniAvatarText, { color: m.color }]}>{m.initials}</Text>
-                          </View>
-                        ))}
-                        {plan.members.length > 5 && (
-                          <View style={[styles.miniAvatar, { backgroundColor: colors.iconBg, marginLeft: -7 }]}>
-                            <Text style={[styles.miniAvatarText, { color: colors.secondary }]}>
-                              +{plan.members.length - 5}
-                            </Text>
-                          </View>
-                        )}
-                        <Text style={styles.memberCountText}>
-                          {plan.members.length} {plan.members.length === 1 ? 'persona' : 'personas'}
-                        </Text>
-                      </View>
-                    </View>
+                    <Text style={styles.heroProgressLabel}>
+                      {totalPct}% del presupuesto ({fmt(totalBudget, currency)})
+                    </Text>
                   </View>
+                )}
+              </View>
 
-                  <View style={styles.separator} />
-
-                  {/* Two-col: fecha + presupuesto / división */}
-                  <View style={styles.twoColRow}>
-                    <View style={[styles.detailRow, { flex: 1 }]}>
+              {/* ── Details list ── */}
+              <View style={styles.detailList}>
+                {/* Presupuesto + Fecha — editing breaks to full-width */}
+                {isEditingBudget ? (
+                  <>
+                    <View style={styles.detailRow}>
+                      <View style={styles.detailLeading}>
+                        <View style={styles.detailIconCircle}>
+                          <Ionicons name="wallet-outline" size={17} color={colors.text} />
+                        </View>
+                      </View>
+                      <View style={styles.detailCopy}>
+                        <Text style={styles.detailLabel}>Presupuesto</Text>
+                        <TextInput
+                          value={tempBudget}
+                          onChangeText={setTempBudget}
+                          placeholder="0"
+                          placeholderTextColor={theme.textMuted}
+                          keyboardType="decimal-pad"
+                          style={styles.budgetFullInput}
+                          autoFocus
+                          onSubmitEditing={() => runAfterKeyboardDismiss(handleSaveBudget)}
+                        />
+                      </View>
+                      <Pressable
+                        onPress={() => runAfterKeyboardDismiss(handleSaveBudget)}
+                        style={({ pressed }) => [styles.budgetActionBtn, pressed && styles.pressed]}
+                      >
+                          <Ionicons name="checkmark" size={16} color={colors.income} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          setIsEditingBudget(false);
+                        }}
+                        style={({ pressed }) => [styles.budgetActionBtn, pressed && styles.pressed]}
+                      >
+                        <Ionicons name="close" size={16} color={colors.secondary} />
+                      </Pressable>
+                    </View>
+                    <View style={styles.separator} />
+                    <View style={styles.detailRow}>
                       <View style={styles.detailLeading}>
                         <View style={styles.detailIconCircle}>
                           <Ionicons name="calendar-outline" size={17} color={colors.text} />
@@ -425,103 +440,109 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
                         <Text style={styles.detailValue}>{formatDateShort(plan.date)}</Text>
                       </View>
                     </View>
-                    <View style={styles.colDivider} />
-                    <View style={[styles.detailRow, { flex: 1 }]}>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.detailRow}>
                       <View style={styles.detailLeading}>
                         <View style={styles.detailIconCircle}>
-                          <Ionicons
-                            name={totalBudget > 0 ? 'wallet-outline' : 'git-branch-outline'}
-                            size={17}
-                            color={colors.text}
-                          />
+                          <Ionicons name="wallet-outline" size={17} color={colors.text} />
                         </View>
                       </View>
                       <View style={styles.detailCopy}>
-                        <Text style={styles.detailLabel}>
-                          {totalBudget > 0 ? 'Presupuesto' : 'División'}
-                        </Text>
-                        <Text style={styles.detailValue}>
-                          {totalBudget > 0 ? fmt(totalBudget, currency) : getSplitModeLabel(plan.splitMode)}
-                        </Text>
+                        <Text style={styles.detailLabel}>Presupuesto</Text>
+                        {totalBudget > 0 ? (
+                          <View style={styles.budgetValRow}>
+                            <Text style={styles.detailValue} numberOfLines={1} adjustsFontSizeToFit>{fmt(totalBudget, currency)}</Text>
+                            <Pressable
+                              onPress={() => {
+                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                setTempBudget(String(totalBudget));
+                                setIsEditingBudget(true);
+                              }}
+                              hitSlop={8}
+                              style={({ pressed }) => [styles.budgetEditBtn, pressed && styles.pressed]}
+                            >
+                              <Ionicons name="pencil-outline" size={12} color={colors.secondary} />
+                            </Pressable>
+                          </View>
+                        ) : (
+                          <Pressable
+                            onPress={() => {
+                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                              setTempBudget('');
+                              setIsEditingBudget(true);
+                            }}
+                            style={({ pressed }) => [styles.budgetAddBtn, pressed && styles.pressed]}
+                          >
+                            <Text style={styles.budgetAddBtnText}>Agregar</Text>
+                          </Pressable>
+                        )}
                       </View>
                     </View>
-                  </View>
-
-                  {plan.description ? (
-                    <>
-                      <View style={styles.separator} />
-                      <View style={styles.detailRow}>
-                        <View style={styles.detailLeading}>
-                          <View style={styles.detailIconCircle}>
-                            <Ionicons name="document-text-outline" size={17} color={colors.text} />
-                          </View>
-                        </View>
-                        <View style={styles.detailCopy}>
-                          <Text style={styles.detailLabel}>Descripción</Text>
-                          <Text style={styles.detailValue} numberOfLines={2}>{plan.description}</Text>
+                    <View style={styles.separator} />
+                    <View style={styles.detailRow}>
+                      <View style={styles.detailLeading}>
+                        <View style={styles.detailIconCircle}>
+                          <Ionicons name="calendar-outline" size={17} color={colors.text} />
                         </View>
                       </View>
-                    </>
-                  ) : null}
-                </View>
-                {/* paddingBottom absorbed into measured height so the gap collapses too */}
-                <View style={{ height: 14 }} />
+                      <View style={styles.detailCopy}>
+                        <Text style={styles.detailLabel}>Fecha</Text>
+                        <Text style={styles.detailValue}>{formatDateShort(plan.date)}</Text>
+                      </View>
+                    </View>
+                  </>
+                )}
+
               </View>
-            </Animated.View>
 
-            {/* ── Segmented pill control ── */}
-            <View
-              style={styles.segmentContainer}
-              onLayout={(e) => setSegWidth(e.nativeEvent.layout.width)}
-            >
-              <Animated.View
-                style={[
-                  styles.segmentPill,
-                  segWidth > 0 && {
-                    width: segWidth / 2 - 8,
-                    transform: [{ translateX: pillTranslateX }],
-                  },
-                ]}
-              />
-              <Pressable
-                style={styles.segmentBtn}
-                onPress={() => switchTab('gastos')}
-              >
-                <Ionicons
-                  name="receipt-outline"
-                  size={14}
-                  color={activeTab === 'gastos' ? ACCENT : colors.muted}
-                />
-                <Text style={[styles.segmentText, activeTab === 'gastos' && styles.segmentTextActive]}>
-                  Gastos
-                </Text>
-              </Pressable>
-              <Pressable
-                style={styles.segmentBtn}
-                onPress={() => switchTab('saldos')}
-              >
-                <Ionicons
-                  name="swap-horizontal-outline"
-                  size={14}
-                  color={activeTab === 'saldos' ? ACCENT : colors.muted}
-                />
-                <Text style={[styles.segmentText, activeTab === 'saldos' && styles.segmentTextActive]}>
-                  Saldos
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+              {/* Full list of participants */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Participantes</Text>
+                <View style={styles.memberGrid}>
+                  {plan.members.map((m) => (
+                    <View key={m.id} style={styles.memberChip}>
+                      <View style={[styles.memberChipAvatar, { backgroundColor: m.bg }]}>
+                        <Text style={[styles.memberChipInitials, { color: m.color }]}>{m.initials}</Text>
+                      </View>
+                      <Text style={styles.memberChipName} numberOfLines={1}>
+                        {m.id === currentUser ? `${m.name} (Yo)` : m.name}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          )}
 
-          {/* ── Tab content ── */}
-          {activeTab === 'gastos' ? (
+          {activeTab === 'gastos' && (
             <ScrollView
               style={styles.tabScroll}
               contentContainerStyle={styles.tabContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              scrollEventThrottle={16}
-              onScroll={(e) => handleScroll(e.nativeEvent.contentOffset.y)}
             >
+              {totalBudget > 0 && (
+                <View style={styles.gastosBudgetCard}>
+                  <View style={styles.gastosBudgetHeader}>
+                    <Text style={styles.gastosBudgetLabel}>Presupuesto Usado</Text>
+                    <Text style={styles.gastosBudgetValue}>
+                      {fmt(totalSpent, currency)} / {fmt(totalBudget, currency)} ({totalPct}%)
+                    </Text>
+                  </View>
+                  <View style={styles.heroProgressTrack}>
+                    <View
+                      style={[
+                        styles.heroProgressFill,
+                        { width: `${totalPct}%` as `${number}%` },
+                        totalPct >= 100 && styles.heroProgressOver,
+                      ]}
+                    />
+                  </View>
+                </View>
+              )}
+
               {/* Expense list */}
               {plan.expenses.length === 0 ? (
                 <View style={styles.emptyState}>
@@ -571,120 +592,19 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
                   </View>
                 ))
               )}
-
-              {/* Category budgets */}
-              {plan.categories.length > 0 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Presupuesto por categoría</Text>
-                  {plan.categories.map((cat) => {
-                    const catSpent = plan.expenses
-                      .filter((e) => e.categoryId === cat.id)
-                      .reduce((s, e) => s + e.amount, 0);
-                    const catPct = cat.totalAmount > 0
-                      ? Math.min(100, Math.round((catSpent / cat.totalAmount) * 100))
-                      : 0;
-                    const catIconInfo = CATEGORIES[cat.icon] ?? CATEGORIES.map;
-                    const over = catSpent > cat.totalAmount;
-                    return (
-                      <View key={cat.id} style={styles.catCard}>
-                        <View style={styles.catRow}>
-                          <View style={[styles.catIconWrap, { backgroundColor: ACCENT_BG }]}>
-                            <Ionicons name={catIconInfo.icon} size={16} color={ACCENT} />
-                          </View>
-                          <Text style={styles.catName}>{cat.name}</Text>
-                          <Text style={[styles.catPct, over && styles.catPctOver]}>{catPct}%</Text>
-                          <Pressable
-                            onPress={() => handleDeleteCategory(cat)}
-                            hitSlop={8}
-                            style={({ pressed }) => [pressed && styles.pressed]}
-                          >
-                            <Ionicons name="trash-outline" size={14} color={colors.muted} />
-                          </Pressable>
-                        </View>
-                        <View style={styles.catTrack}>
-                          <View
-                            style={[
-                              styles.catFill,
-                              { width: `${catPct}%` as `${number}%` },
-                              over && styles.catFillOver,
-                            ]}
-                          />
-                        </View>
-                        <Text style={styles.catAmounts}>
-                          {fmt(catSpent, currency)} de {fmt(cat.totalAmount, currency)}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* Add category */}
-              <View style={styles.section}>
-                <View style={styles.sectionRow}>
-                  <Text style={styles.sectionTitle}>Categorías</Text>
-                  <Pressable
-                    onPress={() => setShowCatForm((v) => !v)}
-                    style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
-                  >
-                    <Ionicons name={showCatForm ? 'chevron-up' : 'add'} size={15} color={ACCENT} />
-                    <Text style={styles.addBtnText}>{showCatForm ? 'Cancelar' : 'Nueva categoría'}</Text>
-                  </Pressable>
-                </View>
-                {showCatForm && (
-                  <View style={styles.catForm}>
-                    <InlineField label="Nombre" value={catName} onChangeText={setCatName} placeholder="Ej. Vuelos" autoFocus />
-                    <InlineField
-                      label="Presupuesto"
-                      value={catAmount}
-                      onChangeText={setCatAmount}
-                      placeholder="0"
-                      keyboardType="decimal-pad"
-                    />
-                    <View style={styles.inlineField}>
-                      <Text style={styles.inlineLabel}>Ícono</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconRow}>
-                        {QUICK_ICONS.map((key) => {
-                          const info = CATEGORIES[key];
-                          const active = catIcon === key;
-                          return (
-                            <Pressable
-                              key={key}
-                              onPress={() => setCatIcon(key)}
-                              style={[styles.quickIcon, active && styles.quickIconActive]}
-                            >
-                              <Ionicons name={info.icon} size={17} color={active ? ACCENT : colors.secondary} />
-                            </Pressable>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                    <Pressable
-                      onPress={() => runAfterKeyboardDismiss(saveCategory)}
-                      style={({ pressed }) => [styles.saveCatBtn, pressed && styles.pressed]}
-                    >
-                      <Text style={styles.saveCatBtnText}>Guardar categoría</Text>
-                    </Pressable>
-                  </View>
-                )}
-                {plan.categories.length === 0 && !showCatForm && (
-                  <Text style={styles.emptyHint}>Crea categorías para presupuestar el plan.</Text>
-                )}
-              </View>
             </ScrollView>
-          ) : (
-            /* ── Tab Saldos ── */
+          )}
+
+          {activeTab === 'saldos' && (
             <ScrollView
               style={styles.tabScroll}
               contentContainerStyle={styles.tabContent}
               showsVerticalScrollIndicator={false}
-              scrollEventThrottle={16}
-              onScroll={(e) => handleScroll(e.nativeEvent.contentOffset.y)}
             >
               {/* Banner */}
-              <View style={[styles.banner, { borderColor: bannerColor + '33', backgroundColor: bannerColor + '12' }]}>
-                <Ionicons name={bannerIcon} size={22} color={bannerColor} />
-                <Text style={[styles.bannerText, { color: bannerColor }]}>{bannerText}</Text>
+              <View style={styles.banner}>
+                <Ionicons name={bannerIcon} size={22} color={colors.secondary} />
+                <Text style={styles.bannerText}>{bannerText}</Text>
               </View>
 
               {/* Saldos por miembro */}
@@ -722,13 +642,6 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
                       <View key={i}>
                         {i > 0 && <View style={styles.separator} />}
                         <View style={styles.debtRow}>
-                          <View style={[styles.debtAvatar, { backgroundColor: edge.from.bg }]}>
-                            <Text style={[styles.debtInitials, { color: edge.from.color }]}>{edge.from.initials}</Text>
-                          </View>
-                          <Ionicons name="arrow-forward" size={13} color={colors.muted} />
-                          <View style={[styles.debtAvatar, { backgroundColor: edge.to.bg }]}>
-                            <Text style={[styles.debtInitials, { color: edge.to.color }]}>{edge.to.initials}</Text>
-                          </View>
                           <Text style={styles.debtNames}>{edge.from.name} → {edge.to.name}</Text>
                           <Text style={styles.debtAmt}>{fmt(edge.amount, currency)}</Text>
                           <Pressable
@@ -746,39 +659,22 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
 
               {debtEdges.length === 0 && plan.expenses.length > 0 && (
                 <View style={styles.settledCard}>
-                  <Ionicons name="checkmark-circle" size={26} color="#059669" />
+                  <Ionicons name="checkmark-circle" size={26} color={colors.income} />
                   <Text style={styles.settledText}>¡Todo saldado!</Text>
                 </View>
               )}
-
-              {/* Participantes */}
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Participantes</Text>
-                <View style={styles.memberGrid}>
-                  {plan.members.map((m) => (
-                    <View key={m.id} style={styles.memberChip}>
-                      <View style={[styles.memberChipAvatar, { backgroundColor: m.bg }]}>
-                        <Text style={[styles.memberChipInitials, { color: m.color }]}>{m.initials}</Text>
-                      </View>
-                      <Text style={styles.memberChipName} numberOfLines={1}>
-                        {m.id === currentUser ? `${m.name} (Yo)` : m.name}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
             </ScrollView>
           )}
 
           {/* ── Footer ── */}
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <Pressable
-              onPress={openAddExpense}
-              style={({ pressed }) => [styles.actionButton, styles.accentActionButton, pressed && styles.pressed]}
+              onPress={handleFinishPlan}
+              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
             >
-              <Ionicons name="add" size={20} color={ACCENT} />
-              <Text style={[styles.actionText, styles.accentActionText]} numberOfLines={1} adjustsFontSizeToFit>
-                Añadir
+              <Ionicons name="flag-outline" size={20} color={colors.actionText} />
+              <Text style={styles.actionText} numberOfLines={1} adjustsFontSizeToFit>
+                Finalizar
               </Text>
             </Pressable>
             <Pressable
@@ -789,56 +685,123 @@ export function PlanDetailModal({ plan, onClose, onEdit }: PlanDetailModalProps)
               <Text style={styles.actionText} numberOfLines={1} adjustsFontSizeToFit>Editar</Text>
             </Pressable>
             <Pressable
-              onPress={handleDeletePlan}
-              style={({ pressed }) => [styles.actionButton, styles.deleteButton, pressed && styles.pressed]}
+              onPress={openAddExpense}
+              style={({ pressed }) => [styles.actionButton, styles.accentActionButton, pressed && styles.pressed]}
             >
-              <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.expense} />
-              <Text style={[styles.actionText, styles.deleteText]} numberOfLines={1} adjustsFontSizeToFit>
-                Eliminar
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={[styles.actionText, styles.accentActionText]} numberOfLines={1} adjustsFontSizeToFit>
+                Añadir
               </Text>
             </Pressable>
           </View>
+
+          {/* Sub-modales anidados para evitar problemas de superposición en iOS/Android */}
+          <Modal
+            visible={finishChoiceOpen}
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={() => setFinishChoiceOpen(false)}
+          >
+            <View style={styles.finishOverlay}>
+              <Pressable
+                accessibilityLabel="Cerrar opciones del plan"
+                onPress={() => setFinishChoiceOpen(false)}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.finishCard}>
+                <Pressable
+                  accessibilityLabel="Cerrar opciones del plan"
+                  onPress={() => setFinishChoiceOpen(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={({ pressed }) => [styles.finishCloseBtn, pressed && styles.pressed]}
+                >
+                  <Ionicons name="close" size={20} color={colors.secondary} />
+                </Pressable>
+                <View style={styles.finishHero}>
+                  <View style={styles.finishHeroCopy}>
+                    <Text style={styles.finishTitle}>¿Qué quieres hacer con este plan?</Text>
+                    <Text style={styles.finishSubtitle} numberOfLines={1}>{plan.title}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.finishIntro}>
+                  Finalízalo para guardar su historial, o elimínalo para borrarlo.
+                </Text>
+
+                <Pressable
+                  onPress={confirmFinishPlan}
+                  style={({ pressed }) => [styles.finishOption, styles.finishOptionPrimary, pressed && styles.pressed]}
+                >
+                  <View style={[styles.finishOptionIcon, styles.finishOptionIconPrimary]}>
+                    <Ionicons name="flag-outline" size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.finishOptionCopy}>
+                    <Text style={styles.finishOptionTitle}>Finalizarlo</Text>
+                    <Text style={styles.finishOptionText}>
+                      Lo mueve a Planes Finalizados y mantiene gastos, saldos y pagos.
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  onPress={confirmDeletePlan}
+                  style={({ pressed }) => [styles.finishOption, styles.finishOptionDanger, pressed && styles.pressed]}
+                >
+                  <View style={[styles.finishOptionIcon, styles.finishOptionIconDanger]}>
+                    <MaterialCommunityIcons name="trash-can-outline" size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.finishOptionCopy}>
+                    <Text style={styles.finishOptionTitle}>Eliminar el Plan</Text>
+                    <Text style={styles.finishOptionText}>
+                      Borra el plan completo. Sus gastos y registros dejarán de aparecer.
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Settlement modal */}
+          <PlanSettlementModal
+            visible={settlementOpen}
+            plan={plan}
+            fromMember={settlementEdge?.from}
+            toMember={settlementEdge?.to}
+            suggestedAmount={settlementEdge?.amount}
+            onClose={() => { setSettlementOpen(false); setSettlementEdge(null); }}
+          />
+
+          {/* Expense add/edit modal */}
+          <PlanExpenseModal
+            visible={expenseModalOpen}
+            plan={plan}
+            expense={editingExpense}
+            onClose={() => { setExpenseModalOpen(false); setEditingExpense(null); }}
+          />
+
+          {/* Expense detail sheet */}
+          <ExpenseDetailSheet
+            expense={detailExpense}
+            plan={plan}
+            currency={currency}
+            currentUser={currentUser}
+            onClose={() => setDetailExpense(null)}
+            onEdit={(exp) => {
+              setDetailExpense(null);
+              setEditingExpense(exp);
+              setExpenseModalOpen(true);
+            }}
+            onDelete={(exp) => {
+              setDetailExpense(null);
+              Alert.alert('Eliminar gasto', `¿Eliminar "${exp.title}"?`, [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: () => deletePlanExpense(plan.id, exp.id) },
+              ]);
+            }}
+          />
         </View>
       </Modal>
-
-      {/* Settlement modal */}
-      <PlanSettlementModal
-        visible={settlementOpen}
-        plan={plan}
-        fromMember={settlementEdge?.from}
-        toMember={settlementEdge?.to}
-        suggestedAmount={settlementEdge?.amount}
-        onClose={() => { setSettlementOpen(false); setSettlementEdge(null); }}
-      />
-
-      {/* Expense add/edit modal */}
-      <PlanExpenseModal
-        visible={expenseModalOpen}
-        plan={plan}
-        expense={editingExpense}
-        onClose={() => { setExpenseModalOpen(false); setEditingExpense(null); }}
-      />
-
-      {/* Expense detail sheet */}
-      <ExpenseDetailSheet
-        expense={detailExpense}
-        plan={plan}
-        currency={currency}
-        currentUser={currentUser}
-        onClose={() => setDetailExpense(null)}
-        onEdit={(exp) => {
-          setDetailExpense(null);
-          setEditingExpense(exp);
-          setExpenseModalOpen(true);
-        }}
-        onDelete={(exp) => {
-          setDetailExpense(null);
-          Alert.alert('Eliminar gasto', `¿Eliminar "${exp.title}"?`, [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Eliminar', style: 'destructive', onPress: () => deletePlanExpense(plan.id, exp.id) },
-          ]);
-        }}
-      />
     </>
   );
 }
@@ -869,8 +832,6 @@ function ExpenseDetailSheet({
 
   if (!expense) return null;
 
-  const cat = plan.categories.find((c) => c.id === expense.categoryId);
-  const catInfo = cat ? (CATEGORIES[cat.icon] ?? CATEGORIES.map) : null;
   const splitModeLabel =
     expense.splitMode === 'equal'
       ? 'Partes iguales'
@@ -941,12 +902,6 @@ function ExpenseDetailSheet({
                     </Text>
                   </View>
                 )}
-                {cat && catInfo && (
-                  <View style={[sheet.badge, sheet.accentBadge]}>
-                    <Ionicons name={catInfo.icon} size={13} color={ACCENT} />
-                    <Text style={[sheet.badgeText, { color: ACCENT }]}>{cat.name.toUpperCase()}</Text>
-                  </View>
-                )}
                 <View style={[sheet.badge, sheet.neutralBadge]}>
                   <Ionicons name="git-branch-outline" size={13} color={colors.secondary} />
                   <Text style={[sheet.badgeText, { color: colors.secondary }]}>
@@ -1001,7 +956,7 @@ function ExpenseDetailSheet({
 
             {/* Metadata detail list */}
             <View style={sheet.detailList}>
-              {/* Fecha + Categoría */}
+              {/* Fecha + forma de pago */}
               <View style={sheet.twoColRow}>
                 <View style={[sheet.detailRow, { flex: 1 }]}>
                   <View style={sheet.detailLeading}>
@@ -1018,16 +973,12 @@ function ExpenseDetailSheet({
                 <View style={[sheet.detailRow, { flex: 1 }]}>
                   <View style={sheet.detailLeading}>
                     <View style={sheet.detailIconCircle}>
-                      <Ionicons
-                        name={catInfo ? catInfo.icon : 'grid-outline'}
-                        size={17}
-                        color={colors.text}
-                      />
+                      <Ionicons name="git-branch-outline" size={17} color={colors.text} />
                     </View>
                   </View>
                   <View style={sheet.detailCopy}>
-                    <Text style={sheet.detailLabel}>Categoría</Text>
-                    <Text style={sheet.detailValue}>{cat ? cat.name : 'Sin categoría'}</Text>
+                    <Text style={sheet.detailLabel}>Forma de pago</Text>
+                    <Text style={sheet.detailValue}>{splitModeLabel}</Text>
                   </View>
                 </View>
               </View>
@@ -1135,19 +1086,10 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   subtitle: {
     color: colors.secondary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 17,
     marginTop: 1,
   },
-  headerIconBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.iconBg,
-    borderRadius: 10,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-
   // -- Sticky top --
   stickyTop: {
     backgroundColor: colors.background,
@@ -1186,7 +1128,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   heroLabel: {
     color: colors.muted,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
@@ -1259,7 +1201,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   detailLabel: {
     color: colors.secondary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 16,
   },
   detailValue: {
@@ -1280,33 +1222,6 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     backgroundColor: colors.cardBorder,
     width: 1,
   },
-  memberAvatarRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 2,
-  },
-  miniAvatar: {
-    alignItems: 'center',
-    borderColor: colors.card,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    height: 22,
-    justifyContent: 'center',
-    width: 22,
-  },
-  miniAvatarText: {
-    fontSize: 7,
-    fontWeight: '800',
-  },
-  memberCountText: {
-    color: colors.secondary,
-    fontSize: 13,
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-
   // -- Segmented pill control --
   segmentContainer: {
     backgroundColor: colors.card,
@@ -1317,12 +1232,10 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     position: 'relative',
   },
   segmentPill: {
-    backgroundColor: ACCENT_BG,
-    borderColor: ACCENT,
+    backgroundColor: ACCENT,
     borderRadius: 10,
-    borderWidth: 1,
     bottom: 4,
-    left: 4,
+    left: 0,
     position: 'absolute',
     top: 4,
   },
@@ -1336,10 +1249,10 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   segmentText: {
     color: colors.muted,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   segmentTextActive: {
-    color: ACCENT,
+    color: '#FFFFFF',
   },
 
   // -- Tab content --
@@ -1361,7 +1274,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   emptyTitle: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   emptyText: {
     color: colors.secondary,
@@ -1379,7 +1292,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   dateLabel: {
     color: colors.muted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'capitalize',
   },
   expenseCard: {
@@ -1412,7 +1325,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   expenseTitle: {
     color: colors.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   expensePaidBy: {
     color: colors.muted,
@@ -1421,12 +1334,12 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
   expensePaidByName: {
     color: colors.secondary,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   expenseAmt: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '600',
   },
 
   // -- Category budget cards --
@@ -1441,7 +1354,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   sectionTitle: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   addBtn: {
     alignItems: 'center',
@@ -1451,7 +1364,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   addBtnText: {
     color: ACCENT,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   catCard: {
     backgroundColor: colors.card,
@@ -1475,12 +1388,12 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     color: colors.text,
     flex: 1,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   catPct: {
     color: ACCENT,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   catPctOver: {
     color: colors.expense,
@@ -1516,7 +1429,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   inlineLabel: {
     color: colors.secondary,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'uppercase',
   },
   inlineInput: {
@@ -1552,21 +1465,26 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   saveCatBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 
   // -- Tab Saldos --
   banner: {
     alignItems: 'center',
-    borderRadius: 14,
+    backgroundColor: colors.actionBg,
+    borderColor: colors.cardBorder,
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 10,
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
   },
   bannerText: {
+    color: colors.text,
+    flex: 1,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '500',
   },
   balanceRow: {
     alignItems: 'center',
@@ -1584,7 +1502,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
   balanceInitials: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   balanceName: {
     flex: 1,
@@ -1593,7 +1511,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   balanceNameText: {
     color: colors.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   balancePaid: {
     color: colors.muted,
@@ -1602,9 +1520,9 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
   balanceNet: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '600',
   },
-  balancePos: { color: '#059669' },
+  balancePos: { color: colors.income },
   balanceNeg: { color: colors.expense },
 
   debtRow: {
@@ -1613,17 +1531,6 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  debtAvatar: {
-    alignItems: 'center',
-    borderRadius: 12,
-    height: 26,
-    justifyContent: 'center',
-    width: 26,
-  },
-  debtInitials: {
-    fontSize: 9,
-    fontWeight: '800',
   },
   debtNames: {
     color: colors.text,
@@ -1634,12 +1541,12 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   debtAmt: {
     color: colors.expense,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   settledCard: {
     alignItems: 'center',
-    backgroundColor: 'rgba(5, 150, 105, 0.1)',
-    borderColor: 'rgba(5, 150, 105, 0.3)',
+    backgroundColor: colors.income + '1A',
+    borderColor: colors.income + '4D',
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: 'row',
@@ -1648,9 +1555,9 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     padding: 16,
   },
   settledText: {
-    color: '#059669',
+    color: colors.income,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   memberGrid: {
     flexDirection: 'row',
@@ -1675,7 +1582,7 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
   memberChipInitials: {
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   memberChipName: {
     color: colors.secondary,
@@ -1686,17 +1593,17 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
 
   // -- Saldar button --
   saldarBtn: {
-    backgroundColor: ACCENT_BG,
-    borderColor: ACCENT,
-    borderRadius: 8,
+    backgroundColor: colors.actionBg,
+    borderColor: colors.cardBorder,
+    borderRadius: 10,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   saldarBtnText: {
-    color: ACCENT,
-    fontSize: 12,
-    fontWeight: '800',
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   // -- Footer --
@@ -1729,11 +1636,12 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
     fontWeight: '400',
   },
   accentActionButton: {
-    backgroundColor: ACCENT_BG,
+    backgroundColor: ACCENT,
     borderColor: ACCENT,
   },
   accentActionText: {
-    color: ACCENT,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   deleteButton: {
     backgroundColor: 'rgba(255, 89, 104, 0.12)',
@@ -1741,6 +1649,183 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
   deleteText: {
     color: colors.expense,
+  },
+
+  // -- Finish choice modal --
+  finishOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  finishCard: {
+    backgroundColor: colors.card,
+    borderColor: colors.cardBorder,
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 14,
+    maxWidth: 420,
+    padding: 20,
+    paddingTop: 22,
+    position: 'relative',
+    width: '100%',
+  },
+  finishCloseBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.actionBg,
+    borderColor: colors.cardBorder,
+    borderRadius: 15,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    width: 30,
+    zIndex: 2,
+  },
+  finishHero: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingRight: 42,
+  },
+  finishHeroCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  finishTitle: {
+    color: colors.text,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 17,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  finishSubtitle: {
+    color: colors.secondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  finishIntro: {
+    color: colors.secondary,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 20,
+    marginTop: 2,
+  },
+  finishOption: {
+    alignItems: 'center',
+    backgroundColor: colors.actionBg,
+    borderColor: colors.cardBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 78,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  finishOptionPrimary: {
+    borderColor: colors.cardBorder,
+  },
+  finishOptionDanger: {
+    borderColor: colors.cardBorder,
+  },
+  finishOptionIcon: {
+    alignItems: 'center',
+    borderRadius: 15,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  finishOptionIconPrimary: {
+    backgroundColor: colors.income,
+  },
+  finishOptionIconDanger: {
+    backgroundColor: colors.expense,
+  },
+  finishOptionCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  finishOptionTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  finishOptionText: {
+    color: colors.secondary,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  budgetFullInput: {
+    color: colors.text,
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 26,
+    lineHeight: 32,
+    paddingTop: 4,
+  },
+  budgetActionBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.iconBg,
+    borderRadius: 6,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  budgetValRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  budgetEditBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.iconBg,
+    borderRadius: 6,
+    height: 22,
+    justifyContent: 'center',
+    width: 22,
+  },
+  budgetAddBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.actionBg,
+    borderColor: colors.cardBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  budgetAddBtnText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  gastosBudgetCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    gap: 10,
+    padding: 16,
+    width: '100%',
+    marginBottom: 4,
+  },
+  gastosBudgetHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  gastosBudgetLabel: {
+    color: colors.secondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  gastosBudgetValue: {
+    color: ACCENT,
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   pressed: { opacity: 0.65 },
@@ -1802,7 +1887,7 @@ const makeSheet = (colors: ReturnType<typeof makeColors>) => StyleSheet.create({
   subtitle: {
     color: colors.secondary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 17,
     marginTop: 1,
   },
@@ -1862,7 +1947,7 @@ const makeSheet = (colors: ReturnType<typeof makeColors>) => StyleSheet.create({
   },
   payerDotText: {
     fontSize: 7,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   accentBadge: {
     backgroundColor: ACCENT_BG,
@@ -1872,7 +1957,7 @@ const makeSheet = (colors: ReturnType<typeof makeColors>) => StyleSheet.create({
   },
   badgeText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     letterSpacing: 0.3,
   },
 
@@ -1908,7 +1993,7 @@ const makeSheet = (colors: ReturnType<typeof makeColors>) => StyleSheet.create({
   detailLabel: {
     color: colors.secondary,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 16,
   },
   detailValue: {
@@ -1947,7 +2032,7 @@ const makeSheet = (colors: ReturnType<typeof makeColors>) => StyleSheet.create({
   },
   splitInitials: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   splitName: {
     color: colors.text,
@@ -1964,12 +2049,12 @@ const makeSheet = (colors: ReturnType<typeof makeColors>) => StyleSheet.create({
   splitLabelText: {
     color: ACCENT,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   splitAmt: {
     color: ACCENT,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 
   // Footer

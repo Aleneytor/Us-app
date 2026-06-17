@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ComponentProps } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
 import { AppModal as Modal } from '../components/AppModal';
 import { ColorPicker } from '../components/ColorPicker';
 import { IconPicker } from '../components/IconPicker';
@@ -23,6 +27,69 @@ import type { BudgetCategory } from '../types';
 import { parseAmt } from '../utils/format';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll';
+
+const SWEEP_ACCENT = '#7C3AED';
+const SWEEP_STROKE_WIDTH = 2;
+const SWEEP_CYCLE_MS = 4000;
+const SWEEP_TRAVEL_MS = 1500;
+
+const AnimatedSweepRect = Animated.createAnimatedComponent(Rect);
+
+function BorderSweep({ width, height }: { width: number; height: number }) {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: SWEEP_TRAVEL_MS,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.delay(SWEEP_CYCLE_MS - SWEEP_TRAVEL_MS),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [progress]);
+
+  const rectWidth = width - SWEEP_STROKE_WIDTH;
+  const rectHeight = height - SWEEP_STROKE_WIDTH;
+  if (rectWidth <= 0 || rectHeight <= 0) return null;
+
+  const perimeter = 2 * (rectWidth - rectHeight) + Math.PI * rectHeight;
+  const dashLength = Math.max(30, perimeter * 0.22);
+  const dashOffset = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -perimeter],
+  });
+  const opacity = progress.interpolate({
+    inputRange: [0, 0.08, 0.9, 1],
+    outputRange: [0, 1, 1, 0],
+  });
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width={width} height={height}>
+        <AnimatedSweepRect
+          x={SWEEP_STROKE_WIDTH / 2}
+          y={SWEEP_STROKE_WIDTH / 2}
+          width={rectWidth}
+          height={rectHeight}
+          rx={rectHeight / 2}
+          fill="none"
+          stroke={SWEEP_ACCENT}
+          strokeWidth={SWEEP_STROKE_WIDTH}
+          strokeLinecap="round"
+          strokeDasharray={[dashLength, perimeter - dashLength]}
+          strokeDashoffset={dashOffset}
+          opacity={opacity}
+        />
+      </Svg>
+    </View>
+  );
+}
 
 interface BudgetCategoryModalProps {
   visible: boolean;
@@ -47,6 +114,7 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved, hideB
   const [personal, setPersonal] = useState(false);
   const [notes, setNotes] = useState('');
   const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
+  const [customBtnSize, setCustomBtnSize] = useState({ width: 0, height: 0 });
   const notesScroll = useKeyboardAwareScroll();
 
   const editing = !!category;
@@ -226,10 +294,17 @@ export function BudgetCategoryModal({ visible, category, onClose, onSaved, hideB
                     dismissKeyboardAndBlur();
                     startCustomCategory();
                   }}
+                  onLayout={(e) => {
+                    const { width, height } = e.nativeEvent.layout;
+                    setCustomBtnSize({ width, height });
+                  }}
                   style={({ pressed }) => [styles.customCategoryButton, pressed && styles.pressed]}
                 >
-                  <Ionicons name="add" size={17} color={theme.textSecondary} />
-                  <Text style={styles.customCategoryText}>Crear Categoria</Text>
+                  {customBtnSize.width > 0 && (
+                    <BorderSweep width={customBtnSize.width} height={customBtnSize.height} />
+                  )}
+                  <Ionicons name="add" size={19} color={SWEEP_ACCENT} />
+                  <Text style={styles.customCategoryText}>Crear Categoría</Text>
                 </Pressable>
               </View>
             </View>
@@ -325,19 +400,37 @@ function PresetButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.presetButton,
-        active && { borderColor: color.color },
+        active && {
+          backgroundColor: color.color,
+          borderColor: color.color,
+          shadowColor: color.color,
+          shadowOpacity: 0.35,
+          shadowOffset: { width: 0, height: 4 },
+          shadowRadius: 8,
+          elevation: 6,
+        },
         pressed && styles.pressed,
       ]}
     >
-      <View style={[styles.presetIcon, { backgroundColor: color.color }]}>
+      {active && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0)']}
+          locations={[0, 0.34, 1]}
+          start={{ x: 0, y: 1 }}
+          end={{ x: 0.72, y: 0.12 }}
+          style={[StyleSheet.absoluteFillObject, { borderRadius: 12 }]}
+        />
+      )}
+      <View style={[styles.presetIcon, { backgroundColor: active ? 'rgba(255,255,255,0.22)' : color.color }]}>
         <Ionicons name={category.icon} size={20} color="#FFFFFF" />
       </View>
-      <Text style={styles.presetText} numberOfLines={1}>{name}</Text>
-      {active ? (
-        <View style={[styles.presetCheck, { backgroundColor: color.color }]}>
+      <Text style={[styles.presetText, active && { color: '#FFFFFF' }]} numberOfLines={1}>{name}</Text>
+      {active && (
+        <View style={styles.presetCheck}>
           <Ionicons name="checkmark" size={12} color="#FFFFFF" />
         </View>
-      ) : null}
+      )}
     </Pressable>
   );
 }
@@ -354,9 +447,10 @@ function LabeledInput({
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        multiline={!!multiline}
+        numberOfLines={multiline ? undefined : 1}
         placeholderTextColor={theme.textMuted}
         style={[styles.input, multiline && styles.textarea]}
-        multiline={multiline}
         {...props}
       />
     </View>
@@ -444,18 +538,21 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   customCategoryButton: {
     alignItems: 'center',
-    backgroundColor: t.border,
-    borderRadius: 12,
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 999,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
+    height: 46,
     justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: 12,
+    overflow: 'hidden',
+    position: 'relative',
   },
   customCategoryText: {
     color: t.textSecondary,
+    fontFamily: 'Poppins_600SemiBold',
     fontSize: 14,
-    fontWeight: '700',
   },
   field: {
     gap: 7,
@@ -473,6 +570,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
+    lineHeight: 20,
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -503,6 +601,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   presetCheck: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.30)',
     borderRadius: 9,
     height: 18,
     justifyContent: 'center',
@@ -561,6 +660,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontWeight: '400',
   },
   textarea: {
+    lineHeight: 20,
     minHeight: 86,
     textAlignVertical: 'top',
   },

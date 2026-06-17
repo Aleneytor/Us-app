@@ -27,6 +27,20 @@ import { initialize, foregroundRefresh, useAppStore } from '../store/useAppStore
 import { requestNotificationPermissions } from '../services/notifications';
 import { ThemeProvider, useTheme } from '../contexts/ThemeContext';
 import { StatusBar } from 'expo-status-bar';
+import { ClerkProvider, useAuth, useUser } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
+import ClerkAuthScreen from '../components/ClerkAuthScreen';
+import { ActivityIndicator } from 'react-native';
+
+const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+if (!CLERK_PUBLISHABLE_KEY) {
+  throw new Error(
+    'Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in environment variables'
+  );
+}
+
+
 
 function AppNavigator() {
   const theme = useTheme();
@@ -57,7 +71,7 @@ function AppNavigator() {
       <StatusBar style={theme.mode === 'light' ? 'dark' : 'light'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="perfil" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="onboarding" options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="onboarding/index" options={{ animation: 'slide_from_bottom' }} />
       </Stack>
     </NavigationThemeProvider>
   );
@@ -104,9 +118,17 @@ function ResponsiveWebShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  const user = users[currentUser] ?? { name: currentUser, initials: '?', color: '#6B7280', bg: '#F3F4F6' };
+  const rawUser = users[currentUser] ?? { name: currentUser, initials: '?', color: '#6B7280', bg: '#F3F4F6' };
+  const user = {
+    ...rawUser,
+    name: rawUser.name ? rawUser.name.trim().split(/\s+/)[0] : rawUser.name,
+  };
   const partnerId = useAppStore.getState().partnerForUser[currentUser];
-  const partner = partnerId && partnerId !== currentUser ? users[partnerId] : null;
+  const rawPartner = partnerId && partnerId !== currentUser ? users[partnerId] : null;
+  const partner = rawPartner ? {
+    ...rawPartner,
+    name: rawPartner.name ? rawPartner.name.trim().split(/\s+/)[0] : rawPartner.name,
+  } : null;
 
   const syncInfo = {
     live: { label: 'Conexión activa', color: '#16A34A', icon: 'checkmark-circle' as const },
@@ -263,6 +285,78 @@ function ResponsiveWebShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+
+function RootLayoutContent() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const storeCurrentUser = useAppStore((s) => s.currentUser);
+  const storeUsers = useAppStore((s) => s.users);
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  const addUser = useAppStore((s) => s.addUser);
+
+  useEffect(() => {
+    if (user) {
+      const email = user.primaryEmailAddress?.emailAddress ?? '';
+      const emailUsername = email.split('@')[0] || '';
+      const emailFirstName = emailUsername.split(/[._-]/)[0] || '';
+      const formattedEmailName = emailFirstName 
+        ? emailFirstName.charAt(0).toUpperCase() + emailFirstName.slice(1) 
+        : 'Usuario';
+
+      const rawName = user.firstName || user.fullName || formattedEmailName || 'Usuario';
+      const name = rawName.trim().split(/\s+/)[0];
+      const initials = user.firstName && user.lastName 
+        ? (user.firstName[0] + user.lastName[0]).toUpperCase() 
+        : name.slice(0, 2).toUpperCase();
+
+      const existingUser = storeUsers[user.id];
+      const needsUpdate = !existingUser || existingUser.name !== name || existingUser.initials !== initials;
+
+      if (needsUpdate) {
+        const state = useAppStore.getState();
+        const roomId = state.roomForUser[user.id] || `${user.id}-main`;
+        const partnerId = state.partnerForUser[user.id] || user.id;
+        void addUser({
+          uid: user.id,
+          data: {
+            name,
+            initials,
+            color: existingUser?.color || '#7C3AED',
+            bg: existingUser?.bg || '#EDE9FE',
+            photo: user.imageUrl ? { uri: user.imageUrl } : existingUser?.photo,
+          },
+          roomId,
+          partnerId,
+        }).then(() => {
+          if (storeCurrentUser !== user.id) {
+            void setCurrentUser(user.id);
+          }
+        });
+      } else if (storeCurrentUser !== user.id) {
+        void setCurrentUser(user.id);
+      }
+    }
+  }, [user, storeCurrentUser, storeUsers, setCurrentUser, addUser]);
+
+  if (!isLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a0a' }}>
+        <ActivityIndicator size="large" color="#7C3AED" />
+      </View>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <ClerkAuthScreen />;
+  }
+
+  return (
+    <ResponsiveWebShell>
+      <AppNavigator />
+    </ResponsiveWebShell>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -290,13 +384,13 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <ResponsiveWebShell>
-          <AppNavigator />
-        </ResponsiveWebShell>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <RootLayoutContent />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </ClerkProvider>
   );
 }
 

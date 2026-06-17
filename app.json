@@ -45,7 +45,11 @@
           "microphonePermission": "Permite que Juntos use el microfono para crear movimientos por voz.",
           "speechRecognitionPermission": "Permite que Juntos use reconocimiento de voz para entender tus acciones."
         }
-      ]
+      ],
+      "expo-secure-store",
+      "@clerk/expo",
+      "expo-web-browser",
+      "expo-font"
     ],
     "web": {
       "bundler": "metro",

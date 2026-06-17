@@ -8,13 +8,14 @@ import { currentYM, todayStr } from '../utils/format';
 import { normalizeAppPayload } from '../utils/payload';
 import { cancelTransactionReminders, scheduleTransactionReminder } from '../services/notifications';
 import { USERS, ROOM_FOR_USER, PARTNER } from '../types';
-import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, BudgetCategory, UserData, Plan, PlanCategory, PlanExpense, PlanSettlement } from '../types';
+import type { AppPayload, Transaction, SavingPlan, Goal, Contribution, UserId, CurrencyCode, CountryCode, BudgetCategory, UserData, Plan, PlanCategory, PlanExpense, PlanSettlement } from '../types';
 import { buildSeedPayload } from '../utils/seedData';
 import type { ThemeMode } from '../constants/colors';
 
 const STORAGE_USER_KEY     = 'nosotros_user';
 const STORAGE_PAYLOAD_KEY  = 'nosotros_payload';
 const STORAGE_CURRENCY_KEY = 'nosotros_currency';
+const STORAGE_COUNTRY_KEY  = 'nosotros_country';
 const STORAGE_USERS_KEY    = 'nosotros_users';
 const STORAGE_ROOMS_KEY    = 'nosotros_rooms';
 const STORAGE_PARTNERS_KEY = 'nosotros_partners';
@@ -31,6 +32,7 @@ interface AppState {
   currentUser: UserId;
   selectedYM: string;
   currency: CurrencyCode;
+  country: CountryCode;
   themeMode: ThemeMode;
   isConnected: boolean;
   syncStatus: 'live' | 'connecting' | 'error';
@@ -45,6 +47,7 @@ interface AppActions {
   setCurrentUser: (uid: UserId) => Promise<void>;
   setSelectedYM: (ym: string) => void;
   setCurrency: (c: CurrencyCode) => Promise<void>;
+  setCountry: (c: CountryCode) => Promise<void>;
   setThemeMode: (m: ThemeMode) => Promise<void>;
   _setPayload: (payload: AppPayload) => void;
   _setSyncStatus: (status: AppState['syncStatus']) => void;
@@ -97,6 +100,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   currentUser: 'alan',
   selectedYM: currentYM(),
   currency: 'EUR',
+  country: 'espana',
   themeMode: 'dark',
   isConnected: false,
   syncStatus: 'connecting',
@@ -116,6 +120,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setCurrency: async (c) => {
     await AsyncStorage.setItem(STORAGE_CURRENCY_KEY, c);
     set({ currency: c });
+  },
+  setCountry: async (country) => {
+    await AsyncStorage.setItem(STORAGE_COUNTRY_KEY, country);
+    set({ country });
   },
   setThemeMode: async (m) => {
     await AsyncStorage.setItem(STORAGE_THEME_KEY, m);
@@ -772,9 +780,10 @@ async function _connectToRoom(uid: UserId): Promise<void> {
 // ─── Public init — call once from app/_layout.tsx ────────────────────────────
 
 export async function initialize(): Promise<void> {
-  const [savedUser, savedCurrency, savedTheme, savedUsersStr, savedRoomsStr, savedPartnersStr, savedDeletedStr] = await Promise.all([
+  const [savedUser, savedCurrency, savedCountry, savedTheme, savedUsersStr, savedRoomsStr, savedPartnersStr, savedDeletedStr] = await Promise.all([
     AsyncStorage.getItem(STORAGE_USER_KEY),
     AsyncStorage.getItem(STORAGE_CURRENCY_KEY),
+    AsyncStorage.getItem(STORAGE_COUNTRY_KEY),
     AsyncStorage.getItem(STORAGE_THEME_KEY),
     AsyncStorage.getItem(STORAGE_USERS_KEY),
     AsyncStorage.getItem(STORAGE_ROOMS_KEY),
@@ -784,6 +793,7 @@ export async function initialize(): Promise<void> {
 
   const deletedUserIds: string[] = savedDeletedStr ? JSON.parse(savedDeletedStr) as string[] : [];
   const currency = (savedCurrency as CurrencyCode | null) ?? 'EUR';
+  const country = (savedCountry as CountryCode | null) ?? 'espana';
   const themeMode: ThemeMode = (savedTheme === 'light' || savedTheme === 'dark') ? savedTheme : 'dark';
 
   // Merge static defaults with any dynamically added users, then strip deleted ones
@@ -810,7 +820,7 @@ export async function initialize(): Promise<void> {
     : (Object.keys(users)[0] ?? 'demo_a');
 
   await AsyncStorage.removeItem(STORAGE_PAYLOAD_KEY);
-  useAppStore.setState({ currentUser: uid, selectedYM: currentYM(), currency, themeMode, users, roomForUser, partnerForUser, deletedUserIds });
+  useAppStore.setState({ currentUser: uid, selectedYM: currentYM(), currency, country, themeMode, users, roomForUser, partnerForUser, deletedUserIds });
 
   // Warm up the image cache for all user photos at startup so filter button
   // avatars are immediately ready when the user opens the movements screen.

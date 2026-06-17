@@ -221,7 +221,6 @@ export function SavingPlanModal({ visible, plan, onClose }: SavingPlanModalProps
                 value={title}
                 onChangeText={setTitle}
                 placeholder={saveType === 'free' ? 'Ej. Mis ahorros' : 'Ej. Viaje a Roma'}
-                autoFocus
               />
 
               {/* Monto objetivo — solo para goal */}
@@ -388,9 +387,10 @@ function LabeledInput({
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        multiline={!!multiline}
+        numberOfLines={multiline ? undefined : 1}
         placeholderTextColor={theme.textMuted}
         style={[styles.input, multiline && styles.textarea]}
-        multiline={multiline}
         {...props}
       />
     </View>
@@ -508,12 +508,14 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
+    lineHeight: 20,
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
     textAlignVertical: 'center',
   },
   textarea: {
+    lineHeight: 20,
     minHeight: 86,
     textAlignVertical: 'top',
   },

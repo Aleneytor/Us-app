@@ -1,36 +1,39 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   Animated,
   Alert,
   Easing,
   FlatList,
   Image,
+  Modal as NativeModal,
+  PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  type StyleProp,
   Text,
-  type TextStyle,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { AppModal as Modal } from '../../components/AppModal';
 import { TransactionDetailModal } from '../../components/TransactionDetailModal';
 import { ActivityTile } from '../../components/ActivityTile';
-import { SearchBar } from '../../components/SearchBar';
+import { GoalDetailModal } from '../../components/GoalDetailModal';
 import { TransactionModal } from '../../modals/TransactionModal';
 import { PlanDetailModal } from '../../modals/PlanDetailModal';
 import { PlanModal } from '../../modals/PlanModal';
-import { UserHeaderButton } from '../../components/UserHeaderButton';
-import { type AppTheme } from '../../constants/colors';
+import { SavingPlanDetailModal } from '../../modals/SavingPlanDetailModal';
+import { CATEGORIES } from '../../constants/categories';
+import { getIconColor, type AppTheme } from '../../constants/colors';
 import { SURFACE_SHADOW } from '../../constants/shadows';
-import type { CurrencyCode, Plan, Transaction, UserData } from '../../types';
+import { SECTION_TITLE_FONT_FAMILY } from '../../constants/typography';
+import type { CurrencyCode, Goal, Plan, SavingPlan, Transaction, UserData } from '../../types';
 import { getTransactionAmountForMonth } from '../../utils/filters';
 import { MONTHS_ES, fmt, splitAmount } from '../../utils/format';
-import { MonthNavigator } from '../../components/MonthNavigator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { refreshCurrentRoom, useAppStore } from '../../store/useAppStore';
 import { useEntranceAnimation } from '../../hooks/useEntranceAnimation';
@@ -41,17 +44,66 @@ import { buildActivityFeed } from '../../utils/activityFeed';
 import type { ActivityItem } from '../../utils/activityFeed';
 import { reportFabScroll } from '../../utils/fabScroll';
 import { useTheme } from '../../contexts/ThemeContext';
+import { SvgXml } from 'react-native-svg';
 
 const HERO_THRESHOLD = 170;
 
-type HeroPalette = { base: string; soft: string; bright: string; glow: string; deep: string; shade: string; veil: string };
+const HOME_TOP_GRADIENT = ['#9933FF', '#A44BFF', '#B86EFF', '#D5ADFF', '#F2F2F7'] as const;
+const INCOME_ACCENT = '#00D158';
+const EXPENSE_ACCENT = '#FF0B4F';
+const BALANCE_ACCENT = '#7C3AED';
+const OJITO_ABIERTO_XML = `<svg width="38" height="24" viewBox="0 0 38 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.54492 14.0665C8.34492 -2.62765 28.7449 -2.62765 35.5449 14.0665" stroke="black" stroke-width="3.09091" stroke-linecap="round" stroke-linejoin="round"/><path d="M16.3751 21.9367C17.0626 22.2513 17.7995 22.4132 18.5436 22.4132C20.0465 22.4132 21.4879 21.7536 22.5506 20.5796C23.6133 19.4056 24.2103 17.8132 24.2103 16.1529C24.2103 14.4926 23.6133 12.9002 22.5506 11.7262C21.4879 10.5521 20.0465 9.89258 18.5436 9.89258C17.7995 9.89258 17.0626 10.0545 16.3751 10.3691C15.6876 10.6837 15.0629 11.1449 14.5367 11.7262C14.0105 12.3075 13.5931 12.9976 13.3083 13.7572C13.0235 14.5167 12.877 15.3308 12.877 16.1529C12.877 16.975 13.0235 17.7891 13.3083 18.5486C13.5931 19.3082 14.0105 19.9983 14.5367 20.5796C15.0629 21.1609 15.6876 21.6221 16.3751 21.9367Z" stroke="black" stroke-width="3.09091" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const OJITO_CERRADO_XML = `<svg width="38" height="16" viewBox="0 0 38 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.54492 14.0665C8.34492 -2.62765 28.7449 -2.62765 35.5449 14.0665" stroke="black" stroke-width="3.09091" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-const PURPLE_BASE_PALETTE: HeroPalette = {
-  base: '#5B21B6', soft: '#8B5CF6', bright: '#A78BFA', glow: '#C4B5FD', deep: '#3B0764', shade: '#4C1D95', veil: '#7C3AED',
-};
-const PURPLE_SHIFT_PALETTE: HeroPalette = {
-  base: '#4C1D95', soft: '#7C3AED', bright: '#9061F9', glow: '#B89AF8', deep: '#2E0070', shade: '#3D1882', veil: '#6D28D9',
-};
+function getGreeting(date: Date): string {
+  const hour = date.getHours();
+  if (hour < 12) return 'Buenos dias';
+  if (hour < 20) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
+function getDateLabel(date: Date): string {
+  const formatted = new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
+function shiftYM(ym: string, delta: number): string {
+  const year = Number(ym.slice(0, 4));
+  const month = Number(ym.slice(5, 7));
+  const next = new Date(year, month - 1 + delta, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function sumActivityTotals(items: ActivityItem[], ym: string) {
+  const expenses = items
+    .filter((item) => item.kind === 'expense')
+    .reduce((sum, item) => {
+      if (item.source === 'transaction') {
+        return sum + getTransactionAmountForMonth(item.transaction, ym);
+      }
+      if (item.source === 'plan_expense') {
+        return sum + item.amount;
+      }
+      if (item.source === 'plan_settlement' && item.kind === 'expense') {
+        return sum + item.amount;
+      }
+      return sum;
+    }, 0);
+  const income = items
+    .filter((item) => item.kind === 'income')
+    .reduce((sum, item) => (
+      sum + (item.source === 'transaction'
+        ? getTransactionAmountForMonth(item.transaction, ym)
+        : item.source === 'plan_settlement' && item.kind === 'income'
+          ? item.amount
+          : 0)
+    ), 0);
+  return { expenses, income, balance: income - expenses };
+}
 
 type KindFilter = 'all' | 'expense' | 'income';
 type OwnerFilter = 'mine' | 'partner' | 'both';
@@ -60,32 +112,9 @@ type FrequencyFilter = 'all' | 'monthly' | 'biweekly' | 'weekly' | 'once';
 interface Option<T extends string> {
   label: string;
   value: T;
+  icon?: ComponentProps<typeof Ionicons>['name'];
+  color?: string;
 }
-
-type SingleDropdownInfo = {
-  type: 'single';
-  x: number;
-  y: number;
-  width: number;
-  options: Array<Option<string>>;
-  value: string;
-  onChange: (v: string) => void;
-};
-
-type CategoryDropdownInfo = {
-  type: 'category';
-  x: number;
-  y: number;
-  direction: 'up' | 'down';
-  width: number;
-  maxHeight: number;
-  options: Array<Option<string>>;
-  selectedValues: string[];
-  onToggle: (v: string) => void;
-  onClear: () => void;
-};
-
-type DropdownInfo = SingleDropdownInfo | CategoryDropdownInfo;
 
 export default function MovimientosScreen() {
   const tabPadding = useTabPadding();
@@ -99,64 +128,67 @@ export default function MovimientosScreen() {
   const partnerForUser = useAppStore((s) => s.partnerForUser);
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const gradientColors = useMemo(() => {
+    return ['#9933FF', '#A44BFF', '#B86EFF', '#D5ADFF', theme.background] as const;
+  }, [theme.background]);
+  const router = useRouter();
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('mine');
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [frequencyFilter, setFrequencyFilter] = useState<FrequencyFilter>('all');
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const filtersAnim = useRef(new Animated.Value(0)).current;
-  const [searchText, setSearchText] = useState('');
+  const [reportHidden, setReportHidden] = useState({ income: false, expense: false, balance: false });
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [selectedPlanInitialTab, setSelectedPlanInitialTab] = useState<'detalles' | 'gastos' | 'saldos'>('detalles');
+  const [selectedSaving, setSelectedSaving] = useState<SavingPlan | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
   const [editPlan, setEditPlan] = useState<Plan | null>(null);
-  const [dropdown, setDropdown] = useState<DropdownInfo | null>(null);
+  const [activeModal, setActiveModal] = useState<'autor_cat' | 'tipo_frec' | null>(null);
   const [monthPickerY, setMonthPickerY] = useState<number | null>(null);
   const [showFloating, setShowFloating] = useState(false);
   const listRef = useRef<FlatList<ActivityItem>>(null);
   const scrolledPastHeroRef = useRef(false);
-  const isSearchingRef = useRef(false);
   const user = getUserData(users, currentUser);
   const partner = getPartnerId(partnerForUser, currentUser);
-  const partnerUser = users[partner];
-  const monthName = MONTHS_ES[Number(selectedYM.slice(5, 7)) - 1].toLowerCase();
+  const partnerUser = getUserData(users, partner);
+  const insets = useSafeAreaInsets();
+  const now = new Date();
+  const headerTopPadding = Math.max(insets.top + 18, 52);
 
-  const isSearching = searchText.trim().length > 0;
-
-  const headerAnim = useRef(new Animated.Value(1)).current;
   const { heroAnim, contentAnim } = useEntranceAnimation({
+    animateOnFocus: false,
     scrollRef: listRef,
     onResetScroll: () => {
       reportFabScroll(0);
       scrolledPastHeroRef.current = false;
-      setShowFloating(isSearchingRef.current);
+      setShowFloating(false);
     },
   });
 
   const categoryOptions = useMemo<Array<Option<string>>>(() => {
-    const visibleCategories = new Map(
-      (payload.budgetCategories ?? [])
-        .filter((category) => category.uid === undefined || category.uid === currentUser)
-        .map((category) => [String(category.id), category.name]),
-    );
-    const ids = Array.from(
-      new Set(
-        payload.expenses
-          .filter((t) => !t.del && t.budgetCatId !== undefined && visibleCategories.has(String(t.budgetCatId)))
-          .map((t) => String(t.budgetCatId)),
-      ),
-    );
-
-    return ids
-      .map((id) => ({
-        value: id,
-        label: visibleCategories.get(id) ?? id,
+    const list = (payload.budgetCategories ?? [])
+      .filter((category) => category.uid === undefined || category.uid === currentUser)
+      .map((category) => ({
+        value: String(category.id),
+        label: category.name,
+        icon: CATEGORIES[category.icon ?? 'other']?.icon ?? CATEGORIES.other.icon,
+        color: getIconColor(category.iconColor).color,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [currentUser, payload.budgetCategories, payload.expenses]);
+
+    // Append "Sin categoría" option
+    list.push({
+      value: 'null',
+      label: 'Sin categoría',
+      icon: 'help-circle-outline',
+      color: theme.textMuted,
+    });
+
+    return list;
+  }, [currentUser, payload.budgetCategories, theme.textMuted]);
 
   useEffect(() => {
     const validCategoryValues = new Set(categoryOptions.map((option) => option.value));
@@ -174,33 +206,6 @@ export default function MovimientosScreen() {
     ));
   };
 
-  useEffect(() => {
-    Animated.timing(headerAnim, {
-      toValue: isSearching ? 0 : 1,
-      duration: isSearching ? 210 : 350,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [headerAnim, isSearching]);
-
-  useEffect(() => {
-    isSearchingRef.current = isSearching;
-    setShowFloating(isSearching || scrolledPastHeroRef.current);
-  }, [isSearching]);
-
-  const toggleFilters = () => {
-    const next = !filtersOpen;
-    setFiltersOpen(next);
-    void Haptics.selectionAsync();
-    Animated.spring(filtersAnim, {
-      toValue: next ? 1 : 0,
-      useNativeDriver: false,
-      damping: 18,
-      stiffness: 280,
-      mass: 0.75,
-    }).start();
-  };
-
   const activeFilterCount = [
     kindFilter !== 'all',
     ownerFilter !== 'mine',
@@ -209,11 +214,9 @@ export default function MovimientosScreen() {
   ].filter(Boolean).length;
 
   const filtered = useMemo<ActivityItem[]>(() => {
-    const query = searchText.trim().toLowerCase();
     const activities = buildActivityFeed(payload, {
       currentUser,
       selectedYM,
-      includeAllMonths: query !== '',
     });
 
     return activities
@@ -225,48 +228,32 @@ export default function MovimientosScreen() {
         const categoryMatches = categoryFilter.length === 0 ||
           (
             item.source === 'transaction' &&
-            item.transaction.budgetCatId !== undefined &&
-            categoryFilter.includes(String(item.transaction.budgetCatId))
+            (
+              (item.transaction.budgetCatId !== undefined && item.transaction.budgetCatId !== null && categoryFilter.includes(String(item.transaction.budgetCatId))) ||
+              ((item.transaction.budgetCatId === undefined || item.transaction.budgetCatId === null) && categoryFilter.includes('null'))
+            )
           );
         const kindMatches = kindFilter === 'all' || item.kind === kindFilter;
         const frequencyMatches = frequencyFilter === 'all' ||
           (item.source === 'transaction' && item.transaction.type === frequencyFilter);
-        const searchMatches = query === '' || item.searchText.includes(query);
 
-        return ownerMatches && categoryMatches && kindMatches && frequencyMatches && searchMatches;
+        return ownerMatches && categoryMatches && kindMatches && frequencyMatches;
       })
       .sort((a, b) => {
         const byDate = b.date.localeCompare(a.date);
         return byDate !== 0 ? byDate : b.sortId - a.sortId;
       });
-  }, [categoryFilter, currentUser, frequencyFilter, kindFilter, ownerFilter, partner, payload, searchText, selectedYM]);
+  }, [categoryFilter, currentUser, frequencyFilter, kindFilter, ownerFilter, partner, payload, selectedYM]);
 
-  const totals = useMemo(() => {
-    const expenses = filtered
-      .filter((item) => item.kind === 'expense')
-      .reduce((sum, item) => {
-        if (item.source === 'transaction') {
-          return sum + getTransactionAmountForMonth(item.transaction, selectedYM);
-        }
-        if (item.source === 'plan_expense') {
-          return sum + item.amount;
-        }
-        if (item.source === 'plan_settlement' && item.kind === 'expense') {
-          return sum + item.amount;
-        }
-        return sum;
-      }, 0);
-    const income = filtered
-      .filter((item) => item.kind === 'income')
-      .reduce((sum, item) => (
-        sum + (item.source === 'transaction'
-          ? getTransactionAmountForMonth(item.transaction, selectedYM)
-          : item.source === 'plan_settlement' && item.kind === 'income'
-            ? item.amount
-            : 0)
-      ), 0);
-    return { expenses, income, balance: income - expenses };
-  }, [filtered, selectedYM]);
+  const totals = useMemo(() => sumActivityTotals(filtered, selectedYM), [filtered, selectedYM]);
+
+  // Totales del mes sin filtrar: alimentan la tarjeta "Reporte del mes" y
+  // nunca cambian al aplicar filtros sobre la lista de movimientos.
+  const monthTotals = useMemo(() => {
+    const activities = buildActivityFeed(payload, { currentUser, selectedYM })
+      .filter((item) => item.ownerId === currentUser);
+    return sumActivityTotals(activities, selectedYM);
+  }, [currentUser, payload, selectedYM]);
 
   const listAnimationKey = useMemo(
     () => [
@@ -275,10 +262,9 @@ export default function MovimientosScreen() {
       ownerFilter,
       frequencyFilter,
       categoryFilter.join(','),
-      searchText.trim().toLowerCase(),
       filtered.map((t) => t.id).join(','),
     ].join('|'),
-    [categoryFilter, filtered, frequencyFilter, kindFilter, ownerFilter, searchText, selectedYM],
+    [categoryFilter, filtered, frequencyFilter, kindFilter, ownerFilter, selectedYM],
   );
 
   const handleRefresh = async () => {
@@ -293,7 +279,7 @@ export default function MovimientosScreen() {
     const past = y > HERO_THRESHOLD;
     if (past !== scrolledPastHeroRef.current) {
       scrolledPastHeroRef.current = past;
-      setShowFloating(past || isSearchingRef.current);
+      setShowFloating(past);
     }
   };
 
@@ -332,6 +318,35 @@ export default function MovimientosScreen() {
     );
   };
 
+  const openActivityDetails = (item: ActivityItem) => {
+    if (item.source === 'transaction') {
+      setSelectedTransaction(item.transaction);
+      return;
+    }
+    if (item.source === 'saving_created' || item.source === 'saving_contribution') {
+      setSelectedSaving(payload.savings.find((saving) => saving.id === item.savingId) ?? null);
+      return;
+    }
+    if (item.source === 'goal_created' || item.source === 'goal_contribution') {
+      setSelectedGoal(payload.goals.find((goal) => goal.id === item.goalId) ?? null);
+      return;
+    }
+    if (item.source === 'plan_expense') {
+      setSelectedPlanInitialTab('gastos');
+      setSelectedPlanId(item.planId);
+      return;
+    }
+    if (item.source === 'plan_settlement') {
+      setSelectedPlanInitialTab('saldos');
+      setSelectedPlanId(item.planId);
+      return;
+    }
+    if (item.source === 'plan_created') {
+      setSelectedPlanInitialTab('detalles');
+      setSelectedPlanId(item.planId);
+    }
+  };
+
 
   return (
     <View style={styles.screen}>
@@ -341,8 +356,7 @@ export default function MovimientosScreen() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
         extraData={listAnimationKey}
-        bounces={false}
-        overScrollMode="never"
+        overScrollMode="auto"
         onScroll={handleScroll}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -350,89 +364,106 @@ export default function MovimientosScreen() {
         scrollEventThrottle={60}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         ListHeaderComponent={
-          <>
+          <LinearGradient
+            colors={gradientColors}
+            locations={[0, 0.45, 0.72, 0.92, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+          >
             <Animated.View style={{ opacity: heroAnim, transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }}>
-                <Animated.View
-                  style={{
-                    maxHeight: headerAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 300],
-                    }),
-                    opacity: headerAnim.interpolate({
-                      inputRange: [0, 0.45, 1],
-                      outputRange: [0, 0, 1],
-                    }),
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View style={styles.heroHeader}>
-                  <HeroGradient />
-                  <View style={styles.heroTop}>
-                    <View style={styles.heroTextWrap}>
-                      <Text style={styles.heroGreeting}>¡Hola {user.name}!</Text>
-                      <Text style={styles.heroSubtitle}>
-                        Este son todos tus movimientos{'\n'}
-                        y saldos del <Text style={styles.heroMonth}>Mes de {monthName}</Text>
-                      </Text>
+              <View style={styles.heroHeader}>
+                <View style={[styles.headerRow, { paddingTop: headerTopPadding }]}>
+                  <Pressable
+                    accessibilityLabel="Abrir perfil"
+                    onPress={() => router.push('/perfil')}
+                    style={({ pressed }) => [styles.headerAvatarButton, pressed && styles.pressed]}
+                    hitSlop={8}
+                  >
+                    <View style={[styles.headerAvatar, { backgroundColor: user.bg }]}>
+                      {user.photo ? (
+                        <Image source={user.photo} style={styles.headerAvatarImage} />
+                      ) : (
+                        <Text style={[styles.headerAvatarInitials, { color: user.color }]}>
+                          {user.initials}
+                        </Text>
+                      )}
                     </View>
-                    <UserHeaderButton variant="light" tintColor="#A78BFA" />
+                  </Pressable>
+                  <View style={styles.headerTextWrap}>
+                    <Text style={styles.headerGreeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                      {getGreeting(now)}, {user.name}
+                    </Text>
+                    <Text style={styles.headerDate} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.88}>
+                      {getDateLabel(now)}
+                    </Text>
                   </View>
-
-                  <View>
-                    <HeroSummary
-                      kindFilter={kindFilter}
-                      income={totals.income}
-                      expenses={totals.expenses}
-                      balance={totals.balance}
-                      currency={currency}
-                    />
-                  </View>
+                  <Pressable
+                    accessibilityLabel="Abrir ajustes"
+                    onPress={() => router.push('/perfil')}
+                    style={({ pressed }) => [styles.headerSettingsButton, pressed && styles.pressed]}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="settings-outline" size={25} color="#FFFFFF" />
+                  </Pressable>
                 </View>
-                </Animated.View>
-              </Animated.View>
 
-            <Animated.View style={[styles.controls, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
-              <MonthNavigator ym={selectedYM} onChange={setSelectedYM} onOpen={setMonthPickerY} />
+                <Text style={styles.reportTitle}>Reporte del mes</Text>
 
-              <SearchBar
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Buscar movimiento"
-              />
-              {isSearching && (
-                <Text style={styles.searchAllMonthsHint}>
-                  Buscando en todos los meses
-                </Text>
-              )}
-              <View style={styles.filterSectionHead}>
-                <Text style={styles.filterSectionTitle}>Movimientos</Text>
-                <FiltersToggleButton
-                  open={filtersOpen}
-                  onPress={toggleFilters}
-                  activeCount={activeFilterCount}
+                <MonthPillsNavigator
+                  ym={selectedYM}
+                  onChange={setSelectedYM}
+                  onOpenPicker={setMonthPickerY}
+                />
+
+                <ReportCard
+                  income={monthTotals.income}
+                  expenses={monthTotals.expenses}
+                  balance={monthTotals.balance}
+                  currency={currency}
+                  hidden={reportHidden}
+                  onToggle={(key) => setReportHidden((h) => ({ ...h, [key]: !h[key] }))}
                 />
               </View>
+            </Animated.View>
 
-              <CollapsibleFiltersPanel
-                anim={filtersAnim}
-                categoryFilter={categoryFilter}
-                categoryOptions={categoryOptions}
-                onToggleCategory={toggleCategoryFilter}
-                onClearCategory={() => setCategoryFilter([])}
-                onOpenDropdown={setDropdown}
-                ownerFilter={ownerFilter}
-                onOwnerChange={setOwnerFilter}
+            <Animated.View style={[styles.controls, { opacity: contentAnim, transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
+              <View style={styles.filterSectionHead}>
+                <Text style={styles.filterSectionTitle}>Movimientos</Text>
+              </View>
+
+              <FilterPillBar
                 user={user}
                 partnerUser={partnerUser}
+                ownerFilter={ownerFilter}
+                categoryFilter={categoryFilter}
+                categoryOptions={categoryOptions}
                 kindFilter={kindFilter}
-                onKindChange={setKindFilter}
                 frequencyFilter={frequencyFilter}
-                onFrequencyChange={setFrequencyFilter}
+                onPressAutorCat={() => setActiveModal('autor_cat')}
+                onPressTipoFrec={() => setActiveModal('tipo_frec')}
               />
+              {activeFilterCount > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Limpiar filtros"
+                  onPress={() => {
+                    void Haptics.selectionAsync();
+                    setOwnerFilter('mine');
+                    setKindFilter('all');
+                    setFrequencyFilter('all');
+                    setCategoryFilter([]);
+                  }}
+                  style={({ pressed }) => [styles.clearFiltersInlineButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="refresh-outline" size={15} color={theme.textSecondary} />
+                  <Text style={styles.clearFiltersInlineText}>Limpiar filtros</Text>
+                </Pressable>
+              )}
+
             </Animated.View>
 
             <View style={styles.filterSection} />
-          </>
+          </LinearGradient>
         }
         ListEmptyComponent={
           <AnimatedEmptyState animationKey={listAnimationKey} />
@@ -446,21 +477,7 @@ export default function MovimientosScreen() {
             ym={selectedYM}
             index={index}
             animationKey={listAnimationKey}
-            onPress={() => {
-              if (item.source === 'transaction') setSelectedTransaction(item.transaction);
-              if (item.source === 'plan_expense') {
-                setSelectedPlanInitialTab('gastos');
-                setSelectedPlanId(item.planId);
-              }
-              if (item.source === 'plan_settlement') {
-                setSelectedPlanInitialTab('saldos');
-                setSelectedPlanId(item.planId);
-              }
-              if (item.source === 'plan_created') {
-                setSelectedPlanInitialTab('detalles');
-                setSelectedPlanId(item.planId);
-              }
-            }}
+            onPress={() => openActivityDetails(item)}
             onLongPress={() => {
               if (item.source === 'transaction') showActions(item.transaction);
             }}
@@ -485,6 +502,18 @@ export default function MovimientosScreen() {
         transaction={editTransaction}
         onClose={() => setEditTransaction(null)}
       />
+      <SavingPlanDetailModal
+        plan={selectedSaving}
+        onClose={() => setSelectedSaving(null)}
+        onEdit={() => setSelectedSaving(null)}
+      />
+      <GoalDetailModal
+        goal={selectedGoal}
+        contribs={payload.contribs}
+        currency={currency}
+        users={users}
+        onClose={() => setSelectedGoal(null)}
+      />
       <PlanDetailModal
         plan={(payload.plans ?? []).find((plan) => plan.id === selectedPlanId) ?? null}
         initialTab={selectedPlanInitialTab}
@@ -501,9 +530,28 @@ export default function MovimientosScreen() {
         onClose={() => setEditPlan(null)}
       />
 
-      {dropdown && (
-        <DropdownOverlay info={dropdown} onClose={() => setDropdown(null)} />
-      )}
+      <AutorCatFilterModal
+        visible={activeModal === 'autor_cat'}
+        onClose={() => setActiveModal(null)}
+        ownerFilter={ownerFilter}
+        onOwnerChange={setOwnerFilter}
+        categoryFilter={categoryFilter}
+        onToggleCategory={toggleCategoryFilter}
+        onClearCategory={() => setCategoryFilter([])}
+        categoryOptions={categoryOptions}
+        user={user}
+        partnerUser={partnerUser}
+      />
+
+      <TipoFrecFilterModal
+        visible={activeModal === 'tipo_frec'}
+        onClose={() => setActiveModal(null)}
+        kindFilter={kindFilter}
+        onKindChange={setKindFilter}
+        frequencyFilter={frequencyFilter}
+        onFrequencyChange={setFrequencyFilter}
+      />
+
       {monthPickerY !== null && (
         <MonthPickerDropdown
           anchorY={monthPickerY}
@@ -522,186 +570,6 @@ export default function MovimientosScreen() {
   );
 }
 
-
-function FilterChip<T extends string>({
-  icon,
-  label,
-  options,
-  value,
-  onChange,
-  customIcon,
-  activeColor,
-  onOpenDropdown,
-}: {
-  icon?: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  options: Array<Option<T>>;
-  value: T;
-  onChange: (value: T) => void;
-  customIcon?: (isFiltered: boolean) => React.ReactNode;
-  activeColor?: string;
-  onOpenDropdown?: (info: DropdownInfo) => void;
-}) {
-  const theme = useTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-  const chipRef = useRef<View>(null);
-  const { height: screenHeight } = useWindowDimensions();
-  const activeLabel = options.find((o) => o.value === value)?.label ?? label;
-  const isFiltered = value !== options[0].value;
-  const chipActiveColor = activeColor ?? '#7C3AED';
-
-  const handlePress = () => {
-    void Haptics.selectionAsync();
-    if (onOpenDropdown) {
-      chipRef.current?.measure((_, __, width, height, pageX, pageY) => {
-        const gap = 6;
-        const estimatedDropdownHeight = Math.min(320, options.length * 47);
-        const spaceBelow = screenHeight - (pageY + height);
-        const spaceAbove = pageY;
-        const direction = spaceBelow >= estimatedDropdownHeight + gap || spaceBelow >= spaceAbove
-          ? 'down'
-          : 'up';
-        const dropdownY = direction === 'down'
-          ? pageY + height + gap
-          : Math.max(8, pageY - estimatedDropdownHeight - gap);
-        onOpenDropdown({
-          type: 'single',
-          x: pageX,
-          y: dropdownY,
-          width,
-          options: options as Array<Option<string>>,
-          value,
-          onChange: (v) => onChange(v as T),
-        });
-      });
-      return;
-    }
-    const currentIndex = options.findIndex((o) => o.value === value);
-    onChange(options[(currentIndex + 1) % options.length].value);
-  };
-
-  return (
-    <View
-      ref={chipRef}
-      style={[
-        styles.filterChipWrapper,
-        isFiltered && { backgroundColor: chipActiveColor, borderColor: chipActiveColor }
-      ]}
-    >
-      <Pressable
-        onPress={handlePress}
-        style={({ pressed }) => [
-          styles.filterChip,
-          pressed && styles.pressed
-        ]}
-      >
-        {customIcon ? (
-          customIcon(isFiltered)
-        ) : (
-          icon && <Ionicons name={icon} size={14} color={isFiltered ? '#FFFFFF' : theme.textSecondary} />
-        )}
-        <Text style={[styles.filterChipText, isFiltered && styles.filterChipTextActive]}>
-          {activeLabel}
-        </Text>
-        {onOpenDropdown && (
-          <Ionicons name="chevron-down" size={12} color={isFiltered ? '#FFFFFF' : theme.textMuted} />
-        )}
-      </Pressable>
-    </View>
-  );
-}
-
-function CategoryFilterChip({
-  selectedValues,
-  options,
-  onToggle,
-  onClear,
-  onOpen,
-}: {
-  selectedValues: string[];
-  options: Array<Option<string>>;
-  onToggle: (value: string) => void;
-  onClear: () => void;
-  onOpen: (info: DropdownInfo) => void;
-}) {
-  const chipRef = useRef<View>(null);
-  const theme = useTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-  const { height: screenHeight } = useWindowDimensions();
-  const isFiltered = selectedValues.length > 0;
-  const selectedLabels = selectedValues
-    .map((value) => options.find((option) => option.value === value)?.label)
-    .filter((label): label is string => Boolean(label));
-  const label = selectedValues.length === 0
-    ? 'Todas'
-    : selectedValues.length === 1
-      ? (options.find((o) => o.value === selectedValues[0])?.label ?? 'Categoría')
-      : `${selectedValues.length} categorías`;
-
-  const displayLabel = selectedValues.length === 0
-    ? 'Todas'
-    : selectedValues.length === 1
-      ? (selectedLabels[0] ?? 'Categoria')
-      : selectedLabels.length === selectedValues.length
-        ? selectedLabels.join(', ')
-        : `${selectedValues.length} categorias`;
-
-  const handlePress = () => {
-    void Haptics.selectionAsync();
-    chipRef.current?.measure((_, __, width, height, pageX, pageY) => {
-      const gap = 6;
-      const estimatedDropdownHeight = Math.min(320, (options.length + 1) * 47);
-      const spaceAbove = pageY;
-      const spaceBelow = screenHeight - (pageY + height);
-      const direction = spaceBelow >= estimatedDropdownHeight + gap || spaceBelow >= spaceAbove
-        ? 'down'
-        : 'up';
-      const availableSpace = direction === 'down' ? spaceBelow : spaceAbove;
-      const maxHeight = Math.max(120, Math.min(320, availableSpace - gap - 8));
-      const dropdownHeight = Math.min(estimatedDropdownHeight, maxHeight);
-
-      onOpen({
-        type: 'category',
-        x: pageX,
-        y: direction === 'down'
-          ? pageY + height + gap
-          : Math.max(8, pageY - dropdownHeight - gap),
-        direction,
-        width,
-        maxHeight,
-        options,
-        selectedValues,
-        onToggle,
-        onClear,
-      });
-    });
-  };
-
-  return (
-    <View
-      ref={chipRef}
-      style={[
-        styles.filterChipWrapper,
-        styles.filterChipWrapperCategory,
-        isFiltered && { backgroundColor: '#7C3AED', borderColor: '#7C3AED' }
-      ]}
-    >
-      <Pressable
-        onPress={handlePress}
-        style={({ pressed }) => [
-          styles.filterChip,
-          pressed && styles.pressed
-        ]}
-      >
-        <Ionicons name="pie-chart-outline" size={14} color={isFiltered ? '#FFFFFF' : theme.textSecondary} />
-        <Text style={[styles.filterChipText, isFiltered && styles.filterChipTextActive]} numberOfLines={1}>
-          {displayLabel}
-        </Text>
-        <Ionicons name="chevron-down" size={12} color={isFiltered ? '#FFFFFF' : theme.textMuted} />
-      </Pressable>
-    </View>
-  );
-}
 
 function AutorFilterIcon({
   value,
@@ -768,139 +636,6 @@ function AutorFilterIcon({
         )}
       </View>
     </View>
-  );
-}
-
-function DropdownOverlay({ info, onClose }: { info: DropdownInfo; onClose: () => void }) {
-  const anim = useRef(new Animated.Value(0)).current;
-  const theme = useTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-  const [localSelected, setLocalSelected] = useState(
-    info.type === 'category' ? info.selectedValues : [],
-  );
-
-  useEffect(() => {
-    Animated.spring(anim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 22,
-      stiffness: 320,
-      mass: 0.7,
-    }).start();
-  }, []);
-
-  const animateClose = (then?: () => void) => {
-    Animated.timing(anim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => {
-      then?.();
-      onClose();
-    });
-  };
-
-  const dropdownWidth = info.type === 'category' ? Math.max(info.width, 128) : Math.max(info.width, 120);
-  const openingUp = info.type === 'category' && info.direction === 'up';
-
-  return (
-    <Pressable style={StyleSheet.absoluteFill} onPress={() => animateClose()}>
-      <Animated.View
-        style={[
-          styles.dropdownCard,
-          {
-            left: info.x,
-            top: info.y,
-            width: dropdownWidth,
-            opacity: anim,
-            transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [openingUp ? 6 : -6, 0] }) }],
-          },
-        ]}
-      >
-        <View style={styles.dropdownInner}>
-          {info.type === 'single' ? (
-            info.options.map((opt, i) => {
-              const active = opt.value === info.value;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => {
-                    void Haptics.selectionAsync();
-                    animateClose(() => info.onChange(opt.value));
-                  }}
-                  style={({ pressed }) => [
-                    styles.dropdownOption,
-                    i > 0 && styles.dropdownOptionBorder,
-                    active && styles.dropdownOptionActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[styles.dropdownOptionText, active && styles.dropdownOptionTextActive]}>
-                    {opt.label}
-                  </Text>
-                  {active && <Ionicons name="checkmark" size={15} color="#7C3AED" />}
-                </Pressable>
-              );
-            })
-          ) : (
-            <ScrollView
-              style={[
-                styles.dropdownScroll,
-                { maxHeight: info.maxHeight },
-              ]}
-              showsVerticalScrollIndicator={false}
-            >
-              <Pressable
-                onPress={() => {
-                  void Haptics.selectionAsync();
-                  setLocalSelected([]);
-                  info.onClear();
-                }}
-                style={({ pressed }) => [
-                  styles.dropdownOption,
-                  localSelected.length === 0 && styles.dropdownOptionActive,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dropdownOptionText,
-                    localSelected.length === 0 && styles.dropdownOptionTextActive,
-                  ]}
-                >
-                  Todas
-                </Text>
-                {localSelected.length === 0 && <Ionicons name="checkmark" size={15} color="#7C3AED" />}
-              </Pressable>
-              {info.options.map((opt) => {
-                const active = localSelected.includes(opt.value);
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      void Haptics.selectionAsync();
-                      setLocalSelected((current) => (
-                        current.includes(opt.value)
-                          ? current.filter((item) => item !== opt.value)
-                          : [...current, opt.value]
-                      ));
-                      info.onToggle(opt.value);
-                    }}
-                    style={({ pressed }) => [
-                      styles.dropdownOption,
-                      styles.dropdownOptionBorder,
-                      active && styles.dropdownOptionActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={[styles.dropdownOptionText, active && styles.dropdownOptionTextActive]}>
-                      {opt.label}
-                    </Text>
-                    {active && <Ionicons name="checkmark" size={15} color="#7C3AED" />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-      </Animated.View>
-    </Pressable>
   );
 }
 
@@ -999,194 +734,764 @@ function HistoryActivityItem({
   );
 }
 
-function HeroSummary({
-  kindFilter,
+// ─── MonthPillsNavigator ────────────────────────────────────────────────────
+
+function MonthPillsNavigator({
+  ym,
+  onChange,
+  onOpenPicker,
+}: {
+  ym: string;
+  onChange: (ym: string) => void;
+  onOpenPicker: (anchorY: number) => void;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const pillRef = useRef<View>(null);
+  const monthLabel = `${MONTHS_ES[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+
+  const openPicker = () => {
+    void Haptics.selectionAsync();
+    pillRef.current?.measure((_, __, ___, height, ____, pageY) => {
+      onOpenPicker(pageY + height);
+    });
+  };
+
+  const shift = (delta: number) => {
+    void Haptics.selectionAsync();
+    onChange(shiftYM(ym, delta));
+  };
+
+  return (
+    <View style={styles.monthPillsRow}>
+      <Pressable
+        accessibilityLabel="Mes anterior"
+        onPress={() => shift(-1)}
+        style={({ pressed }) => [styles.monthArrowPill, pressed && styles.pressed]}
+      >
+        <Ionicons name="caret-back" size={16} color="#FFFFFF" />
+      </Pressable>
+      <View ref={pillRef} collapsable={false} style={styles.monthCenterWrap}>
+        <Pressable
+          accessibilityLabel="Elegir mes"
+          onPress={openPicker}
+          style={({ pressed }) => [styles.monthCenterPill, pressed && styles.pressed]}
+        >
+          <Text style={styles.monthCenterText}>{monthLabel}</Text>
+        </Pressable>
+      </View>
+      <Pressable
+        accessibilityLabel="Mes siguiente"
+        onPress={() => shift(1)}
+        style={({ pressed }) => [styles.monthArrowPill, pressed && styles.pressed]}
+      >
+        <Ionicons name="caret-forward" size={16} color="#FFFFFF" />
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── ReportCard ─────────────────────────────────────────────────────────────
+
+type ReportRowKey = 'income' | 'expense' | 'balance';
+
+function ReportCard({
   income,
   expenses,
   balance,
   currency,
+  hidden,
+  onToggle,
 }: {
-  kindFilter: KindFilter;
   income: number;
   expenses: number;
   balance: number;
   currency: CurrencyCode;
+  hidden: Record<ReportRowKey, boolean>;
+  onToggle: (key: ReportRowKey) => void;
 }) {
-  const filterAnim = useRef(new Animated.Value(kindFilter === 'all' ? 0 : 1)).current;
-  const selectedSummary = kindFilter === 'income'
-    ? { label: 'Ingresos', value: income }
-    : { label: 'Gastos', value: expenses };
-
-  useEffect(() => {
-    Animated.timing(filterAnim, {
-      toValue: kindFilter === 'all' ? 0 : 1,
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [filterAnim, kindFilter]);
-
-  const allOpacity = filterAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
-  const allTranslateY = filterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] });
-  const singleOpacity = filterAnim.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0, 0, 1] });
-  const singleTranslateY = filterAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] });
-
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
-    <View style={HERO_STYLES.heroSummaryFrame}>
-      <Animated.View
-        pointerEvents={kindFilter === 'all' ? 'auto' : 'none'}
-        style={[
-          HERO_STYLES.heroSummaryLayer,
-          HERO_STYLES.heroSummary,
-          {
-            opacity: allOpacity,
-            transform: [{ translateY: allTranslateY }],
-          },
-        ]}
-      >
-        <HeroSummaryCell label="Ingresos" value={income} currency={currency} />
-        <View style={HERO_STYLES.heroDivider} />
-        <HeroSummaryCell label="Gastos" value={expenses} currency={currency} />
-        <View style={HERO_STYLES.heroDivider} />
-        <HeroSummaryCell label="Balance" value={balance} currency={currency} />
-      </Animated.View>
-      <Animated.View
-        pointerEvents={kindFilter === 'all' ? 'none' : 'auto'}
-        style={[
-          HERO_STYLES.heroSummaryLayer,
-          HERO_STYLES.heroSummarySingle,
-          {
-            opacity: singleOpacity,
-            transform: [{ translateY: singleTranslateY }],
-          },
-        ]}
-      >
-        <HeroSummaryCell label={selectedSummary.label} value={selectedSummary.value} currency={currency} single />
-      </Animated.View>
+    <View style={styles.reportCard}>
+      <ReportRow
+        label="Ingresos"
+        value={income}
+        accent={INCOME_ACCENT}
+        currency={currency}
+        hidden={hidden.income}
+        onToggle={() => onToggle('income')}
+      />
+      <View style={styles.reportDivider} />
+      <ReportRow
+        label="Gastos"
+        value={expenses}
+        accent={EXPENSE_ACCENT}
+        currency={currency}
+        hidden={hidden.expense}
+        onToggle={() => onToggle('expense')}
+      />
+      <View style={styles.reportDivider} />
+      <ReportRow
+        label="Balance"
+        value={balance}
+        accent={BALANCE_ACCENT}
+        currency={currency}
+        hidden={hidden.balance}
+        onToggle={() => onToggle('balance')}
+      />
     </View>
   );
 }
 
-function HeroSummaryCell({
+function ReportRow({
   label,
   value,
+  accent,
   currency,
-  single = false,
+  hidden,
+  onToggle,
 }: {
   label: string;
   value: number;
-  currency: Parameters<typeof splitAmount>[1];
-  single?: boolean;
+  accent: string;
+  currency: CurrencyCode;
+  hidden: boolean;
+  onToggle: () => void;
 }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const amount = splitAmount(value, currency);
+  const decimalSeparator = currency === 'USD' ? '.' : ',';
+
   return (
-    <View style={[HERO_STYLES.heroSummaryCell, single && HERO_STYLES.heroSummaryCellSingle]}>
-      <Text style={HERO_STYLES.heroSummaryLabel}>{label}</Text>
-      <SlotAmount value={value} currency={currency} toneStyle={HERO_STYLES.heroSummaryValueWhite} />
+    <View style={styles.reportRow}>
+      <Text style={styles.reportLabel} numberOfLines={1}>{label}</Text>
+      <View style={[styles.reportBar, { backgroundColor: accent }]} />
+      <View style={styles.reportAmountWrap}>
+        {hidden ? (
+          <Text style={styles.reportAmount}>••••••</Text>
+        ) : (
+          <Text style={styles.reportAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.56}>
+            {amount.sign}{amount.whole}
+            <Text style={[styles.reportDecimals, { color: accent }]}>
+              {decimalSeparator}{amount.decimals}{amount.symbol}
+            </Text>
+          </Text>
+        )}
+      </View>
+      <Pressable
+        accessibilityLabel={hidden ? `Mostrar ${label}` : `Ocultar ${label}`}
+        onPress={onToggle}
+        hitSlop={8}
+        style={({ pressed }) => [styles.reportEyeButton, pressed && styles.pressed]}
+      >
+        <PrivacyEyeIcon hidden={hidden} size={22} color="#000000" />
+      </Pressable>
     </View>
   );
 }
 
-function SlotAmount({
-  value,
-  currency,
-  toneStyle,
+// ─── FilterPillBar ──────────────────────────────────────────────────────────
+
+function PrivacyEyeIcon({ hidden, size = 22, color = '#000000' }: { hidden: boolean; size?: number; color?: string }) {
+  const xml = (hidden ? OJITO_CERRADO_XML : OJITO_ABIERTO_XML).replace(/black/g, color);
+  return (
+    <SvgXml xml={xml} width={size} height={hidden ? size * 0.42 : size * 0.64} />
+  );
+}
+
+function FilterPillBar({
+  user,
+  partnerUser,
+  ownerFilter,
+  categoryFilter,
+  categoryOptions,
+  kindFilter,
+  frequencyFilter,
+  onPressAutorCat,
+  onPressTipoFrec,
 }: {
-  value: number;
-  currency: Parameters<typeof splitAmount>[1];
-  toneStyle: StyleProp<TextStyle>;
+  user: UserData;
+  partnerUser?: UserData;
+  ownerFilter: OwnerFilter;
+  categoryFilter: string[];
+  categoryOptions: Array<Option<string>>;
+  kindFilter: KindFilter;
+  frequencyFilter: FrequencyFilter;
+  onPressAutorCat: () => void;
+  onPressTipoFrec: () => void;
 }) {
-  const progress = useRef(new Animated.Value(0)).current;
-  const previousValue = useRef(0);
-  const direction = useRef(1);
-  const hasMounted = useRef(false);
-  const [displayValues, setDisplayValues] = useState({ from: 0, to: value });
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
-  useEffect(() => {
-    const from = hasMounted.current ? previousValue.current : 0;
-    if (hasMounted.current && Object.is(from, value)) return;
+  // Autor y Categorías active & label
+  const isAutorCatActive = ownerFilter !== 'mine' || categoryFilter.length > 0;
+  const ownerLabel = ownerFilter === 'mine' ? 'Yo' : (ownerFilter === 'partner' ? (partnerUser?.name || 'Pareja') : 'Ambos');
+  let catLabel = 'Todas';
+  if (categoryFilter.length === 1) {
+    catLabel = categoryOptions.find(c => c.value === categoryFilter[0])?.label || 'Cat';
+  } else if (categoryFilter.length > 1) {
+    catLabel = `${categoryFilter.length} cats`;
+  }
+  const autorCatLabel = (ownerFilter === 'mine' && categoryFilter.length === 0)
+    ? 'Autor y Categorías'
+    : `${ownerLabel} • ${catLabel}`;
 
-    let cancelled = false;
-    progress.stopAnimation();
-    direction.current = value >= from ? 1 : -1;
-    setDisplayValues({ from, to: value });
-    progress.setValue(0);
-
-    const animation = Animated.timing(progress, {
-      toValue: 1,
-      duration: 560,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-
-    animation.start(({ finished }) => {
-      if (finished && !cancelled) {
-        previousValue.current = value;
-        hasMounted.current = true;
-        setDisplayValues({ from: value, to: value });
-        progress.setValue(1);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      animation.stop();
-    };
-  }, [progress, value]);
-
-  const fromAmount = splitAmount(displayValues.from, currency);
-  const toAmount = splitAmount(displayValues.to, currency);
-  const distance = 34;
-  const enteringTranslateY = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [direction.current * distance, 0],
-  });
-  const exitingTranslateY = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -direction.current * distance],
-  });
-  const enteringOpacity = progress.interpolate({
-    inputRange: [0, 0.18, 1],
-    outputRange: [0, 1, 1],
-  });
-  const exitingOpacity = progress.interpolate({
-    inputRange: [0, 0.82, 1],
-    outputRange: [1, 0.16, 0],
-  });
-  const isChanging = !Object.is(displayValues.from, displayValues.to);
+  // Tipo y Frecuencia active & label
+  const isTipoFrecActive = kindFilter !== 'all' || frequencyFilter !== 'all';
+  const kindLabel = kindFilter === 'all' ? 'Todos' : (kindFilter === 'expense' ? 'Gastos' : 'Ingresos');
+  const freqLabel = FREQUENCY_OPTIONS.find(f => f.value === frequencyFilter)?.label || 'Todas';
+  const tipoFrecLabel = (kindFilter === 'all' && frequencyFilter === 'all')
+    ? 'Tipo y Frecuencia'
+    : `${kindLabel} • ${freqLabel}`;
 
   return (
-    <View style={HERO_STYLES.heroSummaryValueClip}>
-      {isChanging && (
-        <Animated.Text
-          style={[
-            HERO_STYLES.heroSummaryValue,
-            toneStyle,
-            HERO_STYLES.heroSummaryValueLayer,
-            { opacity: exitingOpacity, transform: [{ translateY: exitingTranslateY }] },
-          ]}
+    <View style={styles.filterPillBar}>
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync();
+          onPressAutorCat();
+        }}
+        style={({ pressed }) => [
+          styles.filterSummaryItem,
+          isAutorCatActive && styles.filterSummaryItemActive,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={0.72}
+          minimumFontScale={0.78}
+          style={[styles.filterSummaryText, isAutorCatActive && styles.filterSummaryTextActive]}
         >
-          {fromAmount.whole}
-          <Text style={HERO_STYLES.heroSummaryDecimals}>,{fromAmount.decimals} {fromAmount.symbol}</Text>
-        </Animated.Text>
-      )}
-      <Animated.Text
-        style={[
-          HERO_STYLES.heroSummaryValue,
-          toneStyle,
-          HERO_STYLES.heroSummaryValueLayer,
-          { opacity: isChanging ? enteringOpacity : 1, transform: [{ translateY: isChanging ? enteringTranslateY : 0 }] },
+          {autorCatLabel}
+        </Text>
+        <Ionicons name="caret-down" size={11} color={isAutorCatActive ? '#7C3AED' : theme.textPrimary} />
+      </Pressable>
+
+      <View style={styles.filterSeparator} />
+
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync();
+          onPressTipoFrec();
+        }}
+        style={({ pressed }) => [
+          styles.filterSummaryItem,
+          isTipoFrecActive && styles.filterSummaryItemActive,
+          pressed && styles.pressed,
         ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.72}
       >
-        {toAmount.whole}
-        <Text style={HERO_STYLES.heroSummaryDecimals}>,{toAmount.decimals} {toAmount.symbol}</Text>
-      </Animated.Text>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.78}
+          style={[styles.filterSummaryText, isTipoFrecActive && styles.filterSummaryTextActive]}
+        >
+          {tipoFrecLabel}
+        </Text>
+        <Ionicons name="caret-down" size={11} color={isTipoFrecActive ? '#7C3AED' : theme.textPrimary} />
+      </Pressable>
     </View>
+  );
+}
+
+function AutorCatFilterModal({
+  visible,
+  onClose,
+  ownerFilter,
+  onOwnerChange,
+  categoryFilter,
+  onToggleCategory,
+  onClearCategory,
+  categoryOptions,
+  user,
+  partnerUser,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  ownerFilter: OwnerFilter;
+  onOwnerChange: (val: OwnerFilter) => void;
+  categoryFilter: string[];
+  onToggleCategory: (v: string) => void;
+  onClearCategory: () => void;
+  categoryOptions: Array<Option<string>>;
+  user: UserData;
+  partnerUser?: UserData;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+
+  const [mounted, setMounted] = useState(false);
+  const sheetY = useRef(new Animated.Value(SHEET_HIDE_Y)).current;
+  const overlayOpacity = useRef(
+    sheetY.interpolate({ inputRange: [0, SHEET_HIDE_Y], outputRange: [0.5, 0], extrapolate: 'clamp' })
+  ).current;
+  const dismissingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  const dismiss = useCallback(() => {
+    if (dismissingRef.current) return;
+    dismissingRef.current = true;
+    Animated.timing(sheetY, {
+      toValue: SHEET_HIDE_Y,
+      duration: 260,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      dismissingRef.current = false;
+      setMounted(false);
+      onCloseRef.current();
+    });
+  }, [sheetY]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 8 && !dismissingRef.current,
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) sheetY.setValue(gs.dy);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 80 || gs.vy > 0.5) {
+          if (dismissingRef.current) return;
+          dismissingRef.current = true;
+          Animated.timing(sheetY, {
+            toValue: SHEET_HIDE_Y,
+            duration: 200,
+            easing: Easing.in(Easing.cubic),
+            useNativeDriver: true,
+          }).start(() => {
+            dismissingRef.current = false;
+            setMounted(false);
+            onCloseRef.current();
+          });
+        } else {
+          Animated.spring(sheetY, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 300, mass: 0.8 }).start();
+        }
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (visible) {
+      dismissingRef.current = false;
+      sheetY.setValue(SHEET_HIDE_Y);
+      setMounted(true);
+    }
+  }, [visible, sheetY]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    Animated.spring(sheetY, {
+      toValue: 0,
+      damping: 28,
+      stiffness: 280,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start();
+  }, [mounted, sheetY]);
+
+  const ownerOptions = [
+    { label: 'Yo', value: 'mine' },
+    { label: partnerUser ? partnerUser.name : 'Pareja', value: 'partner' },
+    { label: 'Ambos', value: 'both' },
+  ];
+
+  if (!mounted) return null;
+
+  return (
+    <NativeModal
+      visible={mounted}
+      animationType="none"
+      transparent
+      statusBarTranslucent
+      onRequestClose={dismiss}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]}
+      />
+      <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+      <View style={styles.filterModalContainer} pointerEvents="box-none">
+        <Animated.View style={[styles.filterSheet, { transform: [{ translateY: sheetY }] }]}>
+          <View {...panResponder.panHandlers}>
+            <View style={styles.filterSheetGrabber} />
+
+            <View style={styles.filterSheetHeader}>
+              <View style={styles.filterSheetTitleWrap}>
+                <Text style={styles.filterSheetTitle}>Filtra tus movimientos</Text>
+              </View>
+              <Pressable
+                disabled={ownerFilter === 'mine' && categoryFilter.length === 0}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  onOwnerChange('mine');
+                  onClearCategory();
+                }}
+                style={({ pressed }) => [
+                  styles.filterSheetClearButton,
+                  (ownerFilter === 'mine' && categoryFilter.length === 0) && styles.filterSheetClearButtonDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons name="refresh-outline" size={14} color={theme.textSecondary} />
+                <Text
+                  style={[
+                    styles.filterSheetClearText,
+                    (ownerFilter === 'mine' && categoryFilter.length === 0) && styles.filterSheetClearTextDisabled,
+                  ]}
+                >
+                  Limpiar
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.filterSheetScroll}
+            contentContainerStyle={styles.filterSheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <FilterSection title="Autor">
+              <View style={styles.filterChoiceGridThree}>
+                {ownerOptions.map((opt) => {
+                  const active = ownerFilter === opt.value;
+                  return (
+                    <FilterChoiceChip
+                      key={opt.value}
+                      label={opt.label}
+                      active={active}
+                      onPress={() => onOwnerChange(opt.value as OwnerFilter)}
+                      compact
+                      leading={
+                        opt.value === 'mine' ? (
+                          <View style={[AVATAR_STYLES.filterPreviewAvatar, { backgroundColor: user.bg, marginRight: 2 }]}>
+                            {user.photo ? (
+                              <Image source={user.photo} style={AVATAR_STYLES.filterPreviewAvatarImage} />
+                            ) : (
+                              <Text style={[AVATAR_STYLES.filterPreviewAvatarInitials, { color: user.color }]}>
+                                {user.initials}
+                              </Text>
+                            )}
+                          </View>
+                        ) : opt.value === 'partner' ? (
+                          <View style={[AVATAR_STYLES.filterPreviewAvatar, { backgroundColor: partnerUser?.bg || '#EDE9FE', marginRight: 2 }]}>
+                            {partnerUser?.photo ? (
+                              <Image source={partnerUser.photo} style={AVATAR_STYLES.filterPreviewAvatarImage} />
+                            ) : (
+                              <Text style={[AVATAR_STYLES.filterPreviewAvatarInitials, { color: partnerUser?.color || '#7C3AED' }]}>
+                                {partnerUser?.initials || 'P'}
+                              </Text>
+                            )}
+                          </View>
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
+              </View>
+            </FilterSection>
+
+            <FilterSection title="Categorías">
+              <View style={styles.filterChoiceGrid}>
+                {categoryOptions.map((opt) => {
+                  const active = categoryFilter.includes(opt.value);
+                  return (
+                    <FilterChoiceChip
+                      key={opt.value}
+                      label={opt.label}
+                      active={active}
+                      onPress={() => onToggleCategory(opt.value)}
+                      icon={opt.icon}
+                      color={opt.color}
+                    />
+                  );
+                })}
+              </View>
+            </FilterSection>
+          </ScrollView>
+
+          <View style={[styles.filterSheetFooter, { paddingBottom: Math.max(34, insets.bottom + 12) }]}>
+            <Pressable
+              onPress={dismiss}
+              style={({ pressed }) => [styles.filterSheetApplyButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.filterSheetApplyText}>Aplicar Filtros</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </View>
+    </NativeModal>
+  );
+}
+
+function TipoFrecFilterModal({
+  visible,
+  onClose,
+  kindFilter,
+  onKindChange,
+  frequencyFilter,
+  onFrequencyChange,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  kindFilter: KindFilter;
+  onKindChange: (val: KindFilter) => void;
+  frequencyFilter: FrequencyFilter;
+  onFrequencyChange: (val: FrequencyFilter) => void;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+
+  const [mounted, setMounted] = useState(false);
+  const sheetY = useRef(new Animated.Value(SHEET_HIDE_Y)).current;
+  const overlayOpacity = useRef(
+    sheetY.interpolate({ inputRange: [0, SHEET_HIDE_Y], outputRange: [0.5, 0], extrapolate: 'clamp' })
+  ).current;
+  const dismissingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  const dismiss = useCallback(() => {
+    if (dismissingRef.current) return;
+    dismissingRef.current = true;
+    Animated.timing(sheetY, {
+      toValue: SHEET_HIDE_Y,
+      duration: 260,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      dismissingRef.current = false;
+      setMounted(false);
+      onCloseRef.current();
+    });
+  }, [sheetY]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 8 && !dismissingRef.current,
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) sheetY.setValue(gs.dy);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 80 || gs.vy > 0.5) {
+          if (dismissingRef.current) return;
+          dismissingRef.current = true;
+          Animated.timing(sheetY, {
+            toValue: SHEET_HIDE_Y,
+            duration: 200,
+            easing: Easing.in(Easing.cubic),
+            useNativeDriver: true,
+          }).start(() => {
+            dismissingRef.current = false;
+            setMounted(false);
+            onCloseRef.current();
+          });
+        } else {
+          Animated.spring(sheetY, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 300, mass: 0.8 }).start();
+        }
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (visible) {
+      dismissingRef.current = false;
+      sheetY.setValue(SHEET_HIDE_Y);
+      setMounted(true);
+    }
+  }, [visible, sheetY]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    Animated.spring(sheetY, {
+      toValue: 0,
+      damping: 28,
+      stiffness: 280,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start();
+  }, [mounted, sheetY]);
+
+  const kindOptions = [
+    { label: 'Todos', value: 'all' },
+    { label: 'Gastos', value: 'expense', icon: 'trending-down-outline' },
+    { label: 'Ingresos', value: 'income', icon: 'trending-up-outline' },
+  ];
+
+  const frequencyOptions = FREQUENCY_OPTIONS;
+
+  if (!mounted) return null;
+
+  return (
+    <NativeModal
+      visible={mounted}
+      animationType="none"
+      transparent
+      statusBarTranslucent
+      onRequestClose={dismiss}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]}
+      />
+      <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
+      <View style={styles.filterModalContainer} pointerEvents="box-none">
+        <Animated.View style={[styles.filterSheet, { transform: [{ translateY: sheetY }] }]}>
+          <View {...panResponder.panHandlers}>
+            <View style={styles.filterSheetGrabber} />
+
+            <View style={styles.filterSheetHeader}>
+              <View style={styles.filterSheetTitleWrap}>
+                <Text style={styles.filterSheetTitle}>Filtra tus movimientos</Text>
+              </View>
+              <Pressable
+                disabled={kindFilter === 'all' && frequencyFilter === 'all'}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  onKindChange('all');
+                  onFrequencyChange('all');
+                }}
+                style={({ pressed }) => [
+                  styles.filterSheetClearButton,
+                  (kindFilter === 'all' && frequencyFilter === 'all') && styles.filterSheetClearButtonDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons name="refresh-outline" size={14} color={theme.textSecondary} />
+                <Text
+                  style={[
+                    styles.filterSheetClearText,
+                    (kindFilter === 'all' && frequencyFilter === 'all') && styles.filterSheetClearTextDisabled,
+                  ]}
+                >
+                  Limpiar
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.filterSheetScroll}
+            contentContainerStyle={styles.filterSheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <FilterSection title="Tipo de movimiento">
+              <View style={styles.filterChoiceGridThree}>
+                {kindOptions.map((opt) => {
+                  const active = kindFilter === opt.value;
+                  const activeColor = opt.value === 'expense' ? theme.expense : (opt.value === 'income' ? theme.income : undefined);
+                  return (
+                    <FilterChoiceChip
+                      key={opt.value}
+                      label={opt.label}
+                      active={active}
+                      onPress={() => onKindChange(opt.value as KindFilter)}
+                      compact
+                      icon={opt.icon as any}
+                      color={activeColor}
+                    />
+                  );
+                })}
+              </View>
+            </FilterSection>
+
+            <FilterSection title="Frecuencia">
+              <View style={styles.filterChoiceGrid}>
+                {frequencyOptions.map((opt) => {
+                  const active = frequencyFilter === opt.value;
+                  return (
+                    <FilterChoiceChip
+                      key={opt.value}
+                      label={opt.label}
+                      active={active}
+                      onPress={() => onFrequencyChange(opt.value as FrequencyFilter)}
+                    />
+                  );
+                })}
+              </View>
+            </FilterSection>
+          </ScrollView>
+
+          <View style={[styles.filterSheetFooter, { paddingBottom: Math.max(34, insets.bottom + 12) }]}>
+            <Pressable
+              onPress={dismiss}
+              style={({ pressed }) => [styles.filterSheetApplyButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.filterSheetApplyText}>Aplicar Filtros</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </View>
+    </NativeModal>
+  );
+}
+
+function FilterSection({ title, children }: { title: string; children: ReactNode }) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  return (
+    <View style={styles.filterSheetSection}>
+      <Text style={styles.filterSheetSectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function FilterChoiceChip({
+  label,
+  active,
+  onPress,
+  icon,
+  leading,
+  compact,
+  color,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  icon?: ComponentProps<typeof Ionicons>['name'];
+  leading?: ReactNode;
+  compact?: boolean;
+  color?: string;
+}) {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const activeIconColor = color ?? '#24282D';
+
+  const handlePress = () => {
+    void Haptics.selectionAsync();
+    onPress();
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.filterChoiceChip,
+        compact && styles.filterChoiceChipCompact,
+        active && styles.filterChoiceChipActive,
+        pressed && styles.filterChoiceChipPressed,
+        pressed && styles.pressed,
+      ]}
+    >
+      {leading ?? (icon ? (
+        <Ionicons name={icon} size={16} color={active ? activeIconColor : theme.textSecondary} />
+      ) : null)}
+      <Text
+        numberOfLines={1}
+        style={[styles.filterChoiceText, active && styles.filterChoiceTextActive]}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -1299,20 +1604,20 @@ function MonthPickerDropdown({
           },
         ]}
       >
-        <Pressable onPress={() => {}} style={styles.monthDropdownInner}>
+        <Pressable onPress={() => { }} style={styles.monthDropdownInner}>
           <View style={styles.monthDropdownYearRow}>
             <Pressable
               onPress={() => setPickerYear((y) => y - 1)}
-              style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.monthButton, styles.monthPickerArrowButton, pressed && styles.pressed]}
             >
-              <Ionicons name="chevron-back" size={20} color={theme.textSecondary} />
+              <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
             </Pressable>
             <Text style={styles.pickerYearText}>{pickerYear}</Text>
             <Pressable
               onPress={() => setPickerYear((y) => y + 1)}
-              style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.monthButton, styles.monthPickerArrowButton, pressed && styles.pressed]}
             >
-              <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
             </Pressable>
           </View>
           <View style={styles.pickerGrid}>
@@ -1342,110 +1647,7 @@ function MonthPickerDropdown({
   );
 }
 
-function HeroGradient() {
-  const pulse = useRef(new Animated.Value(0)).current;
-  const drift = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const pulseLoop = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1, duration: 6200, useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 0, duration: 6200, useNativeDriver: true }),
-    ]));
-    const driftLoop = Animated.loop(Animated.sequence([
-      Animated.timing(drift, { toValue: 1, duration: 9800, useNativeDriver: true }),
-      Animated.timing(drift, { toValue: 0, duration: 9800, useNativeDriver: true }),
-    ]));
-    pulseLoop.start();
-    driftLoop.start();
-    return () => { pulseLoop.stop(); driftLoop.stop(); };
-  }, [drift, pulse]);
-
-  const shiftLayerStyle = {
-    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.14, 0.38] }),
-    transform: [
-      { translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-8, 10] }) },
-      { translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [8, -6] }) },
-      { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] }) },
-    ],
-  };
-
-  return (
-    <View pointerEvents="none" style={HERO_CANVAS.heroGradientCanvas}>
-      <HeroPurpleSvg palette={PURPLE_BASE_PALETTE} idPrefix="mov-base" />
-      <Animated.View style={[StyleSheet.absoluteFill, shiftLayerStyle]}>
-        <HeroPurpleSvg palette={PURPLE_SHIFT_PALETTE} idPrefix="mov-shift" />
-      </Animated.View>
-    </View>
-  );
-}
-
-function HeroPurpleSvg({ palette, idPrefix }: { palette: HeroPalette; idPrefix: string }) {
-  const brightId = `${idPrefix}-bright`;
-  const deepId = `${idPrefix}-deep`;
-  const glowId = `${idPrefix}-glow`;
-  const softId = `${idPrefix}-soft`;
-  const shadeId = `${idPrefix}-shade`;
-  const veilId = `${idPrefix}-veil`;
-
-  return (
-    <Svg width="100%" height="100%" viewBox="0 0 430 360" preserveAspectRatio="none">
-      <Defs>
-        <RadialGradient id={brightId} cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor={palette.bright} stopOpacity="1" />
-          <Stop offset="70%" stopColor={palette.bright} stopOpacity="0.72" />
-          <Stop offset="100%" stopColor={palette.bright} stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id={deepId} cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor={palette.deep} stopOpacity="1" />
-          <Stop offset="74%" stopColor={palette.deep} stopOpacity="0.84" />
-          <Stop offset="100%" stopColor={palette.deep} stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id={glowId} cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor={palette.glow} stopOpacity="1" />
-          <Stop offset="66%" stopColor={palette.glow} stopOpacity="0.66" />
-          <Stop offset="100%" stopColor={palette.glow} stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id={softId} cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor={palette.soft} stopOpacity="1" />
-          <Stop offset="72%" stopColor={palette.soft} stopOpacity="0.76" />
-          <Stop offset="100%" stopColor={palette.soft} stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id={shadeId} cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor={palette.shade} stopOpacity="0.86" />
-          <Stop offset="72%" stopColor={palette.shade} stopOpacity="0.44" />
-          <Stop offset="100%" stopColor={palette.shade} stopOpacity="0" />
-        </RadialGradient>
-        <RadialGradient id={veilId} cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor={palette.veil} stopOpacity="0.7" />
-          <Stop offset="100%" stopColor={palette.veil} stopOpacity="0" />
-        </RadialGradient>
-      </Defs>
-      <Rect x="0" y="0" width="430" height="360" fill={palette.base} />
-      <Ellipse cx="28" cy="42" rx="214" ry="176" fill={`url(#${deepId})`} opacity="0.74" />
-      <Ellipse cx="132" cy="104" rx="218" ry="150" fill={`url(#${shadeId})`} opacity="0.38" />
-      <Ellipse cx="188" cy="86" rx="202" ry="162" fill={`url(#${softId})`} opacity="0.44" />
-      <Ellipse cx="365" cy="52" rx="190" ry="150" fill={`url(#${brightId})`} opacity="0.6" />
-      <Ellipse cx="50" cy="286" rx="230" ry="148" fill={`url(#${glowId})`} opacity="0.88" />
-      <Ellipse cx="248" cy="220" rx="240" ry="132" fill={`url(#${shadeId})`} opacity="0.3" />
-      <Ellipse cx="238" cy="258" rx="248" ry="150" fill={`url(#${softId})`} opacity="0.52" />
-      <Ellipse cx="426" cy="292" rx="226" ry="160" fill={`url(#${brightId})`} opacity="0.72" />
-      <Ellipse cx="214" cy="178" rx="246" ry="150" fill={`url(#${veilId})`} opacity="0.52" />
-      <Ellipse cx="232" cy="360" rx="310" ry="126" fill={`url(#${softId})`} opacity="0.36" />
-    </Svg>
-  );
-}
-
 // Static stylesheets for components with no theme-sensitive colors
-
-const HERO_CANVAS = StyleSheet.create({
-  heroGradientCanvas: {
-    bottom: -36,
-    left: -28,
-    position: 'absolute',
-    right: -28,
-    top: -18,
-  },
-});
 
 const AVATAR_STYLES = StyleSheet.create({
   avatarCircle: {
@@ -1506,6 +1708,23 @@ const AVATAR_STYLES = StyleSheet.create({
     fontSize: 7,
     fontWeight: '800',
   },
+  filterPreviewAvatar: {
+    alignItems: 'center',
+    borderRadius: 9,
+    height: 18,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 18,
+  },
+  filterPreviewAvatarImage: {
+    borderRadius: 9,
+    height: 18,
+    width: 18,
+  },
+  filterPreviewAvatarInitials: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 8,
+  },
 });
 
 const TRANSACTION_CARD_STYLE = StyleSheet.create({
@@ -1515,149 +1734,8 @@ const TRANSACTION_CARD_STYLE = StyleSheet.create({
   },
 });
 
-// Hero summary styles — all hardcoded to gradient area colors
-const HERO_STYLES = StyleSheet.create({
-  heroDivider: {
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
-    height: 36,
-    width: 1,
-  },
-  heroSummaryFrame: {
-    alignSelf: 'stretch',
-    height: 66,
-    marginTop: 36,
-    overflow: 'visible',
-    position: 'relative',
-    width: '100%',
-  },
-  heroSummaryLayer: {
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  heroSummary: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  heroSummarySingle: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  heroSummaryCell: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    flex: 1,
-    gap: 4,
-    justifyContent: 'center',
-    minWidth: 0,
-  },
-  heroSummaryCellSingle: {
-    maxWidth: 260,
-    width: '100%',
-  },
-  heroSummaryDecimals: {
-    color: 'rgba(255,255,255,0.65)',
-    fontFamily: 'Poppins_600SemiBold',
-    fontSize: 15,
-    letterSpacing: -0.75,
-  },
-  heroSummaryLabel: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  heroSummaryValue: {
-    fontFamily: 'Poppins_600SemiBold',
-    fontSize: 28,
-    letterSpacing: -1.4,
-    lineHeight: 32,
-  },
-  heroSummaryValueWhite: {
-    color: '#FFFFFF',
-  },
-  heroSummaryValueClip: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    height: 38,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    minWidth: 0,
-    width: '100%',
-  },
-  heroSummaryValueLayer: {
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    textAlign: 'center',
-  },
-});
 
-// ─── FiltersToggleButton ────────────────────────────────────────────────────
-
-function FiltersToggleButton({
-  open,
-  onPress,
-  activeCount,
-}: {
-  open: boolean;
-  onPress: () => void;
-  activeCount: number;
-}) {
-  const theme = useTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.spring(rotateAnim, {
-      toValue: open ? 1 : 0,
-      useNativeDriver: true,
-      damping: 14,
-      stiffness: 260,
-      mass: 0.6,
-    }).start();
-  }, [open, rotateAnim]);
-
-  const chevronRotate = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
-  });
-
-  const hasActive = activeCount > 0;
-  const isActive = open || hasActive;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.filterToggleBtn,
-        isActive && styles.filterToggleBtnActive,
-        pressed && { opacity: 0.75 },
-      ]}
-    >
-      <Ionicons
-        name="options-outline"
-        size={14}
-        color={isActive ? '#FFFFFF' : theme.textSecondary}
-      />
-      <Text style={[styles.filterToggleLabel, isActive && styles.filterToggleLabelActive]}>
-        Filtros{hasActive ? ` (${activeCount})` : ''}
-      </Text>
-      <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
-        <Ionicons
-          name="chevron-down"
-          size={12}
-          color={isActive ? '#FFFFFF' : theme.textMuted}
-        />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-// ─── CollapsibleFiltersPanel ─────────────────────────────────────────────────
+const SHEET_HIDE_Y = 800;
 
 const FREQUENCY_OPTIONS: Array<Option<FrequencyFilter>> = [
   { label: 'Todas', value: 'all' },
@@ -1667,190 +1745,7 @@ const FREQUENCY_OPTIONS: Array<Option<FrequencyFilter>> = [
   { label: 'Único', value: 'once' },
 ];
 
-function CollapsibleFiltersPanel({
-  anim,
-  categoryFilter,
-  categoryOptions,
-  onToggleCategory,
-  onClearCategory,
-  onOpenDropdown,
-  ownerFilter,
-  onOwnerChange,
-  user,
-  partnerUser,
-  kindFilter,
-  onKindChange,
-  frequencyFilter,
-  onFrequencyChange,
-}: {
-  anim: Animated.Value;
-  categoryFilter: string[];
-  categoryOptions: Array<Option<string>>;
-  onToggleCategory: (v: string) => void;
-  onClearCategory: () => void;
-  onOpenDropdown: (info: DropdownInfo) => void;
-  ownerFilter: OwnerFilter;
-  onOwnerChange: (v: OwnerFilter) => void;
-  user: UserData;
-  partnerUser?: UserData;
-  kindFilter: KindFilter;
-  onKindChange: (v: KindFilter) => void;
-  frequencyFilter: FrequencyFilter;
-  onFrequencyChange: (v: FrequencyFilter) => void;
-}) {
-  const theme = useTheme();
-
-  const maxHeight = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 280],
-  });
-  const opacity = anim.interpolate({
-    inputRange: [0, 0.35, 1],
-    outputRange: [0, 0, 1],
-  });
-  const translateY = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-8, 0],
-  });
-  const marginTop = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 12],
-  });
-
-  const labelStyle = [PANEL_STYLES.chipLabel, { color: theme.textMuted }];
-
-  return (
-    <Animated.View
-      style={{
-        maxHeight,
-        opacity,
-        overflow: 'hidden',
-        transform: [{ translateY }],
-        marginTop,
-      }}
-    >
-      {/* Row 1: Categoría + Autor */}
-      <View style={PANEL_STYLES.row}>
-        <View style={PANEL_STYLES.cell}>
-          <Text style={labelStyle}>Categoría</Text>
-          <View style={PANEL_STYLES.chipRow}>
-            <CategoryFilterChip
-              selectedValues={categoryFilter}
-              options={categoryOptions}
-              onToggle={onToggleCategory}
-              onClear={onClearCategory}
-              onOpen={onOpenDropdown}
-            />
-          </View>
-        </View>
-        <View style={PANEL_STYLES.cell}>
-          <Text style={labelStyle}>Autor</Text>
-          <View style={PANEL_STYLES.chipRow}>
-            <FilterChip
-              label="Yo"
-              options={[
-                { label: 'Yo', value: 'mine' },
-                { label: 'Ambos', value: 'both' },
-                { label: partnerUser ? partnerUser.name : 'Pareja', value: 'partner' },
-              ]}
-              value={ownerFilter}
-              onChange={onOwnerChange}
-              customIcon={(isFiltered) => (
-                <AutorFilterIcon
-                  value={ownerFilter}
-                  user={user}
-                  partnerUser={partnerUser}
-                  isFiltered={isFiltered}
-                />
-              )}
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* Row 2: Tipo + Frecuencia */}
-      <View style={[PANEL_STYLES.row, { marginTop: 10 }]}>
-        <View style={PANEL_STYLES.cell}>
-          <Text style={labelStyle}>Tipo</Text>
-          <View style={PANEL_STYLES.chipRow}>
-            <FilterChip
-              icon="swap-vertical-outline"
-              label="Todos"
-              options={[
-                { label: 'Todos', value: 'all' },
-                { label: 'Gastos', value: 'expense' },
-                { label: 'Ingresos', value: 'income' },
-              ]}
-              value={kindFilter}
-              onChange={onKindChange}
-              activeColor={kindFilter === 'income' ? theme.income : kindFilter === 'expense' ? theme.expense : undefined}
-            />
-          </View>
-        </View>
-        <View style={PANEL_STYLES.cell}>
-          <Text style={labelStyle}>Frecuencia</Text>
-          <View style={PANEL_STYLES.chipRow}>
-            <FilterChip
-              icon="repeat-outline"
-              label="Todas"
-              options={FREQUENCY_OPTIONS}
-              value={frequencyFilter}
-              onChange={onFrequencyChange}
-              onOpenDropdown={onOpenDropdown}
-            />
-          </View>
-        </View>
-      </View>
-    </Animated.View>
-  );
-}
-
-const PANEL_STYLES = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  cell: {
-    flex: 1,
-    gap: 6,
-  },
-  // chipRow makes chips behave like in the original filtersBar (flex:1 = full width)
-  chipRow: {
-    flexDirection: 'row',
-  },
-  chipLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginLeft: 2,
-    textTransform: 'uppercase',
-  },
-});
-
 const makeStyles = (t: AppTheme) => StyleSheet.create({
-  filterToggleBtn: {
-    alignItems: 'center',
-    backgroundColor: t.surface,
-    borderColor: t.border,
-    borderRadius: 20,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  filterToggleBtnActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#7C3AED',
-  },
-  filterToggleLabel: {
-    color: t.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  filterToggleLabelActive: {
-    color: '#FFFFFF',
-  },
   empty: {
     alignItems: 'center',
     gap: 8,
@@ -1868,49 +1763,6 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   expense: {
     color: t.expense,
   },
-  searchAllMonthsHint: {
-    color: t.textMuted,
-    fontSize: 11,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  filtersBar: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  filterChipWrapper: {
-    backgroundColor: t.surface,
-    borderColor: t.border,
-    borderRadius: 20,
-    borderWidth: 1,
-    flex: 1,
-    minWidth: 0,
-    overflow: 'hidden',
-  },
-  filterChipWrapperCategory: {
-    flex: 1.8,
-  },
-  filterChip: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    backgroundColor: 'transparent',
-    borderRadius: 20,
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  filterChipText: {
-    color: t.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
   dropdownCard: {
     borderRadius: 14,
     elevation: 5,
@@ -1919,6 +1771,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.10,
     shadowRadius: 8,
+    zIndex: 200,
   },
   dropdownInner: {
     backgroundColor: t.surface,
@@ -1952,10 +1805,10 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontWeight: '700',
   },
   controls: {
-    gap: 18,
+    gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 28,
-    paddingBottom: 22,
+    paddingTop: 12,
+    paddingBottom: 12,
     zIndex: 1,
   },
   balanceColor: {
@@ -1977,7 +1830,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     height: 0,
   },
   filterSection: {
-    height: 16,
+    height: 6,
   },
   filterSectionHead: {
     alignItems: 'center',
@@ -1986,9 +1839,9 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     marginTop: 8,
   },
   filterSectionTitle: {
-    color: t.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: SECTION_TITLE_FONT_FAMILY,
+    fontSize: 20,
   },
   pressed: {
     opacity: 0.72,
@@ -1998,67 +1851,408 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     flex: 1,
   },
   heroHeader: {
-    backgroundColor: '#5B21B6',
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    elevation: 5,
+    overflow: 'visible',
+    paddingBottom: 12,
+  },
+  headerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+  },
+  headerAvatarButton: {
+    borderRadius: 23,
+    flexShrink: 0,
+  },
+  headerAvatar: {
+    alignItems: 'center',
+    borderColor: 'rgba(255, 255, 255, 0.36)',
+    borderRadius: 23,
+    borderWidth: 1.5,
+    height: 46,
+    justifyContent: 'center',
     overflow: 'hidden',
-    paddingBottom: 28,
-    paddingHorizontal: 32,
-    paddingTop: 56,
-    shadowColor: '#3B0764',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
+    width: 46,
   },
-  heroGreeting: {
-    color: '#FFFFFF',
+  headerAvatarImage: {
+    borderRadius: 23,
+    height: 46,
+    width: 46,
+  },
+  headerAvatarInitials: {
     fontFamily: 'Poppins_700Bold',
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 15,
   },
-  heroMonth: {
-    color: '#FFFFFF',
-    fontWeight: '400',
-  },
-  heroSubtitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '400',
-    lineHeight: 24,
-  },
-  heroTextWrap: {
+  headerTextWrap: {
     flex: 1,
-    gap: 0,
     minWidth: 0,
   },
-  heroTop: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 16,
-    justifyContent: 'space-between',
+  headerGreeting: {
+    color: '#FFFFFF',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 16,
+    lineHeight: 22,
   },
-  secondaryAction: {
+  headerDate: {
+    color: 'rgba(255, 255, 255, 0.60)',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  headerSettingsButton: {
     alignItems: 'center',
-    borderColor: t.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    flexShrink: 0,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  reportTitle: {
+    color: '#FFFFFF',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 20,
+    marginBottom: 16,
+    paddingHorizontal: 24,
+  },
+  monthPillsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 18,
+    paddingHorizontal: 24,
+  },
+  monthArrowPill: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(43, 47, 50, 0.15)',
+    borderRadius: 999,
+    height: 38,
+    justifyContent: 'center',
+    width: 64,
+  },
+  monthCenterWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  monthCenterPill: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    height: 38,
+    justifyContent: 'center',
+  },
+  monthCenterText: {
+    color: '#24282D',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 16,
+    textTransform: 'capitalize',
+  },
+  reportCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    elevation: 4,
+    marginHorizontal: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+  },
+  reportRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 7,
+  },
+  reportLabel: {
+    color: '#24282D',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 16,
+    width: 86,
+  },
+  reportBar: {
+    height: 24,
+    width: 2,
+  },
+  reportAmountWrap: {
+    alignItems: 'flex-end',
+    flex: 1,
+    minWidth: 0,
+  },
+  reportAmount: {
+    color: '#24282D',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 21,
+    lineHeight: 26,
+  },
+  reportDecimals: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+  },
+  reportEyeButton: {
+    alignItems: 'center',
+    flexShrink: 0,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  reportDivider: {
+    backgroundColor: 'rgba(17, 24, 39, 0.08)',
+    height: 1,
+  },
+  filterPillBar: {
+    alignItems: 'center',
+    backgroundColor: t.surface,
+    borderRadius: 999,
+    elevation: 2,
+    flexDirection: 'row',
+    gap: 2,
+    minHeight: 44,
+    paddingHorizontal: 8,
+    shadowColor: t.shadowColor,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+  },
+  filterSummaryItem: {
+    alignItems: 'center',
     flex: 1,
     flexDirection: 'row',
-    gap: 6,
-    height: 42,
+    gap: 4,
     justifyContent: 'center',
+    minWidth: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 999,
+  },
+  filterSummaryItemActive: {
+    backgroundColor: 'rgba(124, 58, 237, 0.08)',
+  },
+  filterSummaryText: {
+    color: t.textPrimary,
+    flexShrink: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  filterSummaryTextActive: {
+    color: '#7C3AED',
+    fontFamily: 'Poppins_600SemiBold',
+  },
+  filterSeparator: {
+    backgroundColor: t.border,
+    height: 16,
+    width: 1,
+  },
+  clearFiltersInlineButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: t.surface,
+    borderColor: t.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 40,
+    minWidth: 154,
+    paddingHorizontal: 16,
+  },
+  clearFiltersInlineText: {
+    color: t.textSecondary,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+  },
+  inlineFilterWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  inlineFilter: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 13,
+  },
+  inlineFilterText: {
+    color: t.textPrimary,
+    flexShrink: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+  },
+  inlineFilterTextActive: {
+    color: '#7C3AED',
+    fontFamily: 'Poppins_600SemiBold',
+  },
+  filterModalOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  filterModalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    alignSelf: 'center',
+    backgroundColor: t.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+    paddingTop: 10,
+    width: '100%',
+  },
+  filterSheetGrabber: {
+    alignSelf: 'center',
+    backgroundColor: t.border,
+    borderRadius: 999,
+    height: 4,
+    marginBottom: 14,
+    width: 44,
+  },
+  filterSheetHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+  },
+  filterSheetTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  filterSheetTitle: {
+    color: t.textPrimary,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  filterSheetSubtitle: {
+    color: t.textSecondary,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 1,
+  },
+  filterSheetClearButton: {
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderColor: t.border,
+    borderWidth: 1,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  filterSheetClearButtonDisabled: {
+    opacity: 0.56,
+  },
+  filterSheetClearText: {
+    color: t.textSecondary,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+  },
+  filterSheetClearTextDisabled: {
+    color: t.textMuted,
+  },
+  filterSheetScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  filterSheetContent: {
+    gap: 18,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+  },
+  filterSheetSection: {
+    gap: 10,
+  },
+  filterSheetSectionTitle: {
+    color: t.textPrimary,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  filterChoiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterChoiceGridThree: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterChoiceChip: {
+    alignItems: 'center',
+    backgroundColor: t.mode === 'light' ? 'rgba(43, 47, 50, 0.055)' : 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'transparent',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    elevation: 4,
+    flexBasis: '47%',
+    flexDirection: 'row',
+    flexGrow: 1,
+    gap: 7,
+    minHeight: 42,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 5,
+  },
+  filterChoiceChipPressed: {
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  filterChoiceChipCompact: {
+    flex: 1,
+    flexBasis: 0,
+    flexGrow: 1,
     paddingHorizontal: 10,
   },
-  secondaryActionText: {
-    color: t.textPrimary,
+  filterChoiceChipActive: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  filterChoiceText: {
+    color: t.textSecondary,
+    flex: 1,
+    fontFamily: 'Poppins_500Medium',
     fontSize: 13,
-    fontWeight: '900',
+    minWidth: 0,
+  },
+  filterChoiceTextActive: {
+    color: '#24282D',
+    fontFamily: 'Poppins_500Medium',
+  },
+  filterSheetFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+  },
+  filterSheetApplyButton: {
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 8,
+    height: 52,
+    justifyContent: 'center',
+  },
+  filterSheetApplyText: {
+    color: '#FFFFFF',
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 15,
   },
   pickerYearText: {
     color: t.textPrimary,
+    fontFamily: 'Poppins_500Medium',
     fontSize: 18,
-    fontWeight: '700',
   },
   pickerGrid: {
     flexDirection: 'row',
@@ -2077,13 +2271,13 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   pickerCellText: {
     color: t.textPrimary,
+    fontFamily: 'Poppins_500Medium',
     fontSize: 14,
-    fontWeight: '500',
     textTransform: 'capitalize',
   },
   pickerCellTextActive: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontFamily: 'Poppins_500Medium',
   },
   monthButton: {
     alignItems: 'center',
@@ -2093,6 +2287,9 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     justifyContent: 'center',
     width: 42,
     ...SURFACE_SHADOW,
+  },
+  monthPickerArrowButton: {
+    backgroundColor: 'rgba(43, 47, 50, 0.15)',
   },
   floatingSummary: {
     backgroundColor: t.surface,
@@ -2123,8 +2320,8 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   floatingSummaryLabel: {
     color: t.textSecondary,
+    fontFamily: 'Poppins_500Medium',
     fontSize: 11,
-    fontWeight: '700',
   },
   floatingSummaryRow: {
     alignItems: 'center',
@@ -2132,7 +2329,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     gap: 16,
   },
   floatingSummaryValue: {
-    fontFamily: 'Poppins_700Bold',
+    fontFamily: 'Poppins_500Medium',
     fontSize: 16,
   },
   monthDropdownCard: {

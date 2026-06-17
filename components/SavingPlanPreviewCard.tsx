@@ -52,17 +52,41 @@ function FreeCard({ plan, onPress, onEdit, readOnly, iconColor, iconInfo, curren
       onLongPress={readOnly ? undefined : onEdit}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <View style={styles.row}>
-        <View style={[styles.iconCircle, { backgroundColor: iconColor }]}>
-          <Ionicons name={iconInfo.icon} size={20} color="#FFFFFF" />
+      {/* Solid category colored rounded square with category icon */}
+      <View style={[styles.colorBlock, { backgroundColor: iconColor }]}>
+        <Ionicons name={iconInfo.icon} size={20} color="#FFFFFF" />
+      </View>
+
+      {/* Card Content Column */}
+      <View style={styles.cardContent}>
+        {/* Top Row: Title */}
+        <View style={styles.topRow}>
+          <Text style={styles.categoryTitle} numberOfLines={1}>
+            {plan.title}
+          </Text>
         </View>
-        <View style={styles.info}>
-          <Text numberOfLines={1} style={styles.title}>{plan.title}</Text>
-          <Text style={styles.subtitle}>Ahorro libre</Text>
+
+        {/* Middle Row: Progress Bar (Filled to 100% since no budget target) */}
+        <View style={styles.progressBarTrack}>
+          <View
+            style={[
+              styles.progressBarFill,
+              {
+                width: saved > 0 ? '100%' : '0%',
+                backgroundColor: iconColor,
+              },
+            ]}
+          />
         </View>
-        <View style={styles.amountCol}>
-          <Text style={styles.amount} numberOfLines={1}>{fmt(saved, currency)}</Text>
-          <Text style={styles.amountSub}>guardados</Text>
+
+        {/* Bottom Row: Saved (neutral gray) & Mode label */}
+        <View style={styles.bottomRow}>
+          <Text style={styles.spentAmount} numberOfLines={1}>
+            {fmt(saved, currency)}
+          </Text>
+          <Text style={[styles.remainingAmount, { color: iconColor }]} numberOfLines={1}>
+            Ahorro libre
+          </Text>
         </View>
       </View>
     </Pressable>
@@ -75,6 +99,7 @@ function GoalCard({ plan, onPress, onEdit, readOnly, iconColor, iconInfo, curren
   const progress = savingPlanProgress(plan);
   const progressPct = Math.min(100, Math.round(progress.pct));
   const isComplete = progressPct >= 100;
+  const barColor = isComplete ? COMPLETE_COLOR : iconColor;
 
   return (
     <Pressable
@@ -82,43 +107,53 @@ function GoalCard({ plan, onPress, onEdit, readOnly, iconColor, iconInfo, curren
       onLongPress={readOnly ? undefined : onEdit}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      {/* Header row */}
-      <View style={styles.row}>
-        <View style={[styles.iconCircle, { backgroundColor: iconColor }]}>
-          <Ionicons name={iconInfo.icon} size={20} color="#FFFFFF" />
-        </View>
-        <View style={styles.info}>
-          <Text numberOfLines={1} style={styles.title}>{plan.title}</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {fmt(progress.total, currency)} de {fmt(plan.targetAmount, currency)}
+      {/* Solid category colored rounded square with category icon */}
+      <View style={[styles.colorBlock, { backgroundColor: iconColor }]}>
+        <Ionicons name={iconInfo.icon} size={20} color="#FFFFFF" />
+      </View>
+
+      {/* Card Content Column */}
+      <View style={styles.cardContent}>
+        {/* Top Row: Title & Target Amount */}
+        <View style={styles.topRow}>
+          <Text style={styles.categoryTitle} numberOfLines={1}>
+            {plan.title}
+          </Text>
+          <Text style={styles.budgetLimit} numberOfLines={1}>
+            {fmt(plan.targetAmount, currency)}
           </Text>
         </View>
-        <Text style={[styles.pct, isComplete && styles.pctComplete]}>{progressPct}%</Text>
-      </View>
 
-      {/* Progress bar */}
-      <View style={styles.barTrack}>
-        <View
-          style={[
-            styles.barFill,
-            { width: `${progressPct}%` as `${number}%` },
-            isComplete && styles.barFillComplete,
-          ]}
-        />
-      </View>
-
-      {/* Footer */}
-      {isComplete ? (
-        <View style={styles.completeRow}>
-          <Ionicons name="checkmark-circle" size={13} color={COMPLETE_COLOR} />
-          <Text style={styles.completeText}>¡Meta alcanzada!</Text>
+        {/* Middle Row: Progress Bar */}
+        <View style={styles.progressBarTrack}>
+          <View
+            style={[
+              styles.progressBarFill,
+              {
+                width: `${progressPct}%` as `${number}%`,
+                backgroundColor: barColor,
+              },
+            ]}
+          />
         </View>
-      ) : (
-        <Text style={styles.remaining} numberOfLines={1}>
-          Falta{' '}
-          <Text style={styles.remainingAmt}>{fmt(progress.remaining, currency)}</Text>
-        </Text>
-      )}
+
+        {/* Bottom Row: Saved Amount & Remaining / Success Message */}
+        <View style={styles.bottomRow}>
+          <Text style={styles.spentAmount} numberOfLines={1}>
+            {fmt(progress.total, currency)}
+          </Text>
+          {isComplete ? (
+            <View style={styles.completeRow}>
+              <Ionicons name="checkmark-circle" size={13} color={COMPLETE_COLOR} />
+              <Text style={styles.completeText}>¡Meta alcanzada!</Text>
+            </View>
+          ) : (
+            <Text style={[styles.remainingAmount, { color: iconColor }]} numberOfLines={1}>
+              {fmt(progress.remaining, currency)}
+            </Text>
+          )}
+        </View>
+      </View>
     </Pressable>
   );
 }
@@ -141,93 +176,84 @@ interface CardInternalProps {
 
 const makeStyles = (theme: AppTheme) => StyleSheet.create({
   card: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    elevation: 3,
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+    position: 'relative',
+    shadowColor: theme.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
+    shadowRadius: 8,
+    overflow: 'visible',
   },
   pressed: {
     opacity: 0.72,
   },
-  row: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 11,
-  },
-  iconCircle: {
+  colorBlock: {
     alignItems: 'center',
     borderRadius: 12,
     flexShrink: 0,
-    height: 40,
+    height: 44,
     justifyContent: 'center',
-    width: 40,
+    width: 44,
   },
-  info: {
+  cardContent: {
     flex: 1,
-    gap: 2,
+    justifyContent: 'center',
     minWidth: 0,
   },
-  title: {
-    color: theme.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
+  topRow: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  subtitle: {
-    color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
+  categoryTitle: {
+    color: '#24282D',
+    flexShrink: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14.5,
   },
-  // -- Free card amount --
-  amountCol: {
-    alignItems: 'flex-end',
+  budgetLimit: {
+    color: '#24282D',
     flexShrink: 0,
-    gap: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14.5,
+    textAlign: 'right',
   },
-  amount: {
-    color: SAVINGS_ACCENT,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  amountSub: {
-    color: theme.textMuted,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  // -- Goal card --
-  pct: {
-    color: SAVINGS_ACCENT,
-    flexShrink: 0,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  pctComplete: {
-    color: COMPLETE_COLOR,
-  },
-  barTrack: {
-    backgroundColor: theme.mode === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.10)',
-    borderRadius: 4,
-    height: 6,
+  progressBarTrack: {
+    backgroundColor: 'rgba(36, 40, 45, 0.08)',
+    borderRadius: 99,
+    height: 5,
+    marginVertical: 4,
     overflow: 'hidden',
+    width: '100%',
   },
-  barFill: {
-    backgroundColor: SAVINGS_ACCENT,
-    borderRadius: 4,
+  progressBarFill: {
+    borderRadius: 99,
     height: '100%',
   },
-  barFillComplete: {
-    backgroundColor: COMPLETE_COLOR,
+  bottomRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  remaining: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
+  spentAmount: {
+    color: 'rgba(36, 40, 45, 0.65)',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
   },
-  remainingAmt: {
-    color: SAVINGS_ACCENT,
-    fontWeight: '800',
+  remainingAmount: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+    textAlign: 'right',
   },
   completeRow: {
     alignItems: 'center',
@@ -236,7 +262,7 @@ const makeStyles = (theme: AppTheme) => StyleSheet.create({
   },
   completeText: {
     color: COMPLETE_COLOR,
+    fontFamily: 'Poppins_700Bold',
     fontSize: 11,
-    fontWeight: '700',
   },
 });

@@ -38,7 +38,7 @@ interface TransactionModalProps {
   onClose: () => void;
 }
 
-const CURRENCY_NAMES: Record<CurrencyCode, string> = {
+const CURRENCY_NAMES: Record<string, string> = {
   EUR: 'euros',
   USD: 'dólares',
   BS: 'bolívares',
@@ -292,7 +292,7 @@ export function TransactionModal({
 
             {step === 0 && kindPreset ? (
               <View style={styles.block}>
-                <Field label="Título del movimiento" value={desc} onChangeText={setDesc} placeholder={kind === 'income' ? 'Ej. Salario' : 'Ej. Supermercado'} autoFocus />
+                <Field label="Título del movimiento" value={desc} onChangeText={setDesc} placeholder={kind === 'income' ? 'Ej. Salario' : 'Ej. Supermercado'} />
                 <AmountField
                   value={amt}
                   onChangeText={setAmt}
@@ -449,13 +449,16 @@ function Field({
 }: ComponentProps<typeof TextInput> & { label: string }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const isMultiline = !!props.multiline;
 
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        multiline={isMultiline}
+        numberOfLines={isMultiline ? undefined : 1}
         placeholderTextColor={theme.textMuted}
-        style={[styles.input, props.multiline && styles.textarea]}
+        style={[styles.input, isMultiline && styles.textarea]}
         {...props}
       />
     </View>
@@ -1057,6 +1060,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '400',
+    lineHeight: 20,
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1116,6 +1120,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textMuted,
   },
   textarea: {
+    lineHeight: 20,
     minHeight: 80,
     paddingVertical: 12,
     textAlignVertical: 'top',

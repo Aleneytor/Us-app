@@ -8,13 +8,20 @@ export const FALLBACK_USER: UserData = {
 };
 
 export function getUserData(users: Record<string, UserData>, uid?: string | null): UserData {
-  if (uid && users[uid]) return users[uid];
+  if (uid && users[uid]) {
+    const rawUser = users[uid];
+    return {
+      ...rawUser,
+      name: rawUser.name ? rawUser.name.trim().split(/\s+/)[0].replace(/\.+$/, '') : FALLBACK_USER.name,
+    };
+  }
   if (!uid) return FALLBACK_USER;
 
   const clean = uid.trim();
+  const name = clean || FALLBACK_USER.name;
   return {
     ...FALLBACK_USER,
-    name: clean || FALLBACK_USER.name,
+    name: name.split(/\s+/)[0].replace(/\.+$/, ''),
     initials: (clean.slice(0, 2) || '?').toUpperCase(),
   };
 }

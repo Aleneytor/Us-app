@@ -42,7 +42,8 @@ export function GoalCard({
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <View style={[styles.iconWrap, { backgroundColor: iconColor.color }]}>
+      {/* Solid category colored rounded square with category icon / emoji */}
+      <View style={[styles.colorBlock, { backgroundColor: iconColor.color }]}>
         {goal.em ? (
           <Text style={styles.emoji}>{goal.em}</Text>
         ) : (
@@ -50,34 +51,41 @@ export function GoalCard({
         )}
       </View>
 
-      <View style={styles.info}>
-        <View style={styles.nameRow}>
-          <View style={styles.nameGroup}>
-            <Text numberOfLines={1} style={styles.name}>{goal.name}</Text>
-            <Text style={styles.meta}>
+      {/* Card Content Column */}
+      <View style={styles.cardContent}>
+        {/* Top Row: Goal Title & Target Limit */}
+        <View style={styles.topRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.categoryTitle} numberOfLines={1}>
+              {goal.name}
+            </Text>
+            <Text style={styles.meta} numberOfLines={1}>
               {goal.type === 'joint' ? 'Conjunto' : 'Personal'} · {formatDateShort(goal.date)}
             </Text>
           </View>
-          <Text style={styles.targetText} numberOfLines={1}>{fmt(goal.target, currency)}</Text>
+          <Text style={styles.budgetLimit} numberOfLines={1}>{fmt(goal.target, currency)}</Text>
         </View>
 
-        <View style={styles.barTrack}>
-          <View style={[styles.barFill, { width: `${pct}%` as `${number}%`, backgroundColor: iconColor.color }]} />
+        {/* Middle Row: Progress Bar */}
+        <View style={styles.progressBarTrack}>
+          <View style={[styles.progressBarFill, { width: `${pct}%` as `${number}%`, backgroundColor: iconColor.color }]} />
         </View>
 
-        <View style={styles.amountRow}>
-          <Text style={[styles.savedText, { color: iconColor.color }]} numberOfLines={1}>
+        {/* Bottom Row: Saved Amount & Remaining / Read-only state */}
+        <View style={styles.bottomRow}>
+          <Text style={styles.spentAmount} numberOfLines={1}>
             {fmt(progress.total, currency)}
           </Text>
           {readOnly ? (
             <Text style={styles.readOnly}>Solo lectura</Text>
           ) : (
-            <Text style={styles.remaining} numberOfLines={1}>
-              {fmt(progress.remaining, currency)} restantes
+            <Text style={[styles.remainingAmount, { color: iconColor.color }]} numberOfLines={1}>
+              Falta {fmt(progress.remaining, currency)}
             </Text>
           )}
         </View>
 
+        {/* Actions row */}
         {!readOnly && (
           <View style={styles.actions}>
             <Pressable onPress={onDelete} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
@@ -95,45 +103,102 @@ export function GoalCard({
 }
 
 const makeStyles = (theme: AppTheme) => StyleSheet.create({
+  card: {
+    alignItems: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    elevation: 3,
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+    position: 'relative',
+    shadowColor: theme.shadowColor,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
+    shadowRadius: 8,
+    overflow: 'visible',
+  },
+  colorBlock: {
+    alignItems: 'center',
+    borderRadius: 12,
+    flexShrink: 0,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  cardContent: {
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  topRow: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  categoryTitle: {
+    color: '#24282D',
+    flexShrink: 1,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14.5,
+  },
+  meta: {
+    color: 'rgba(36, 40, 45, 0.65)',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  budgetLimit: {
+    color: '#24282D',
+    flexShrink: 0,
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14.5,
+    textAlign: 'right',
+  },
+  progressBarTrack: {
+    backgroundColor: 'rgba(36, 40, 45, 0.08)',
+    borderRadius: 99,
+    height: 5,
+    marginVertical: 4,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  progressBarFill: {
+    borderRadius: 99,
+    height: '100%',
+  },
+  bottomRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  spentAmount: {
+    color: 'rgba(36, 40, 45, 0.65)',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+  },
+  remainingAmount: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  readOnly: {
+    color: 'rgba(36, 40, 45, 0.65)',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textAlign: 'right',
+  },
   actions: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
     justifyContent: 'flex-end',
-    marginTop: 6,
-  },
-  amountRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'space-between',
-    marginTop: 5,
-  },
-  barFill: {
-    borderRadius: 3,
-    height: '100%',
-  },
-  barTrack: {
-    backgroundColor: theme.mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.16)',
-    borderRadius: 3,
-    height: 6,
-    marginTop: 7,
-    overflow: 'hidden',
+    marginTop: 8,
     width: '100%',
-  },
-  card: {
-    alignItems: 'flex-start',
-    backgroundColor: theme.surface,
-    borderRadius: 16,
-    elevation: 3,
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    shadowColor: theme.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: theme.mode === 'light' ? 0.08 : 0.10,
-    shadowRadius: 8,
   },
   contribute: {
     alignItems: 'center',
@@ -147,7 +212,7 @@ const makeStyles = (theme: AppTheme) => StyleSheet.create({
   contributeText: {
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: 'Poppins_700Bold',
   },
   emoji: {
     fontSize: 18,
@@ -161,64 +226,7 @@ const makeStyles = (theme: AppTheme) => StyleSheet.create({
     justifyContent: 'center',
     width: 34,
   },
-  iconWrap: {
-    alignItems: 'center',
-    borderRadius: 16,
-    flexShrink: 0,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  info: {
-    flex: 1,
-    minWidth: 0,
-  },
-  meta: {
-    color: theme.textSecondary,
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  name: {
-    color: theme.textPrimary,
-    flexShrink: 1,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  nameGroup: {
-    flex: 1,
-    minWidth: 0,
-  },
-  nameRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 6,
-  },
   pressed: {
     opacity: 0.72,
-  },
-  readOnly: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'right',
-  },
-  remaining: {
-    color: theme.textMuted,
-    flexShrink: 1,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'right',
-  },
-  savedText: {
-    flexShrink: 1,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  targetText: {
-    color: theme.textSecondary,
-    flexShrink: 0,
-    fontSize: 10,
-    fontWeight: '500',
   },
 });

@@ -239,8 +239,8 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                         onChangeText={setTitle}
                         placeholder="Ej. Viaje a Ámsterdam"
                         placeholderTextColor={theme.textMuted}
+                        numberOfLines={1}
                         style={styles.detailInput}
-                        autoFocus
                       />
                     </View>
                   </View>
@@ -253,6 +253,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                         onChangeText={setDescription}
                         placeholder="Ej. Fin de semana en mayo con amigos"
                         placeholderTextColor={theme.textMuted}
+                        numberOfLines={2}
                         style={[styles.detailInput, styles.detailTextarea]}
                         multiline
                       />
@@ -323,6 +324,7 @@ export function PlanModal({ visible, plan, onClose }: PlanModalProps) {
                       onChangeText={setExternalName}
                       placeholder="Nombre de la persona"
                       placeholderTextColor={theme.textMuted}
+                      numberOfLines={1}
                       style={styles.externalInput}
                       autoFocus
                       onSubmitEditing={addExternal}
@@ -492,10 +494,12 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
+    lineHeight: 20,
     minHeight: 32,
     padding: 0,
   },
   detailTextarea: {
+    lineHeight: 20,
     minHeight: 64,
     textAlignVertical: 'top',
   },
@@ -597,6 +601,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
+    lineHeight: 19,
     padding: 0,
   },
   externalAddBtn: {

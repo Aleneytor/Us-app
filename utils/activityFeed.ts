@@ -184,7 +184,7 @@ function transactionSearchText(transaction: Transaction): string {
 }
 
 function savingContributionItem(plan: SavingPlan, entry: SavingPlanHistoryEntry): ActivityItem {
-  const title = entry.note ? entry.note : `Aporte a ${plan.title}`;
+  const title = `Aporte a ${plan.title}`;
   const subtitle = `Ahorro: ${plan.title}`;
   return {
     source: 'saving_contribution',

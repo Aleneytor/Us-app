@@ -10,6 +10,7 @@ type ScrollToTopHandle = {
 };
 
 type EntranceAnimationOptions = {
+  animateOnFocus?: boolean;
   itemCount?: number;
   resetScrollOnFocus?: boolean;
   scrollRef?: RefObject<ScrollToTopHandle | null>;
@@ -36,6 +37,7 @@ function scrollToTop(ref?: RefObject<ScrollToTopHandle | null>) {
 }
 
 export function useEntranceAnimation({
+  animateOnFocus = true,
   itemCount = 32,
   resetScrollOnFocus = true,
   scrollRef,
@@ -43,11 +45,12 @@ export function useEntranceAnimation({
 }: EntranceAnimationOptions = {}) {
   const currentUser = useAppStore((s) => s.currentUser);
 
-  const heroAnim = useRef(new Animated.Value(0)).current;
-  const contentAnim = useRef(new Animated.Value(0)).current;
-  const headerAnim = useRef(new Animated.Value(0)).current;
+  const initialValue = animateOnFocus ? 0 : 1;
+  const heroAnim = useRef(new Animated.Value(initialValue)).current;
+  const contentAnim = useRef(new Animated.Value(initialValue)).current;
+  const headerAnim = useRef(new Animated.Value(initialValue)).current;
   const itemAnims = useRef(
-    Array.from({ length: itemCount }, () => new Animated.Value(0)),
+    Array.from({ length: itemCount }, () => new Animated.Value(initialValue)),
   ).current;
 
   const [focusCycle, setFocusCycle] = useState(0);
@@ -83,6 +86,14 @@ export function useEntranceAnimation({
     contentAnim.stopAnimation();
     headerAnim.stopAnimation();
     itemAnims.forEach((itemAnim) => itemAnim.stopAnimation());
+
+    if (!animateOnFocus) {
+      heroAnim.setValue(1);
+      contentAnim.setValue(1);
+      headerAnim.setValue(1);
+      itemAnims.forEach((itemAnim) => itemAnim.setValue(1));
+      return undefined;
+    }
 
     if (focusCycle === 0 || !focusedRef.current) {
       heroAnim.setValue(0);
@@ -138,7 +149,7 @@ export function useEntranceAnimation({
     return () => {
       anim?.stop();
     };
-  }, [contentAnim, currentUser, focusCycle, headerAnim, heroAnim, itemAnims]);
+  }, [animateOnFocus, contentAnim, currentUser, focusCycle, headerAnim, heroAnim, itemAnims]);
 
   return { heroAnim, contentAnim, headerAnim, itemAnims };
 }

@@ -302,7 +302,6 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
                 placeholderTextColor={theme.textMuted}
                 keyboardType="decimal-pad"
                 style={styles.spentAmountInput}
-                autoFocus={!editing}
               />
               <View style={styles.currencyBadgeInline}>
                 <Text style={styles.currencyTextInline}>{currency}</Text>
@@ -324,6 +323,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
                   onChangeText={setTitle}
                   placeholder="Ej. Cena en el centro"
                   placeholderTextColor={theme.textMuted}
+                  numberOfLines={1}
                   style={styles.detailInput}
                   returnKeyType="next"
                 />
@@ -675,6 +675,7 @@ export function PlanExpenseModal({ visible, plan, expense, onClose }: PlanExpens
                   onChangeText={setNote}
                   placeholder="Añade algún comentario o detalle..."
                   placeholderTextColor={theme.textMuted}
+                  numberOfLines={2}
                   style={[styles.detailInput, styles.detailTextarea]}
                   multiline
                   onFocus={noteScroll.onFocus}
@@ -755,6 +756,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontFamily: 'Poppins_600SemiBold',
     fontSize: 36,
     letterSpacing: -0.8,
+    lineHeight: 44,
     textAlign: 'center',
     minWidth: 120,
     padding: 0,
@@ -811,10 +813,12 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
+    lineHeight: 20,
     minHeight: 32,
     padding: 0,
   },
   detailTextarea: {
+    lineHeight: 20,
     minHeight: 64,
     textAlignVertical: 'top',
   },

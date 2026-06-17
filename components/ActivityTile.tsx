@@ -46,6 +46,7 @@ export function ActivityTile({
   const iconColor = getIconColor(activity.iconColor);
   const isPlanExpense = activity.source === 'plan_expense';
   const isPlanSettlement = activity.source === 'plan_settlement';
+  const isSavingContribution = activity.source === 'saving_contribution';
   const isPlanActivity = activity.source === 'plan_created' || activity.source === 'plan_expense' || activity.source === 'plan_settlement';
   const typeIndicator = isPlanExpense || isPlanSettlement
     ? {
@@ -58,6 +59,8 @@ export function ActivityTile({
       : { icon: 'wallet-outline' as const, color: '#7C3AED', library: 'ion' as const };
   const dateText = activity.source === 'plan_expense' || activity.source === 'plan_settlement'
     ? activity.subtitle
+    : isSavingContribution
+    ? formatDateShort(activity.date)
     : activity.source === 'saving_created' ||
     activity.source === 'goal_created' ||
     activity.source === 'plan_created'
@@ -110,7 +113,7 @@ export function ActivityTile({
       ]}
     >
       <View style={[styles.iconWrap, { backgroundColor: iconColor.color }]}>
-        <Ionicons name={category.icon} size={20} color="#FFFFFF" />
+        <Ionicons name={category.icon} size={22} color="#FFFFFF" />
       </View>
 
       <View style={styles.body}>
@@ -141,9 +144,8 @@ export function ActivityTile({
 const makeStyles = (t: AppTheme) => StyleSheet.create({
   amount: {
     color: t.textPrimary,
-    fontFamily: 'Poppins_600SemiBold',
-    fontSize: 14,
-    fontWeight: '600',
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 15,
     textAlign: 'right',
   },
   amountBlock: {
@@ -162,16 +164,17 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   card: {
     alignItems: 'center',
     backgroundColor: t.surface,
-    borderRadius: 20,
+    borderRadius: 18,
     elevation: 3,
     flexDirection: 'row',
     gap: 12,
     minHeight: 60,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingLeft: 10,
+    paddingRight: 12,
+    paddingVertical: 8,
     shadowColor: t.shadowColor,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.10,
     shadowRadius: 10,
   },
   cardFlat: {
@@ -180,32 +183,31 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   date: {
     color: t.textMuted,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'Poppins_500Medium',
     fontSize: 12,
-    fontWeight: '600',
   },
   iconWrap: {
     alignItems: 'center',
-    borderRadius: 16,
+    borderRadius: 14,
     flexShrink: 0,
-    height: 40,
+    height: 44,
     justifyContent: 'center',
-    width: 40,
+    marginRight: 2,
+    width: 44,
   },
   kindIndicator: {
     alignItems: 'center',
-    borderRadius: 9,
-    height: 28,
+    borderRadius: 10,
+    height: 30,
     justifyContent: 'center',
-    width: 28,
+    width: 30,
   },
   pressed: {
     opacity: 0.72,
   },
   title: {
     color: t.textPrimary,
-    fontFamily: 'Poppins_600SemiBold',
+    fontFamily: 'Poppins_500Medium',
     fontSize: 14,
-    fontWeight: '600',
   },
 });

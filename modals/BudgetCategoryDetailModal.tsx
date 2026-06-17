@@ -170,18 +170,18 @@ export function BudgetCategoryDetailModal({
         footer={(
           <>
             <Pressable
-              onPress={() => setEditCategoryOpen(true)}
-              style={({ pressed }) => [styles.footerBtn, pressed && styles.pressed]}
+              onPress={confirmDeleteCategory}
+              style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
             >
-              <MaterialCommunityIcons name="square-edit-outline" size={20} color={colors.actionText} />
-              <Text style={styles.footerBtnText}>Editar</Text>
+              <MaterialCommunityIcons name="trash-can-outline" size={22} color={colors.actionText} />
+              <Text style={styles.deleteText}>Eliminar</Text>
             </Pressable>
             <Pressable
-              onPress={confirmDeleteCategory}
-              style={({ pressed }) => [styles.footerBtn, styles.footerBtnDelete, pressed && styles.pressed]}
+              onPress={() => setEditCategoryOpen(true)}
+              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
             >
-              <MaterialCommunityIcons name="trash-can-outline" size={20} color={colors.expense} />
-              <Text style={[styles.footerBtnText, styles.footerBtnDeleteText]}>Eliminar</Text>
+              <MaterialCommunityIcons name="square-edit-outline" size={22} color="#FFFFFF" />
+              <Text style={styles.actionText}>Editar</Text>
             </Pressable>
           </>
         )}
@@ -821,32 +821,41 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
 
   // ── Footer buttons ───────────────────────────────────────
-  footerBtn: {
+  actionButton: {
     alignItems: 'center',
-    backgroundColor: colors.actionBg,
-    borderColor: colors.cardBorder,
+    backgroundColor: '#7C3AED',
     borderRadius: 14,
-    borderWidth: 1,
-    flex: 1,
     flexDirection: 'row',
-    gap: 8,
-    height: 52,
+    flex: 1,
+    gap: 11,
+    height: 54,
     justifyContent: 'center',
     minWidth: 0,
     paddingHorizontal: 10,
   },
-  footerBtnText: {
+  actionText: {
+    color: '#FFFFFF',
+    flexShrink: 1,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  deleteButton: {
+    alignItems: 'center',
+    backgroundColor: colors.actionBg,
+    borderRadius: 14,
+    flexDirection: 'row',
+    flex: 1,
+    gap: 11,
+    height: 54,
+    justifyContent: 'center',
+    minWidth: 0,
+    paddingHorizontal: 10,
+  },
+  deleteText: {
     color: colors.actionText,
     flexShrink: 1,
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  footerBtnDelete: {
-    backgroundColor: 'rgba(255, 89, 104, 0.12)',
-    borderColor: 'rgba(255, 89, 104, 0.24)',
-  },
-  footerBtnDeleteText: {
-    color: colors.expense,
+    fontSize: 16,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.72,

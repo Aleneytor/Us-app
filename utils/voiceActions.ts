@@ -156,6 +156,7 @@ const CATEGORY_SYNONYMS: Record<string, string[]> = {
   education: ['escuela', 'universidad', 'curso', 'educacion'],
   salary: ['sueldo', 'nomina', 'salario'],
   freelance: ['freelance', 'cliente'],
+  pets: ['mascota', 'mascotas', 'perro', 'gato', 'veterinario', 'animales'],
   other: ['otro', 'varios'],
 };
 

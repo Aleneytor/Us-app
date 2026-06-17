@@ -105,7 +105,7 @@ export function GoalModal({ visible, goal, onClose }: GoalModalProps) {
               <Choice label="Conjunta" active={type === 'joint'} onPress={() => setType('joint')} />
               <Choice label="Personal" active={type === 'personal'} onPress={() => setType('personal')} />
             </View>
-            <Field label="Nombre" value={name} onChangeText={setName} placeholder="Ej. Viaje" autoFocus />
+            <Field label="Nombre" value={name} onChangeText={setName} placeholder="Ej. Viaje" />
             <Field
               label="Objetivo"
               value={target}
@@ -135,13 +135,16 @@ function Field({
 }: ComponentProps<typeof TextInput> & { label: string }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const isMultiline = !!props.multiline;
 
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        multiline={isMultiline}
+        numberOfLines={isMultiline ? undefined : 1}
         placeholderTextColor={theme.textMuted}
-        style={[styles.input, props.multiline && styles.textarea]}
+        style={[styles.input, isMultiline && styles.textarea]}
         {...props}
       />
     </View>
@@ -255,6 +258,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
+    lineHeight: 20,
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -317,6 +321,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontWeight: '900',
   },
   textarea: {
+    lineHeight: 20,
     minHeight: 86,
     textAlignVertical: 'top',
   },

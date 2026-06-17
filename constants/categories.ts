@@ -78,6 +78,7 @@ export const CATEGORIES: Record<string, CategoryInfo> = {
 
   salary:      { label: 'Nomina',      icon: 'cash-outline' },
   freelance:   { label: 'Freelance',   icon: 'briefcase-outline' },
+  family:      { label: 'Familia',     icon: 'people-outline' },
   investment:  { label: 'Inversion',   icon: 'trending-up-outline' },
   refund:      { label: 'Reembolso',   icon: 'refresh-outline' },
   sale:        { label: 'Venta',       icon: 'pricetag-outline' },
@@ -142,17 +143,15 @@ export interface BudgetCategoryPreset {
 }
 
 export const BUDGET_CATEGORY_PRESETS: BudgetCategoryPreset[] = [
-  { name: 'Sueldo', icon: 'salary', iconColor: 'green' },
-  { name: 'Freelance', icon: 'freelance', iconColor: 'blue' },
+  { name: 'Trabajo',   icon: 'salary',    iconColor: 'green'  },
+  { name: 'Comida',    icon: 'food',      iconColor: 'orange' },
+  { name: 'Casa',      icon: 'home',      iconColor: 'slate'  },
   { name: 'Servicios', icon: 'utilities', iconColor: 'yellow' },
-  { name: 'Casa', icon: 'home', iconColor: 'slate' },
-  { name: 'Comida', icon: 'food', iconColor: 'orange' },
-  { name: 'Carro', icon: 'car', iconColor: 'blueLight' },
-  { name: 'Ropa', icon: 'clothing', iconColor: 'pink' },
-  { name: 'Salidas', icon: 'outings', iconColor: 'purple' },
-  { name: 'Eventos', icon: 'events', iconColor: 'teal' },
-  { name: 'Viajes', icon: 'travel', iconColor: 'sky' },
-  { name: 'Escuela', icon: 'education', iconColor: 'indigo' },
+  { name: 'Salidas',   icon: 'outings',   iconColor: 'purple' },
+  { name: 'Viajes',    icon: 'travel',    iconColor: 'sky'    },
+  { name: 'Ropa',      icon: 'clothing',  iconColor: 'pink'   },
+  { name: 'Familia',   icon: 'family',    iconColor: 'rose'   },
+  { name: 'Mascotas',  icon: 'pets',      iconColor: 'amber'  },
 ];
 
 export const BUDGET_CATEGORY_ICON_KEYS = Array.from(new Set([

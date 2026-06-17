@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import Svg, { Path } from 'react-native-svg';
 import { Tabs } from 'expo-router';
 import { ExpoSpeechRecognitionModule, isSpeechRecognitionSupported, useSpeechRecognitionEvent } from '../../utils/speechRecognitionCompat';
-import { Alert, Animated, Linking, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
+import { Alert, Animated, Easing, Linking, Pressable, StyleSheet, TouchableOpacity, useWindowDimensions, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { PlanModal } from '../../modals/PlanModal';
@@ -46,7 +46,8 @@ const TAB_ITEM_WIDTHS: Record<string, number> = {
   categorias: 68,
 };
 
-const HIDDEN_TAB_ROUTES = new Set(['create', 'ahorros', 'ahorro', 'perfil']);
+const HIDDEN_TAB_ROUTES = new Set(['create', 'perfil']);
+const TAB_SLIDE_DURATION_MS = 260;
 
 const DROPUP_OPTIONS: Array<{ label: string; description: string; icon: IoniconName; key: string }> = [
   { key: 'movimiento', label: 'Nuevo movimiento', description: 'Registra un ingreso o gasto en tu cuenta', icon: 'add-circle-outline' },
@@ -294,6 +295,21 @@ export default function TabLayout() {
   };
 
   const blurTint = theme.mode === 'light' ? 'light' : 'dark';
+  const tabSceneWidth = Math.max(width, 1);
+  const tabSceneStyleInterpolator = useMemo(() => {
+    return ({ current }: { current: { progress: Animated.Value } }) => ({
+      sceneStyle: {
+        transform: [
+          {
+            translateX: current.progress.interpolate({
+              inputRange: [-1, 0, 1],
+              outputRange: [-tabSceneWidth, 0, tabSceneWidth],
+            }),
+          },
+        ],
+      },
+    });
+  }, [tabSceneWidth]);
 
   return (
     <>
@@ -308,7 +324,14 @@ export default function TabLayout() {
           headerStyle: styles.header,
           headerShadowVisible: false,
           headerTitleStyle: styles.headerTitle,
-          animation: 'none',
+          sceneStyleInterpolator: tabSceneStyleInterpolator,
+          transitionSpec: {
+            animation: 'timing',
+            config: {
+              duration: TAB_SLIDE_DURATION_MS,
+              easing: Easing.out(Easing.cubic),
+            },
+          },
           tabBarIcon: ({ focused, color, size }) => {
             const icons = TAB_ICONS[route.name];
             if (!icons) return null;
@@ -334,8 +357,6 @@ export default function TabLayout() {
         <Tabs.Screen name="extras" options={{ title: 'Extras', headerShown: false }} />
         <Tabs.Screen name="perfil" options={{ href: null, headerShown: false }} />
         <Tabs.Screen name="create" options={{ title: '', headerShown: false }} />
-        <Tabs.Screen name="ahorros" options={{ title: 'Ahorros', headerShown: false }} />
-        <Tabs.Screen name="ahorro" options={{ title: 'Planes', headerShown: false }} />
       </Tabs>
 
       {dropupOpen && (
@@ -736,14 +757,14 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   floatingFab: {
     alignItems: 'center',
-    backgroundColor: t.mode === 'light' ? 'rgba(240, 240, 245, 0.60)' : 'rgba(38, 45, 51, 0.34)',
-    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: t.mode === 'light' ? 'rgba(248, 248, 251, 0.90)' : 'rgba(38, 45, 51, 0.82)',
+    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.22)',
     borderWidth: 1,
     justifyContent: 'center',
     overflow: 'hidden',
   },
   floatingFabOpen: {
-    backgroundColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: t.mode === 'light' ? 'rgba(226, 232, 240, 0.94)' : 'rgba(255, 255, 255, 0.24)',
   },
   floatingFabRecording: {
     backgroundColor: 'rgba(254, 226, 226, 0.94)',
@@ -751,11 +772,11 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   floatingFabShadow: {
     backgroundColor: 'rgba(0, 0, 0, 0.01)',
-    elevation: 18,
+    elevation: 12,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.46,
-    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
   },
   standalonefab: {
     position: 'absolute',
@@ -823,8 +844,8 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   tabPill: {
     alignItems: 'center',
-    backgroundColor: t.mode === 'light' ? 'rgba(240, 240, 245, 0.60)' : 'rgba(38, 45, 51, 0.34)',
-    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: t.mode === 'light' ? 'rgba(248, 248, 251, 0.90)' : 'rgba(38, 45, 51, 0.82)',
+    borderColor: t.mode === 'light' ? 'rgba(0, 0, 0, 0.13)' : 'rgba(255, 255, 255, 0.22)',
     borderWidth: 1,
     borderRadius: 33,
     flex: 1,
@@ -838,14 +859,14 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   tabPillShadow: {
     backgroundColor: 'rgba(0, 0, 0, 0.01)',
     borderRadius: 33,
-    elevation: 18,
+    elevation: 12,
     flex: 1,
     height: 62,
     maxWidth: 430,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.46,
-    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
   },
   voiceCard: {
     backgroundColor: t.mode === 'light' ? 'rgba(255, 255, 255, 0.97)' : 'rgba(255, 255, 255, 0.94)',

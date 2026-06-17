@@ -1,14 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
+import { useAppStore } from '../store/useAppStore';
 
-const ONBOARDING_DONE_KEY = 'nosotros_onboarding_done';
 const HINT_VOICE_KEY      = 'nosotros_hint_voice_seen';
 
 export function useOnboardingDone() {
   const [done, setDone] = useState<boolean | null>(null);
+  const currentUser = useAppStore((s) => s.currentUser);
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_DONE_KEY).then((v) => setDone(v === '1'));
-  }, []);
+    if (!currentUser) return;
+    AsyncStorage.getItem(`nosotros_onboarding_done:${currentUser}`).then((v) => setDone(v === '1'));
+  }, [currentUser]);
   return done;
 }
 

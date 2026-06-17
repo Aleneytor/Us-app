@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal as Modal } from '../components/AppModal';
 import { CATEGORIES } from '../constants/categories';
 import { type AppTheme } from '../constants/colors';
-import { MODAL_TITLE_FONT_WEIGHT } from '../constants/typography';
+import { MODAL_TITLE_FONT_WEIGHT, SECTION_TITLE_FONT_FAMILY } from '../constants/typography';
 import type { Plan, PlanCategory, PlanExpense } from '../types';
 import { fmt, formatDateShort, parseAmt, todayStr, MONTHS_ES } from '../utils/format';
 import {
@@ -1353,8 +1353,8 @@ const makeStyles = (colors: ReturnType<typeof makeColors>) => StyleSheet.create(
   },
   sectionTitle: {
     color: colors.text,
+    fontFamily: SECTION_TITLE_FONT_FAMILY,
     fontSize: 15,
-    fontWeight: '600',
   },
   addBtn: {
     alignItems: 'center',

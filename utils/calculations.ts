@@ -84,8 +84,26 @@ export function calcGastosProyectados(payload: AppPayload, uid: UserId, ym: stri
   const categories = getBudgetCategoriesForUser(payload, uid);
   const categoryIds = new Set(categories.map((bc) => String(bc.id)));
   const categoryBudgets = categories.reduce((sum, category) => {
-    const spent = sumTransactionsForBudgetCategory(payload, category.id, uid, ym, 'expense');
-    return sum + Math.max(category.monthlyBudget, spent);
+    const isShared = category.uid === undefined;
+    const spentJoint = sumTransactionsForBudgetCategory(payload, category.id, uid, ym, 'expense');
+    
+    if (isShared) {
+      const spentByUser = payload.expenses
+        .filter(
+          (t) =>
+            t.uid === uid &&
+            !t.del &&
+            t.kind === 'expense' &&
+            String(t.budgetCatId) === String(category.id) &&
+            isMonthVisible(t, ym),
+        )
+        .reduce((s, t) => s + getTransactionAmountForMonth(t, ym), 0);
+        
+      const remainingJointBudget = Math.max(0, category.monthlyBudget - spentJoint);
+      return sum + spentByUser + remainingJointBudget / 2;
+    } else {
+      return sum + Math.max(category.monthlyBudget, spentJoint);
+    }
   }, 0);
   const unbudgetedTransactions = payload.expenses
     .filter(
@@ -125,10 +143,13 @@ export function calcBudgetCategorySpending(
   uid: UserId,
   ym: string,
 ): number {
+  const category = (payload.budgetCategories ?? []).find((bc) => bc.id === catId);
+  const isShared = category ? category.uid === undefined : false;
+
   return payload.expenses
     .filter(
       (t) =>
-        t.uid === uid &&
+        (isShared ? true : (t.uid === uid && category && category.uid === uid)) &&
         !t.del &&
         t.kind === 'expense' &&
         String(t.budgetCatId) === String(catId) &&
@@ -164,10 +185,13 @@ function sumTransactionsForBudgetCategory(
   ym: string,
   kind: Transaction['kind'],
 ): number {
+  const category = (payload.budgetCategories ?? []).find((bc) => bc.id === catId);
+  const isShared = category ? category.uid === undefined : false;
+
   return payload.expenses
     .filter(
       (t) =>
-        t.uid === uid &&
+        (isShared ? true : (t.uid === uid && category && category.uid === uid)) &&
         !t.del &&
         t.kind === kind &&
         String(t.budgetCatId) === String(catId) &&

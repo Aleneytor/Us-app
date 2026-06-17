@@ -19,7 +19,7 @@ Thumbs.db
 .netlify/
 
 # Local tool state / logs
-.expo/settings.json
+.expo/
 *.log
 
 # Markdown internos / notas de desarrollo
@@ -35,3 +35,7 @@ supabase/
 
 expo-env.d.ts
 # @end expo-cli
+
+# Agents / IDE skills
+.agents/
+

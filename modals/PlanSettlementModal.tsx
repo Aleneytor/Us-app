@@ -98,7 +98,6 @@ export function PlanSettlementModal({
                 placeholderTextColor={theme.textMuted}
                 keyboardType="decimal-pad"
                 style={styles.amountInput}
-                autoFocus
               />
               <View style={styles.currencyBadge}>
                 <Text style={styles.currencyText}>{currency}</Text>
@@ -153,6 +152,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     flex: 1,
     fontFamily: 'Poppins_600SemiBold',
     fontSize: 28,
+    lineHeight: 34,
     minHeight: 54,
     paddingHorizontal: 14,
     paddingVertical: 8,

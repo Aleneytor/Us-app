@@ -99,7 +99,6 @@ export function ContributionModal({ visible, goal, onClose }: ContributionModalP
               keyboardType="decimal-pad"
               returnKeyType="done"
               onSubmitEditing={() => runAfterKeyboardDismiss(save)}
-              autoFocus
             />
             <Field label="Fecha" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
             <Field label="Nota" value={note} onChangeText={setNote} placeholder="Opcional" multiline />
@@ -115,13 +114,16 @@ function Field({
 }: ComponentProps<typeof TextInput> & { label: string }) {
   const theme = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const isMultiline = !!props.multiline;
 
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        multiline={isMultiline}
+        numberOfLines={isMultiline ? undefined : 1}
         placeholderTextColor={theme.textMuted}
-        style={[styles.input, props.multiline && styles.textarea]}
+        style={[styles.input, isMultiline && styles.textarea]}
         {...props}
       />
     </View>
@@ -177,6 +179,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textPrimary,
     fontSize: 15,
     fontWeight: '600',
+    lineHeight: 20,
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -260,6 +263,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     marginTop: 3,
   },
   textarea: {
+    lineHeight: 20,
     minHeight: 88,
     textAlignVertical: 'top',
   },

@@ -200,7 +200,45 @@ export type PlanSplitMode = Plan['splitMode'];
 
 // Currency
 
-export type CurrencyCode = 'EUR' | 'USD' | 'BS' | 'COP';
+export type CountryCode =
+  | 'argentina'
+  | 'bolivia'
+  | 'brasil'
+  | 'canada'
+  | 'chile'
+  | 'colombia'
+  | 'costa_rica'
+  | 'espana'
+  | 'estados_unidos'
+  | 'guatemala'
+  | 'mexico'
+  | 'panama'
+  | 'paraguay'
+  | 'peru'
+  | 'reino_unido'
+  | 'republica_dominicana'
+  | 'uruguay'
+  | 'venezuela';
+
+export type CurrencyCode =
+  | 'ARS'
+  | 'BOB'
+  | 'BRL'
+  | 'BS'
+  | 'CAD'
+  | 'CLP'
+  | 'COP'
+  | 'CRC'
+  | 'DOP'
+  | 'EUR'
+  | 'GBP'
+  | 'GTQ'
+  | 'MXN'
+  | 'PAB'
+  | 'PEN'
+  | 'PYG'
+  | 'UYU'
+  | 'USD';
 
 export interface CurrencyConfig {
   code: CurrencyCode;
@@ -210,8 +248,22 @@ export interface CurrencyConfig {
 }
 
 export const CURRENCIES: Record<CurrencyCode, CurrencyConfig> = {
+  ARS: { code: 'ARS', symbol: '$', label: 'Peso argentino ($)', locale: 'es-AR' },
+  BOB: { code: 'BOB', symbol: 'Bs.', label: 'Boliviano (Bs.)', locale: 'es-BO' },
+  BRL: { code: 'BRL', symbol: 'R$', label: 'Real brasileño (R$)', locale: 'pt-BR' },
+  CAD: { code: 'CAD', symbol: '$', label: 'Dólar canadiense ($)', locale: 'en-CA' },
+  CLP: { code: 'CLP', symbol: '$', label: 'Peso chileno ($)', locale: 'es-CL' },
+  CRC: { code: 'CRC', symbol: 'CRC', label: 'Colón costarricense', locale: 'es-CR' },
+  DOP: { code: 'DOP', symbol: 'RD$', label: 'Peso dominicano (RD$)', locale: 'es-DO' },
+  GBP: { code: 'GBP', symbol: 'GBP', label: 'Libra esterlina', locale: 'en-GB' },
+  GTQ: { code: 'GTQ', symbol: 'Q', label: 'Quetzal (Q)', locale: 'es-GT' },
+  MXN: { code: 'MXN', symbol: '$', label: 'Peso mexicano ($)', locale: 'es-MX' },
+  PAB: { code: 'PAB', symbol: 'B/.', label: 'Balboa (B/.)', locale: 'es-PA' },
+  PEN: { code: 'PEN', symbol: 'S/', label: 'Sol peruano (S/)', locale: 'es-PE' },
+  PYG: { code: 'PYG', symbol: 'PYG', label: 'Guaraní', locale: 'es-PY' },
+  UYU: { code: 'UYU', symbol: '$U', label: 'Peso uruguayo ($U)', locale: 'es-UY' },
   EUR: { code: 'EUR', symbol: '€', label: 'Euro (€)', locale: 'es-ES' },
-  USD: { code: 'USD', symbol: '$', label: 'Dolar ($)', locale: 'en-US' },
-  BS: { code: 'BS', symbol: 'Bs.', label: 'Bolivar (Bs.)', locale: 'es-VE' },
-  COP: { code: 'COP', symbol: '$', label: 'Peso Colombiano ($)', locale: 'es-CO' },
+  USD: { code: 'USD', symbol: '$', label: 'Dólar ($)', locale: 'en-US' },
+  BS: { code: 'BS', symbol: 'Bs.', label: 'Bolívar (Bs.)', locale: 'es-VE' },
+  COP: { code: 'COP', symbol: '$', label: 'Peso colombiano ($)', locale: 'es-CO' },
 };

@@ -22,6 +22,7 @@ import { SavingPlanPreviewCard } from '../../components/SavingPlanPreviewCard';
 import { ActivityTile } from '../../components/ActivityTile';
 import { BudgetCategoryModal } from '../../modals/BudgetCategoryModal';
 import { type AppTheme } from '../../constants/colors';
+import { SECTION_TITLE_FONT_FAMILY } from '../../constants/typography';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAppStore } from '../../store/useAppStore';
 import type { ActivityItem } from '../../utils/activityFeed';
@@ -294,7 +295,7 @@ const slide = StyleSheet.create({
     shadowOpacity: 0.46, shadowRadius: 26, elevation: 18,
   },
 
-  sectionTitle: { fontSize: 14, fontWeight: '700' },
+  sectionTitle: { fontFamily: SECTION_TITLE_FONT_FAMILY, fontSize: 14 },
 
   // Planes slide
   planCard: {
@@ -446,6 +447,7 @@ export default function OnboardingScreen() {
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const currency = useAppStore((s) => s.currency);
+  const currentUser = useAppStore((s) => s.currentUser);
 
   const [step, setStep] = useState(0);
   const [canContinue, setCanContinue] = useState(false);
@@ -493,12 +495,12 @@ export default function OnboardingScreen() {
   const handleBack = () => { if (step > 0) goTo(step - 1); };
 
   const handleFinish = async () => {
-    await AsyncStorage.setItem(ONBOARDING_DONE_KEY, '1');
+    await AsyncStorage.setItem(`nosotros_onboarding_done:${currentUser}`, '1');
     router.replace('/(tabs)');
   };
 
   const handleSkip = async () => {
-    await AsyncStorage.setItem(ONBOARDING_DONE_KEY, '1');
+    await AsyncStorage.setItem(`nosotros_onboarding_done:${currentUser}`, '1');
     router.replace('/(tabs)');
   };
 

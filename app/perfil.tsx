@@ -1,11 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
+import { useAuth, useUser } from '@clerk/expo';
 import {
   Alert,
   Animated,
   Image,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -15,6 +18,7 @@ import {
   TextInput,
   View,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,10 +27,11 @@ import { ICON_COLORS, type AppTheme } from '../constants/colors';
 import { useTheme } from '../contexts/ThemeContext';
 import { refreshCurrentRoom, seedDemoData, useAppStore } from '../store/useAppStore';
 import { CURRENCIES } from '../types';
-import type { CurrencyCode } from '../types';
+import type { CountryCode, CurrencyCode } from '../types';
 import { dismissKeyboardAndBlur, runAfterKeyboardDismiss } from '../utils/keyboard';
 import { reportFabScroll } from '../utils/fabScroll';
 import { useEntranceAnimation } from '../hooks/useEntranceAnimation';
+import { getUserData } from '../utils/users';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -35,6 +40,30 @@ const SYNC_COPY = {
   connecting: { label: 'Conectando', color: '#94A3B8', icon: 'sync-circle'      as IoniconName },
   error:      { label: 'Error',      color: '#EC1147', icon: 'alert-circle'     as IoniconName },
 };
+
+const HOME_TOP_GRADIENT = ['#9933FF', '#A44BFF', '#B86EFF', '#D5ADFF', '#F2F2F7'] as const;
+const CONTACT_EMAIL = 'aora.estudio.o@gmail.com';
+
+const COUNTRY_OPTIONS: Array<{ code: CountryCode; label: string; currencies: [CurrencyCode, ...CurrencyCode[]]; flag: string }> = [
+  { code: 'argentina', label: 'Argentina', currencies: ['ARS', 'USD'], flag: '🇦🇷' },
+  { code: 'bolivia', label: 'Bolivia', currencies: ['BOB', 'USD'], flag: '🇧🇴' },
+  { code: 'brasil', label: 'Brasil', currencies: ['BRL', 'USD'], flag: '🇧🇷' },
+  { code: 'canada', label: 'Canadá', currencies: ['CAD', 'USD'], flag: '🇨🇦' },
+  { code: 'chile', label: 'Chile', currencies: ['CLP', 'USD'], flag: '🇨🇱' },
+  { code: 'colombia', label: 'Colombia', currencies: ['COP', 'USD'], flag: '🇨🇴' },
+  { code: 'costa_rica', label: 'Costa Rica', currencies: ['CRC', 'USD'], flag: '🇨🇷' },
+  { code: 'espana', label: 'España', currencies: ['EUR', 'USD'], flag: '🇪🇸' },
+  { code: 'estados_unidos', label: 'Estados Unidos', currencies: ['USD'], flag: '🇺🇸' },
+  { code: 'guatemala', label: 'Guatemala', currencies: ['GTQ', 'USD'], flag: '🇬🇹' },
+  { code: 'mexico', label: 'México', currencies: ['MXN', 'USD'], flag: '🇲🇽' },
+  { code: 'panama', label: 'Panamá', currencies: ['PAB', 'USD'], flag: '🇵🇦' },
+  { code: 'paraguay', label: 'Paraguay', currencies: ['PYG', 'USD'], flag: '🇵🇾' },
+  { code: 'peru', label: 'Perú', currencies: ['PEN', 'USD'], flag: '🇵🇪' },
+  { code: 'reino_unido', label: 'Reino Unido', currencies: ['GBP', 'USD'], flag: '🇬🇧' },
+  { code: 'republica_dominicana', label: 'República Dominicana', currencies: ['DOP', 'USD'], flag: '🇩🇴' },
+  { code: 'uruguay', label: 'Uruguay', currencies: ['UYU', 'USD'], flag: '🇺🇾' },
+  { code: 'venezuela', label: 'Venezuela', currencies: ['BS', 'USD'], flag: '🇻🇪' },
+];
 
 function generateInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -47,6 +76,8 @@ export default function PerfilScreen() {
   const setCurrentUser = useAppStore((s) => s.setCurrentUser);
   const currency       = useAppStore((s) => s.currency);
   const setCurrency    = useAppStore((s) => s.setCurrency);
+  const country        = useAppStore((s) => s.country);
+  const setCountry     = useAppStore((s) => s.setCountry);
   const syncStatus     = useAppStore((s) => s.syncStatus);
   const users          = useAppStore((s) => s.users);
   const addUser        = useAppStore((s) => s.addUser);
@@ -58,6 +89,20 @@ export default function PerfilScreen() {
 
   const theme  = useTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+
+  const { signOut } = useAuth();
+  const { user: clerkUser } = useUser();
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Cerrar sesión',
+      '¿Estás seguro de que quieres cerrar la sesión actual?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cerrar sesión', style: 'destructive', onPress: () => void signOut() },
+      ]
+    );
+  };
 
   const router         = useRouter();
   const insets         = useSafeAreaInsets();
@@ -74,11 +119,32 @@ export default function PerfilScreen() {
   const [colorKey, setColorKey]       = useState('indigo');
   const [newName2, setNewName2]       = useState('');
   const [colorKey2, setColorKey2]     = useState('pink');
+  const [isCountryModalVisible, setIsCountryModalVisible] = useState(false);
+  const [searchText, setSearchText]   = useState('');
 
-  const user    = users[currentUser] ?? { name: currentUser, initials: '?', color: '#6B7280', bg: '#F3F4F6' };
+  const filteredCountries = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return COUNTRY_OPTIONS;
+    return COUNTRY_OPTIONS.filter((item) =>
+      item.label.toLowerCase().includes(query)
+    );
+  }, [searchText]);
+
+  const user    = getUserData(users, currentUser);
   const sync    = SYNC_COPY[syncStatus] ?? SYNC_COPY.connecting;
   const version = Constants.expoConfig?.version ?? '1.0.0';
   const userIds = Object.keys(users ?? {});
+  const selectedCountry = COUNTRY_OPTIONS.find((item) => item.code === country) ?? COUNTRY_OPTIONS[7]!;
+  const visibleCurrencies = selectedCountry.currencies.map((code) => CURRENCIES[code]);
+
+  const handleCountryChange = async (nextCountry: CountryCode) => {
+    const option = COUNTRY_OPTIONS.find((item) => item.code === nextCountry);
+    if (!option) return;
+    await setCountry(nextCountry);
+    if (!option.currencies.includes(currency)) {
+      await setCurrency(option.currencies[0]);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -132,7 +198,7 @@ export default function PerfilScreen() {
   };
 
   const handleDeleteUser = (uid: string) => {
-    const target = users[uid];
+    const target = getUserData(users, uid);
     Alert.alert(
       'Eliminar usuario',
       `¿Eliminar a ${target?.name ?? uid}?\nSus movimientos quedarán guardados.`,
@@ -196,294 +262,123 @@ export default function PerfilScreen() {
   };
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.screen}
-      contentContainerStyle={styles.scrollContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.textMuted} />}
-      showsVerticalScrollIndicator={false}
-      bounces={false}
-      overScrollMode="never"
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      onScrollBeginDrag={dismissKeyboardAndBlur}
-      onScroll={(event) => reportFabScroll(event.nativeEvent.contentOffset.y)}
-      scrollEventThrottle={16}
-    >
-      {/* -- Hero ------------------------------------------------------------ */}
-      <Animated.View
-        style={[
-          styles.hero,
-          {
-            paddingTop: insets.top > 0 ? insets.top + 12 : 44,
-            flexDirection: 'column',
-            alignItems: 'stretch',
-            gap: 16,
-            opacity: heroAnim,
-            transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-18, 0] }) }],
-          },
-        ]}
+    <View style={styles.screen}>
+      {/* -- Header Minimalista ------------------------------------------------ */}
+      <View style={[styles.headerContainer, { paddingTop: insets.top > 0 ? insets.top + 12 : 24 }]}>
+        <Pressable
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace('/(tabs)');
+          }}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          hitSlop={12}
+        >
+          <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
+        </Pressable>
+        <Text style={styles.headerTitleText}>Ajustes</Text>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.textMuted} />}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={dismissKeyboardAndBlur}
+        onScroll={(event) => reportFabScroll(event.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={16}
       >
-        <View style={styles.heroHeaderRow}>
-          <Pressable
-            onPress={() => {
-              if (router.canGoBack()) router.back();
-              else router.replace('/(tabs)');
-            }}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-            hitSlop={12}
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
-          </Pressable>
-        </View>
+        {/* -- Content --------------------------------------------------------- */}
+        <Animated.View
+          style={[
+            styles.content,
+            {
+              opacity: contentAnim,
+              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+            },
+          ]}
+        >
 
-        <View style={styles.heroContentRow}>
-          <Pressable
-            onPress={handlePickPhoto}
-            disabled={uploading}
-            style={({ pressed }) => [styles.heroAvatarContainer, pressed && styles.pressed]}
-          >
-            <View style={[styles.heroAvatar, { backgroundColor: user.bg }]}>
-              {uploading ? (
-                <ActivityIndicator size="small" color={user.color} />
-              ) : user.photo ? (
-                <Image source={user.photo} style={styles.heroPhoto} />
-              ) : (
-                <Text style={[styles.heroInitials, { color: user.color, fontSize: (user.initials?.length ?? 0) > 1 ? 22 : 28 }]}>
-                  {user.initials}
-                </Text>
-              )}
-              <View style={styles.cameraIconBadge}>
-                <Ionicons name="camera" size={12} color="#FFFFFF" />
-              </View>
-            </View>
-          </Pressable>
-          <View style={styles.heroText}>
-            <Text style={styles.heroName}>{user.name}</Text>
-            <Text style={styles.heroSub}>Usuario activo</Text>
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* -- Content --------------------------------------------------------- */}
-      <Animated.View
-        style={[
-          styles.content,
-          {
-            opacity: contentAnim,
-            transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-          },
-        ]}
-      >
-
-        {/* Usuarios */}
+        {/* Cuenta */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Usuarios</Text>
+          <Text style={styles.sectionLabel}>Cuenta</Text>
           <View style={styles.card}>
-            {userIds.map((uid, idx) => {
-              const item      = users[uid]!;
-              const active    = uid === currentUser;
-              const partnerId = partnerForUser[uid];
-              const partner   = partnerId && partnerId !== uid ? users[partnerId] : null;
-              return (
-                <View key={uid}>
-                  {idx > 0 && <View style={styles.divider} />}
-                  <Pressable
-                    onPress={() => void setCurrentUser(uid)}
-                    style={({ pressed }) => [styles.userTile, pressed && styles.pressed]}
-                  >
-                    <View style={[styles.userAvatar, { backgroundColor: item.bg }]}>
-                      {item.photo ? (
-                        <Image source={item.photo} style={styles.userPhoto} />
-                      ) : (
-                        <Text style={[styles.userInitials, { color: item.color, fontSize: (item.initials?.length ?? 0) > 1 ? 13 : 16 }]}>
-                          {item.initials}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.userInfo}>
-                      <Text style={[styles.userName, active && { color: '#16A34A' }]}>
-                        {item.name}
-                      </Text>
-                      {partner ? (
-                        <Text style={styles.userPartner}>
-                          <Ionicons name="link-outline" size={11} color={theme.textMuted} /> Vinculado con {partner.name}
-                        </Text>
-                      ) : active ? (
-                        <Text style={styles.userActive}>Activo ahora</Text>
-                      ) : null}
-                    </View>
-                    {active
-                      ? <Ionicons name="checkmark-circle" size={22} color="#16A34A" />
-                      : (
-                        <Pressable
-                          onPress={() => handleDeleteUser(uid)}
-                          hitSlop={{ top: 10, bottom: 10, left: 12, right: 8 }}
-                          style={({ pressed }) => [pressed && styles.pressed]}
-                        >
-                          <Ionicons name="trash-outline" size={19} color={theme.textMuted} />
-                        </Pressable>
-                      )
-                    }
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-
-          {!showAddForm ? (
-            <Pressable
-              onPress={() => setShowAddForm(true)}
-              style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
-            >
-              <Ionicons name="person-add-outline" size={17} color="#6366F1" />
-              <Text style={styles.addBtnText}>Agregar usuario</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.addForm}>
-              <Text style={styles.addFormTitle}>Nueva pareja</Text>
-
-              {/* Usuario 1 */}
-              <View style={styles.userSectionForm}>
-                <Text style={styles.userSectionHeader}>Primer Integrante</Text>
-                
-                <Text style={styles.fieldLabel}>Nombre</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Ej. María"
-                  placeholderTextColor={theme.textMuted}
-                  value={newName}
-                  onChangeText={setNewName}
-                  autoFocus
-                  returnKeyType="next"
-                />
-
-                <Text style={styles.fieldLabel}>Color</Text>
-                <View style={styles.palette}>
-                  {ICON_COLORS.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => setColorKey(c.id)}
-                      style={[
-                        styles.paletteCircle,
-                        { backgroundColor: c.color },
-                        colorKey === c.id && styles.paletteCircleSelected,
-                      ]}
-                    >
-                      {colorKey === c.id ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              {/* Divider */}
-              <View style={styles.formSectionDivider} />
-
-              {/* Usuario 2 */}
-              <View style={styles.userSectionForm}>
-                <Text style={styles.userSectionHeader}>Segundo Integrante (Pareja)</Text>
-                
-                <Text style={styles.fieldLabel}>Nombre</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Ej. Juan"
-                  placeholderTextColor={theme.textMuted}
-                  value={newName2}
-                  onChangeText={setNewName2}
-                  returnKeyType="done"
-                  onSubmitEditing={() => runAfterKeyboardDismiss(() => void handleAddPair())}
-                />
-
-                <Text style={styles.fieldLabel}>Color</Text>
-                <View style={styles.palette}>
-                  {ICON_COLORS.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => setColorKey2(c.id)}
-                      style={[
-                        styles.paletteCircle,
-                        { backgroundColor: c.color },
-                        colorKey2 === c.id && styles.paletteCircleSelected,
-                      ]}
-                    >
-                      {colorKey2 === c.id ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              {/* Previews */}
-              {(newName.trim().length > 0 || newName2.trim().length > 0) && (
-                <View style={styles.previewsRow}>
-                  {newName.trim().length > 0 && (() => {
-                    const p = ICON_COLORS.find((c) => c.id === colorKey) ?? ICON_COLORS[0]!;
-                    return (
-                      <View style={styles.previewRow}>
-                        <View style={[styles.previewAvatar, { backgroundColor: p.bg }]}>
-                          <Text style={[styles.previewInitials, { color: p.color }]}>
-                            {generateInitials(newName.trim())}
-                          </Text>
-                        </View>
-                        <Text style={styles.previewName} numberOfLines={1}>{newName.trim()}</Text>
-                      </View>
-                    );
-                  })()}
-                  
-                  {newName.trim().length > 0 && newName2.trim().length > 0 && (
-                    <Ionicons name="heart" size={16} color="#EC1147" style={{ alignSelf: 'center' }} />
-                  )}
-
-                  {newName2.trim().length > 0 && (() => {
-                    const p = ICON_COLORS.find((c) => c.id === colorKey2) ?? ICON_COLORS[1]!;
-                    return (
-                      <View style={styles.previewRow}>
-                        <View style={[styles.previewAvatar, { backgroundColor: p.bg }]}>
-                          <Text style={[styles.previewInitials, { color: p.color }]}>
-                            {generateInitials(newName2.trim())}
-                          </Text>
-                        </View>
-                        <Text style={styles.previewName} numberOfLines={1}>{newName2.trim()}</Text>
-                      </View>
-                    );
-                  })()}
-                </View>
-              )}
-
-              <View style={styles.formButtons}>
+            <View style={styles.userTile}>
+              <View style={[styles.userAvatar, { backgroundColor: user.bg }]}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color={user.color} />
+                ) : user.photo ? (
+                  <Image source={user.photo} style={styles.userPhoto} />
+                ) : (
+                  <Text style={[styles.userInitials, { color: user.color, fontSize: (user.initials?.length ?? 0) > 1 ? 13 : 16 }]}>
+                    {user.initials}
+                  </Text>
+                )}
                 <Pressable
-                  onPress={() => runAfterKeyboardDismiss(() => {
-                    setShowAddForm(false);
-                    setNewName('');
-                    setColorKey('indigo');
-                    setNewName2('');
-                    setColorKey2('pink');
-                  })}
-                  style={({ pressed }) => [styles.cancelBtn, pressed && styles.pressed]}
+                  onPress={handlePickPhoto}
+                  disabled={uploading}
+                  style={styles.userAvatarCameraBadge}
                 >
-                  <Text style={styles.cancelBtnText}>Cancelar</Text>
+                  <Ionicons name="camera" size={8} color="#FFFFFF" />
                 </Pressable>
-                <Pressable
-                  onPress={() => runAfterKeyboardDismiss(() => void handleAddPair())}
-                  disabled={!newName.trim() || !newName2.trim()}
-                  style={({ pressed }) => [
-                    styles.confirmBtn,
-                    (!newName.trim() || !newName2.trim()) && styles.confirmBtnDisabled,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.confirmBtnText}>Agregar</Text>
-                </Pressable>
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={styles.userName}>{user.name}</Text>
+                <Text style={styles.userPartner}>
+                  {clerkUser?.primaryEmailAddress?.emailAddress}
+                </Text>
               </View>
             </View>
-          )}
+
+            <View style={styles.dividerFull} />
+
+            <Pressable
+              onPress={handleLogout}
+              style={({ pressed }) => [styles.userTile, pressed && styles.pressed]}
+            >
+              <View style={[styles.userAvatar, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
+                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={[styles.userName, { color: '#EF4444' }]}>Cerrar sesión</Text>
+                <Text style={styles.userPartner}>Salir de tu cuenta</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+            </Pressable>
+          </View>
         </View>
 
         {/* Preferencias */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Preferencias</Text>
+          <Text style={styles.sectionLabel}>Ajustes</Text>
           <View style={styles.card}>
-            {/* Moneda */}
-            {Object.values(CURRENCIES).map((item, idx) => (
+            <View style={styles.settingsBlock}>
+              <Text style={styles.settingsBlockTitle}>País</Text>
+              <Text style={styles.settingsBlockSub}>Selecciona tu país para ver monedas disponibles.</Text>
+              
+              <Pressable
+                onPress={() => setIsCountryModalVisible(true)}
+                style={({ pressed }) => [styles.countryDropdown, pressed && styles.pressed]}
+              >
+                <View style={styles.countryDropdownLeft}>
+                  <Text style={styles.countryDropdownFlag}>{selectedCountry.flag}</Text>
+                  <Text style={styles.countryDropdownLabel}>{selectedCountry.label}</Text>
+                </View>
+                <Ionicons name="chevron-down" size={18} color={theme.textMuted} />
+              </Pressable>
+            </View>
+
+            <View style={styles.dividerFull} />
+
+            <View style={styles.settingsBlock}>
+              <Text style={styles.settingsBlockTitle}>Moneda</Text>
+              <Text style={styles.settingsBlockSub}>Opciones disponibles para {selectedCountry.label}.</Text>
+            </View>
+            {visibleCurrencies.map((item, idx) => (
               <View key={item.code}>
                 {idx > 0 && <View style={styles.divider} />}
                 <Pressable
@@ -505,7 +400,6 @@ export default function PerfilScreen() {
               </View>
             ))}
 
-            {/* Toggle de tema */}
             <View style={styles.divider} />
             <View style={styles.themeTile}>
               <Ionicons
@@ -557,9 +451,24 @@ export default function PerfilScreen() {
         {/* Acerca de */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Acerca de</Text>
-          <View style={[styles.card, styles.aboutCard]}>
-            <Text style={styles.aboutKey}>Versión</Text>
-            <Text style={styles.aboutValue}>{version}</Text>
+          <View style={styles.card}>
+            <View style={styles.aboutCard}>
+              <Text style={styles.aboutKey}>Versión</Text>
+              <Text style={styles.aboutValue}>{version}</Text>
+            </View>
+            <View style={styles.divider} />
+            <Pressable
+              onPress={() => void Linking.openURL(`mailto:${CONTACT_EMAIL}`)}
+              style={({ pressed }) => [styles.aboutCard, pressed && styles.pressed]}
+            >
+              <View style={styles.aboutCopy}>
+                <Text style={styles.aboutKey}>Contacto</Text>
+                <Text style={styles.aboutHint}>Para reportar errores de la app.</Text>
+              </View>
+              <Text style={styles.aboutValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                {CONTACT_EMAIL}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
@@ -603,7 +512,96 @@ export default function PerfilScreen() {
         </View>
 
       </Animated.View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Modal del selector de país */}
+      <Modal
+        visible={isCountryModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setIsCountryModalVisible(false);
+          setSearchText('');
+        }}
+      >
+        <View style={styles.modalScrim}>
+          <View style={styles.dropdownModalContent}>
+            {/* Cabecera del modal */}
+            <View style={styles.dropdownModalHeader}>
+              <Text style={styles.dropdownModalTitle}>Selecciona tu país</Text>
+              <Pressable
+                onPress={() => {
+                  setIsCountryModalVisible(false);
+                  setSearchText('');
+                }}
+                style={({ pressed }) => [styles.closeModalBtn, pressed && styles.pressed]}
+                hitSlop={8}
+              >
+                <Ionicons name="close" size={24} color={theme.textPrimary} />
+              </Pressable>
+            </View>
+
+            {/* Barra de búsqueda */}
+            <View style={styles.dropdownSearchWrap}>
+              <Ionicons name="search-outline" size={18} color={theme.textMuted} style={{ marginRight: 6 }} />
+              <TextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Buscar país..."
+                placeholderTextColor={theme.textMuted}
+                style={styles.dropdownSearchInput}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {searchText.trim().length > 0 && (
+                <Pressable onPress={() => setSearchText('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color={theme.textMuted} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Lista de países */}
+            <ScrollView
+              style={styles.dropdownList}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+            >
+              {filteredCountries.map((item) => {
+                const active = item.code === selectedCountry.code;
+                return (
+                  <Pressable
+                    key={item.code}
+                    onPress={() => {
+                      handleCountryChange(item.code);
+                      setIsCountryModalVisible(false);
+                      setSearchText('');
+                    }}
+                    style={({ pressed }) => [
+                      styles.dropdownListItem,
+                      active && styles.dropdownListItemActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View style={styles.dropdownListItemLabelWrap}>
+                      <Text style={styles.dropdownListFlag}>{item.flag}</Text>
+                      <Text style={[styles.dropdownListLabel, active && styles.dropdownListLabelActive]}>
+                        {item.label}
+                      </Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={20} color="#7C3AED" />}
+                  </Pressable>
+                );
+              })}
+              {filteredCountries.length === 0 && (
+                <View style={styles.dropdownEmptyState}>
+                  <Text style={styles.dropdownEmptyText}>No se encontraron países</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -612,80 +610,38 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     backgroundColor: t.background,
     flex: 1,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
     paddingBottom: 56,
   },
-  hero: {
-    alignItems: 'center',
-    backgroundColor: t.surface,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    elevation: 4,
+  headerContainer: {
     flexDirection: 'row',
-    gap: 16,
-    paddingBottom: 28,
-    paddingHorizontal: 28,
-    paddingTop: 56,
-    shadowColor: t.shadowColor,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-  },
-  heroAvatarContainer: {
-    borderRadius: 34,
-    position: 'relative',
-  },
-  cameraIconBadge: {
     alignItems: 'center',
-    backgroundColor: '#6366F1',
-    borderRadius: 10,
-    bottom: -2,
-    height: 20,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: -2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 4,
-    width: 20,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: t.background,
   },
-  heroAvatar: {
+  backButton: {
     alignItems: 'center',
-    borderRadius: 34,
-    height: 68,
+    borderRadius: 14,
+    height: 42,
     justifyContent: 'center',
-    width: 68,
+    width: 42,
+    backgroundColor: t.softSurface,
+    marginRight: 16,
   },
-  heroPhoto: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-  },
-  heroInitials: {
-    fontWeight: '900',
-  },
-  heroText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  heroName: {
-    color: t.textPrimary,
+  headerTitleText: {
+    fontSize: 22,
     fontFamily: 'Poppins_700Bold',
-    fontSize: 26,
-    lineHeight: 32,
-  },
-  heroSub: {
-    color: t.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
+    color: t.textPrimary,
   },
   content: {
     gap: 24,
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 8,
   },
   section: {
     gap: 10,
@@ -702,6 +658,10 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     backgroundColor: t.surface,
     borderRadius: 18,
     overflow: 'hidden',
+  },
+  dividerFull: {
+    backgroundColor: t.border,
+    height: StyleSheet.hairlineWidth,
   },
   divider: {
     backgroundColor: t.border,
@@ -721,6 +681,7 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     width: 40,
+    position: 'relative',
   },
   userPhoto: {
     width: 40,
@@ -729,6 +690,24 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
   },
   userInitials: {
     fontWeight: '900',
+  },
+  userAvatarCameraBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#6366F1',
+    borderRadius: 6,
+    width: 14,
+    height: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  userChangePhotoText: {
+    color: t.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
   },
   userInfo: {
     flex: 1,
@@ -898,6 +877,138 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  settingsBlock: {
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  settingsBlockTitle: {
+    color: t.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  settingsBlockSub: {
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
+  },
+  countryDropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderColor: t.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: t.inputBg,
+    marginTop: 4,
+  },
+  countryDropdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  countryDropdownFlag: {
+    fontSize: 18,
+  },
+  countryDropdownLabel: {
+    color: t.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  dropdownModalContent: {
+    backgroundColor: t.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 36,
+    maxHeight: '75%',
+  },
+  dropdownModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dropdownModalTitle: {
+    color: t.textPrimary,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  closeModalBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+  },
+  dropdownSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: t.inputBg,
+    borderColor: t.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  dropdownSearchInput: {
+    color: t.textPrimary,
+    flex: 1,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    padding: 0,
+  },
+  dropdownList: {
+    minHeight: 120,
+  },
+  dropdownListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.border,
+  },
+  dropdownListItemActive: {
+    backgroundColor: t.softSurface + '22',
+  },
+  dropdownListItemLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dropdownListFlag: {
+    fontSize: 18,
+  },
+  dropdownListLabel: {
+    color: t.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dropdownListLabelActive: {
+    color: '#7C3AED',
+    fontWeight: '700',
+  },
+  dropdownEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  dropdownEmptyText: {
+    color: t.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
+  },
   currencyTile: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1015,6 +1126,19 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     color: t.textMuted,
     fontSize: 14,
     fontWeight: '600',
+    maxWidth: '58%',
+    textAlign: 'right',
+  },
+  aboutCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  aboutHint: {
+    color: t.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
   },
   devTile: {
     alignItems: 'center',
@@ -1046,24 +1170,10 @@ const makeStyles = (t: AppTheme) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  heroHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginLeft: -8,
-  },
   heroContentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-  },
-  backButton: {
-    alignItems: 'center',
-    borderRadius: 14,
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
-    backgroundColor: t.softSurface,
   },
   pressed: {
     opacity: 0.68,
